@@ -14,7 +14,7 @@ live in one encrypted vault on your computer. No external categorization service
 <summary>Settings preview</summary>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.webp">
-  <img alt="Trilly settings with appearance circles, theme choices, font previews, and logo color controls" src="docs/screenshots/settings-light.webp" width="660">
+  <img alt="Trilly settings with appearance circles, theme choices, and logo controls" src="docs/screenshots/settings-light.webp" width="660">
 </picture>
 </details>
 
@@ -291,10 +291,12 @@ from the author's Balance app. Iridescent is the default; system appearance is
 followed live. Settings offers Light, Dark, and System circles, and a Random
 sub-button to start daily themes tomorrow. Theme choice can be changed while locked.
 
-The logo has ten local sans serif font choices, weight controls, letter spacing,
-and a color picker with hex and hue/saturation/lightness controls. Fonts load
-from macOS without network requests. Payee and category pickers focus search
-immediately; click outside any modal or press Escape to close it.
+The logo uses Avenir Next with CSS weight 750 and −0.8px letter spacing. The
+installed font determines the available rendered weight; fonts load locally
+without network requests. Its default color is `#56c2f0` in both light and dark
+appearance. Settings keeps a color picker with hex and hue/saturation/lightness
+controls and a reset button. Existing custom colors are preserved. Payee and
+category pickers focus search immediately; click outside any modal or press Escape to close it.
 The compact layout also takes inspiration from the author's Compressor app.
 
 ## Contributing and screenshots

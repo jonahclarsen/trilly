@@ -6,7 +6,7 @@
   import Modal from './lib/Modal.svelte'
   import Picker from './lib/Picker.svelte'
   import LogoSettings from './lib/LogoSettings.svelte'
-  import { logoFont, readLogo, saveLogo } from './lib/logo'
+  import { readLogo, saveLogo } from './lib/logo'
   import { api, ApiError, setSession, hasSession, shouldAutoUnlock } from './lib/api'
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
@@ -396,7 +396,7 @@
 
 <div class="app-shell">
   <header>
-    <span class="brand" style:font-family={logoFont(logo.font).family} style:font-weight={logo.weight} style:letter-spacing={`${logo.spacing}px`} style:color={logo.color || undefined}>trilly</span>
+    <span class="brand" style:color={logo.color}>trilly</span>
     <nav aria-label="App controls">
       {#if data}
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
@@ -546,7 +546,7 @@
         {/each}
       </div>
     </section>
-    <LogoSettings value={logo} defaultColor={appearance === 'dark' || (appearance === 'system' && systemDark) ? '#38bdf8' : '#0284c7'} onchange={(value) => logo = value} />
+    <LogoSettings value={logo} onchange={(value) => logo = value} />
     {#if data}
       <section class="settings-section">
         <h3>YNAB</h3>

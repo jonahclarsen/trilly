@@ -50,10 +50,11 @@ Do not change the real item's owner ACL to make tests or unlocks pass.
 Reuse components; keep labels short and functional. Icons in buttons must be
 SVGs. Keep shortcut handling and its reference together. Themes come from
 Balance; Iridescent is the default, with system light/dark appearance and an
-optional scheduled start for daily Random. The Trilly wordmark defaults to
-lowercase bold sky blue sans serif; its font, weight, spacing, and color are
-customizable in Settings. Use text labels with SVG icons, transparent backgrounds, and subtle outlines
-for the top navigation. Settings uses a clean gear SVG.
+optional scheduled start for daily Random. The lowercase Trilly wordmark uses
+fixed Avenir Next typography at CSS weight 750 and −0.8px letter spacing. Only
+its color is customizable in Settings, with `#56c2f0` as the default in both
+appearances. Use text labels with SVG icons, transparent backgrounds, and subtle
+outlines for the top navigation. Settings uses a clean gear SVG.
 
 Whenever a requested change alters the UI, regenerate the README screenshots
 with pnpm screenshots. Review the resulting WebP files in docs/screenshots,
