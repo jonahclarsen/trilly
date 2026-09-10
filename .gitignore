@@ -1,0 +1,9 @@
+node_modules/
+dist/
+server/target/
+test-results/
+playwright-report/
+.env*
+*.vault
+*.vault.tmp
+.DS_Store

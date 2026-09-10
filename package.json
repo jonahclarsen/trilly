@@ -1,0 +1,25 @@
+{
+  "name": "ynab-plus",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "dev": "node scripts/start.mjs",
+    "start": "node scripts/start.mjs --release",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig tsconfig.json",
+    "test": "cargo test --manifest-path server/Cargo.toml && playwright test",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^24.12.3",
+    "svelte": "^5.55.5",
+    "svelte-check": "^4.4.8",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  }
+}
