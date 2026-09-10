@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockApp } from './fixtures'
+import { mockApp, suggestions } from './fixtures'
 
 test('native unlock opens automatically without a browser password and lock revokes access', async ({ page }) => {
   const unlockRequests: unknown[] = []
@@ -270,4 +270,36 @@ test('a Keychain access error leaves Unlock usable and retries native authentica
   await expect(page.getByRole('heading', { name: 'Whole Foods', exact: true })).toBeVisible()
   expect(attempts).toBe(3)
   await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('suggestions explain missing history and refresh after syncing the same transaction', async ({ page }) => {
+  await mockApp(page)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  let matches = false
+  await page.route('**/api/suggestions/*', route => route.fulfill({ json: matches ? suggestions : [] }))
+  await page.keyboard.press('r')
+  await expect(page.getByRole('region', { name: 'Suggestions' })).toContainText('No matching approved history yet')
+  matches = true
+  await page.keyboard.press('r')
+  await expect(page.getByRole('button', { name: /24 similar transactions/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Whole Foods', exact: true })).toBeVisible()
+})
+
+test('one Escape closes every modal and picker search keeps focus without an outline', async ({ page }) => {
+  await mockApp(page)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  for (const key of ['p', 'c', 'a', ',', '?']) {
+    await page.locator('.workspace').focus()
+    await page.keyboard.press(key)
+    await expect(page.getByRole('dialog')).toBeVisible()
+    if (['p', 'c', 'a'].includes(key)) {
+      const search = page.getByRole('combobox')
+      await expect(search).toBeFocused()
+      await page.keyboard.type('e')
+      await expect(search).toBeFocused()
+      await expect(search).toHaveCSS('outline-style', 'none')
+    }
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  }
 })

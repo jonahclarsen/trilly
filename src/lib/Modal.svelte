@@ -12,6 +12,12 @@
     })
     return { destroy() { node.close() } }
   }
+  function keydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || event.isComposing) return
+    event.preventDefault()
+    event.stopPropagation()
+    onclose()
+  }
   let outsidePress = false
   function outside(event: PointerEvent | MouseEvent) {
     const node = event.currentTarget as HTMLDialogElement
@@ -19,7 +25,7 @@
     return event.target === node && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)
   }
 </script>
-<dialog onpointerdown={(event) => outsidePress = outside(event)} onclick={(event) => { if (outsidePress && outside(event)) onclose(); outsidePress = false }} use:open class:wide oncancel={(event) => { event.preventDefault(); onclose() }} aria-label={title}>
+<dialog onkeydown={keydown} onpointerdown={(event) => outsidePress = outside(event)} onclick={(event) => { if (outsidePress && outside(event)) onclose(); outsidePress = false }} use:open class:wide oncancel={(event) => { event.preventDefault(); onclose() }} aria-label={title}>
   <div class="modal-heading"><h2>{title}</h2><Button icon="close" label="Close" shortcut="Esc" onclick={onclose} /></div>
   {@render children()}
 </dialog>

@@ -32,6 +32,7 @@
   let modal = $state<'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | null>(null)
   let skipped = $state<string[]>([])
   let picks = $state<Suggestion[]>([])
+  let picksStatus = $state<'loading' | 'ready' | 'error'>('ready')
   let payee = $state<string | null>(null)
   let category = $state<string | null>(null)
   let edited = $state(false)
@@ -58,13 +59,30 @@
     untrack(() => {
       const t = current
       payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
-      if (id && t && !special(t)) {
+    })
+  })
+  $effect(() => {
+    const snapshot = data
+    const id = currentId
+    let cancelled = false
+    untrack(() => {
+      picks = []
+      picksStatus = 'ready'
+      if (snapshot && id && current && !special(current)) {
         const epoch = sessionEpoch
+        picksStatus = 'loading'
         api<Suggestion[]>(`suggestions/${encodeURIComponent(id)}`).then(result => {
-          if (sessionEpoch === epoch && currentId === id) picks = result
-        }).catch(e => { if (sessionEpoch === epoch) handleError(e) })
+          if (!cancelled && sessionEpoch === epoch && currentId === id) {
+            picks = result; picksStatus = 'ready'
+          }
+        }).catch(e => {
+          if (!cancelled && sessionEpoch === epoch && currentId === id) {
+            picksStatus = 'error'; handleError(e)
+          }
+        })
       }
     })
+    return () => { cancelled = true }
   })
 
   onMount(() => {
@@ -298,9 +316,16 @@
           </div>
         </article>
 
-        {#if picks.length}
+        {#if !special(current)}
           <section class="suggestions" aria-label="Suggestions">
-            <div class="suggestion-heading"><h2>Suggestions</h2><small>Choose & approve</small></div>
+            <div class="suggestion-heading"><h2>Suggestions</h2><small>1 / 2 / 3 · Choose & approve</small></div>
+            {#if picksStatus === 'loading'}
+              <p class="muted" role="status">Finding matches in approved history…</p>
+            {:else if picksStatus === 'error'}
+              <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
+            {:else if !picks.length}
+              <p class="muted" role="status">No matching approved history yet. Choose a payee and category with P and C.</p>
+            {/if}
             {#each picks as suggestion, i}
               <button class="suggestion" disabled={busy} onclick={() => void approve(suggestion)}>
                 <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />

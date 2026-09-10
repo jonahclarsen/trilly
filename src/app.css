@@ -77,6 +77,7 @@ dialog::backdrop { background: rgb(0 0 0 / .3); backdrop-filter: blur(4px); }
 .modal-error { color: var(--danger); margin-bottom: 20px; line-height: 1.6; }
 .search-input { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; padding-left: 12px; color: var(--muted); background: var(--paper-strong); }
 .search-input input { border: 0; background: transparent; }
+.search-input input:focus-visible { outline: none; }
 .picker-results { margin-top: 12px; max-height: 350px; overflow: auto; padding: 4px; }
 .picker-results button { width: 100%; border: 0; text-align: left; justify-content: space-between; padding: 12px; }
 .picker-results button.selected { background: var(--active-nav); }

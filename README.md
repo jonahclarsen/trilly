@@ -84,6 +84,18 @@ must currently be created there too. Pending bank transactions are not exposed
 by YNAB's transactions endpoint.
 
 The first import fetches history since 2000; later syncs use YNAB's delta cursor.
+Suggestions appear below the review actions. Press 1, 2, or 3 to apply a
+payee/category pair and approve. When no matches exist, that section explains
+how to choose manually with P and C. Suggestions refresh after syncing.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/category-dark.webp">
+  <img alt="Category search with keyboard focus and a subtle border" src="docs/screenshots/category-light.webp" width="560">
+</picture>
+
+Picker searches keep keyboard focus without an outer focus ring; Escape closes
+the modal with one press.
+
 The account selector filters the review queue; suggestions use confirmed
 history across the selected plan. Rankings consider imported merchant text,
 payee, amount, account, matching memos, and recency. Corrections start informing
