@@ -14,10 +14,9 @@
       document.getElementById(`choice-${selected}`)?.scrollIntoView({ block: 'nearest' })
     }
   }
-  function focus(node: HTMLInputElement) { node.focus() }
 </script>
 <Modal {title} {onclose}>
-  <div class="search-input"><Icon name="search" /><input use:focus aria-label={`Search ${title.toLowerCase()}`} placeholder="Search" bind:value={query} oninput={() => selected = 0} onkeydown={keydown} role="combobox" aria-expanded="true" aria-controls="picker-results" aria-activedescendant={results[selected] ? `choice-${selected}` : undefined} autocomplete="off" /></div>
+  <div class="search-input"><Icon name="search" /><input data-modal-focus aria-label={`Search ${title.toLowerCase()}`} placeholder="Search" bind:value={query} oninput={() => selected = 0} onkeydown={keydown} role="combobox" aria-expanded="true" aria-controls="picker-results" aria-activedescendant={results[selected] ? `choice-${selected}` : undefined} autocomplete="off" /></div>
   <div class="picker-results" id="picker-results" role="listbox" aria-label={title}>
     {#each results as option, i (option.id)}
       <button id={`choice-${i}`} type="button" role="option" aria-selected={i === selected} class:selected={i === selected} onclick={() => onpick(option.id)} onpointermove={() => selected = i}>

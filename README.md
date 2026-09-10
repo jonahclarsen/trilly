@@ -10,7 +10,15 @@ live in one encrypted vault on your computer. No external categorization service
   <img alt="Trilly transaction review with keyboard shortcuts and category suggestions" src="docs/screenshots/review-light.webp" width="1280">
 </picture>
 
-Screenshots use synthetic data. The preview follows your light/dark preference.
+<details>
+<summary>Settings preview</summary>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.webp">
+  <img alt="Trilly settings with appearance circles, theme choices, font previews, and logo color controls" src="docs/screenshots/settings-light.webp" width="660">
+</picture>
+</details>
+
+Screenshots use synthetic data and the default Iridescent theme. The previews follow your light/dark preference.
 
 ## Run
 
@@ -106,9 +114,9 @@ cancelled first unlock to retry without creating more Keychain entries.
 
 The encryption key and structured vault data are zeroized when the Rust session
 locks. The browser retains only an in-memory session credential and the data it
-needs to display. Reloading requires another native unlock. Only theme and
-light/dark preferences go in localStorage. Browser and backend both lock after
-ten minutes of inactivity.
+needs to display. Reloading requires another native unlock. Only appearance and
+logo preferences go in localStorage. Browser and backend both lock after six
+hours of inactivity.
 
 Host and Origin validation, a custom API header, authenticated private
 endpoints, no browser caching, and a restrictive Content Security Policy protect
@@ -133,8 +141,14 @@ Argon2id (64 MiB, three iterations, one lane) only for the one-time migration.
 ## Themes
 
 The eleven theme presets, daily Random selection, and light/dark palettes come
-from the author's Balance app. Random is the default; system appearance is
-followed live. Theme choice can be changed in Settings even while locked.
+from the author's Balance app. Iridescent is the default; system appearance is
+followed live. Settings offers Light, Dark, and System circles, and a Random
+sub-button to start daily themes tomorrow. Theme choice can be changed while locked.
+
+The logo has ten local sans serif font choices, weight controls, letter spacing,
+and a color picker with hex and hue/saturation/lightness controls. Fonts load
+from macOS without network requests. Payee and category pickers focus search
+immediately; click outside any modal or press Escape to close it.
 The compact layout also takes inspiration from the author's Compressor app.
 
 ## Contributing and screenshots
@@ -152,9 +166,9 @@ pnpm screenshots
 ```
 
 This builds the frontend, opens an isolated static preview with synthetic API
-fixtures, and writes `docs/screenshots/review-light.webp` and
-`docs/screenshots/review-dark.webp`. It does not connect to the running app or
-start a backend. Review both WebP images, update the README references or
+fixtures, and writes light/dark review and settings WebPs to `docs/screenshots/`.
+It does not connect to the running app or start a backend. Review all WebP
+images, update the README references or
 captions when necessary, and commit and push them with the UI change so the
 GitHub preview stays current. Never take documentation screenshots of real data.
 

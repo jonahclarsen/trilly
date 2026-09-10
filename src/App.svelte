@@ -4,8 +4,10 @@
   import Icon from './lib/Icon.svelte'
   import Modal from './lib/Modal.svelte'
   import Picker from './lib/Picker.svelte'
+  import LogoSettings from './lib/LogoSettings.svelte'
+  import { logoFont, readLogo, saveLogo } from './lib/logo'
   import { api, ApiError, setSession } from './lib/api'
-  import { applyAppearance, readPreferences, type Appearance } from './lib/appearance'
+  import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { shortcuts } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option } from './lib/types'
@@ -13,6 +15,12 @@
   const preferences = readPreferences()
   let theme = $state<ThemeId>(preferences.theme)
   let appearance = $state<Appearance>(preferences.appearance)
+  let systemDark = $state(matchMedia('(prefers-color-scheme: dark)').matches)
+  let randomStart = $state(preferences.randomStart)
+  let logo = $state(readLogo())
+  let replacingToken = $state(false)
+  let now = $state(Date.now())
+  const IDLE_TIMEOUT_MS = 6 * 60 * 60 * 1000
   let ready = $state(false)
   let unlockMode = $state<'macos' | 'migration' | 'unsupported'>('macos')
   let data = $state<Snapshot | null>(null)
@@ -40,7 +48,8 @@
   const categoryName = $derived(data?.categories.find(c => c.id === category)?.name ?? current?.category_name ?? 'Choose category')
   const payeeName = $derived(data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
 
-  $effect(() => { applyAppearance(theme, appearance) })
+  $effect(() => { applyAppearance(theme, appearance, randomStart) })
+  $effect(() => { saveLogo(logo) })
   $effect(() => {
     if (ready && !data && !modal) queueMicrotask(() => document.querySelector<HTMLInputElement>('.unlock-card input')?.focus())
   })
@@ -64,21 +73,26 @@
       if (unlockMode === 'macos') void unlock()
     }).catch(handleError)
     const media = matchMedia('(prefers-color-scheme: dark)')
-    const update = () => applyAppearance(theme, appearance)
+    const update = () => {
+      now = Date.now(); systemDark = media.matches
+      if (randomStart && randomStart <= localDate()) { theme = 'random'; randomStart = '' }
+      applyAppearance(theme, appearance, randomStart)
+    }
     media.addEventListener('change', update)
     const timer = setInterval(() => {
       update()
-      if (data && Date.now() - lastActivity >= 600_000) void lock()
+      if (data && Date.now() - lastActivity >= IDLE_TIMEOUT_MS) void lock()
     }, 10_000)
     const wake = () => {
-      if (data && Date.now() - lastActivity >= 600_000) void lock()
+      update()
+      if (data && Date.now() - lastActivity >= IDLE_TIMEOUT_MS) void lock()
     }
     document.addEventListener('visibilitychange', wake)
     return () => { media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
   })
 
   function forget() {
-    sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; modal = null
+    sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     picks = []; skipped = []; payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
@@ -144,7 +158,7 @@
   async function lock() {
     const request = api('action', { action: 'lock' })
     forget(); error = ''
-    try { await request } catch { error = 'Browser locked. If the server is unreachable, it locks after 10 minutes.' }
+    try { await request } catch { error = 'Browser locked. If the server is unreachable, it locks after 6 hours.' }
   }
   function pickerOptions(): Option[] {
     if (!data) return []
@@ -187,6 +201,13 @@
     return new Intl.NumberFormat(undefined, currency ? { style: 'currency', currency } : { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount / 1000)
   }
   function dateLabel(date: string) { return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T12:00:00`)) }
+  function syncLabel(timestamp: string, currentTime: number) {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    const day = localDate(date) === localDate(new Date(currentTime)) ? 'today' : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
+    return `Last synced at ${day}, ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date)}`
+  }
+  function closeSettings() { modal = null; token = ''; replacingToken = false }
   function focus(node: HTMLElement) { node.focus() }
 </script>
 
@@ -194,17 +215,17 @@
 
 <div class="app-shell">
   <header>
-    <span class="brand">trilly</span>
+    <span class="brand" style:font-family={logoFont(logo.font).family} style:font-weight={logo.weight} style:letter-spacing={`${logo.spacing}px`} style:color={logo.color || undefined}>trilly</span>
     <nav aria-label="App controls">
       {#if data}
-        <span class="sync-state" aria-live="polite">{syncing ? 'Syncing' : data.pending ? `${data.pending} pending` : data.synced_at ? 'Synced' : ''}</span>
-        <Button icon="sync" label="Sync" shortcut="R" disabled={busy || !data.plan_id} onclick={() => void sync()} />
-        <Button icon="undo" label="Undo" shortcut="U" disabled={busy || !data.can_undo} onclick={() => void undo()} />
+        <span class="sync-state" aria-live="polite">{syncing ? 'Syncing' : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
+        <Button label="Sync" shortcut="R" disabled={busy || !data.plan_id} onclick={() => void sync()}>Sync</Button>
+        <Button label="Undo" shortcut="U" disabled={busy || !data.can_undo} onclick={() => void undo()}>Undo</Button>
         <span class="nav-divider"></span>
-        <Button icon="keyboard" label="Shortcuts" shortcut="?" onclick={() => modal = 'shortcuts'} />
+        <Button label="Help" shortcut="?" onclick={() => modal = 'shortcuts'}>Help</Button>
       {/if}
-      <Button icon="settings" label="Settings" shortcut="," onclick={() => modal = 'settings'} />
-      {#if data}<Button icon="lock" label="Lock" shortcut="L" onclick={() => void lock()} />{/if}
+      <Button label="Settings" shortcut="," onclick={() => modal = 'settings'}>Settings</Button>
+      {#if data}<Button label="Lock" shortcut="L" onclick={() => void lock()}>Lock</Button>{/if}
     </nav>
   </header>
 
@@ -304,36 +325,54 @@
 </div>
 
 {#if modal === 'settings'}
-  <Modal title="Settings" onclose={() => { modal = null; token = '' }} wide>
+  <Modal title="Settings" onclose={closeSettings} wide>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <section class="settings-section">
-      <label class="setting-row">Appearance<select bind:value={appearance}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <div class="setting-row">
+        <span>Appearance</span>
+        <div class="appearance-options" role="group" aria-label="Appearance">
+          {#each ['system', 'light', 'dark'] as mode}
+            <button class="appearance-option" class:chosen={appearance === mode} aria-label={mode[0]!.toUpperCase() + mode.slice(1)} aria-pressed={appearance === mode} title={mode[0]!.toUpperCase() + mode.slice(1)} onclick={() => appearance = mode as Appearance}>
+              <span class="appearance-circle" class:system={mode === 'system'} class:light={mode === 'light'} class:dark={mode === 'dark'}></span>
+              <small>{mode[0]!.toUpperCase() + mode.slice(1)}</small>
+            </button>
+          {/each}
+        </div>
+      </div>
       <div class="setting-label">Theme</div>
       <div class="theme-grid">
         {#each THEME_OPTIONS as preset}
-          <button class="theme-option" class:chosen={theme === preset.id} aria-pressed={theme === preset.id} onclick={() => theme = preset.id}>
-            <span class="swatches">{#each preset.swatches as swatch}<span style:background={swatch}></span>{/each}</span><span>{preset.name}</span>
-          </button>
+          <div class="theme-option" class:chosen={theme === preset.id}>
+            <button class="theme-select" aria-pressed={theme === preset.id} onclick={() => { theme = preset.id; randomStart = '' }}>
+              <span class="theme-swatch" style:background={'checkboxColor' in preset ? preset.checkboxColor : '#888888'}></span><span>{preset.name}</span>
+            </button>
+            {#if preset.id === 'random' && theme !== 'random'}
+              <button class="theme-schedule" aria-pressed={!!randomStart} onclick={() => randomStart = randomStart ? '' : tomorrow()}>{randomStart ? 'Cancel start' : 'Start tomorrow'}</button>
+            {/if}
+          </div>
         {/each}
       </div>
-      {#if theme === 'random'}<p class="field-note">A different theme each day.</p>{/if}
     </section>
+    <LogoSettings value={logo} defaultColor={appearance === 'dark' || (appearance === 'system' && systemDark) ? '#38bdf8' : '#0284c7'} onchange={(value) => logo = value} />
     {#if data}
       <section class="settings-section">
         <h3>YNAB</h3>
-        <form onsubmit={async (event) => { event.preventDefault(); if (await act({ action: 'token', token })) token = '' }}>
-          <label>{data.connected ? 'Replace access token' : 'Personal access token'}<input type="password" bind:value={token} autocomplete="off" spellcheck="false" required placeholder={data.connected ? 'New token' : 'Paste token'} /></label>
-          <div class="token-actions"><a href="https://app.ynab.com/settings/developer" target="_blank" rel="noreferrer">Get a token<Icon name="external" /></a><Button type="submit" primary disabled={busy || !token}>{data.connected ? 'Replace' : 'Connect'}</Button></div>
-        </form>
+        {#if !data.connected || replacingToken}
+          <form onsubmit={async (event) => { event.preventDefault(); if (await act({ action: 'token', token })) { token = ''; replacingToken = false } }}>
+            <label>{data.connected ? 'Replace access token' : 'Personal access token'}<input use:focus type="password" bind:value={token} autocomplete="off" spellcheck="false" required placeholder={data.connected ? 'New token' : 'Paste token'} /></label>
+            <div class="token-actions"><a href="https://app.ynab.com/settings/developer" target="_blank" rel="noreferrer">Get a token<Icon name="external" /></a><div class="token-buttons">{#if data.connected}<Button onclick={() => { replacingToken = false; token = '' }}>Cancel</Button>{/if}<Button type="submit" primary disabled={busy || !token}>{data.connected ? 'Replace' : 'Connect'}</Button></div></div>
+          </form>
+        {:else}
+          <Button onclick={() => replacingToken = true}>Replace access token</Button>
+        {/if}
         {#if data.connected}
-          <label class="setting-row">Plan<select value={data.plan_id} disabled={busy || !!data.pending} onchange={async (event) => { skipped = []; if (await act({ action: 'plan', id: event.currentTarget.value })) modal = null }}><option value="" disabled>Choose plan</option>{#each data.plans as plan}<option value={plan.id}>{plan.name}</option>{/each}</select></label>
+          <label class="setting-row">Plan<select value={data.plan_id} disabled={busy || !!data.pending} onchange={async (event) => { skipped = []; if (await act({ action: 'plan', id: event.currentTarget.value })) closeSettings() }}><option value="" disabled>Choose plan</option>{#each data.plans as plan}<option value={plan.id}>{plan.name}</option>{/each}</select></label>
         {/if}
       </section>
-      <p class="field-note">macOS unlock. Locks after 10 minutes of inactivity.</p>
     {/if}
   </Modal>
 {:else if modal === 'shortcuts'}
-  <Modal title="Shortcuts" onclose={() => modal = null}>
+  <Modal title="Help" onclose={() => modal = null}>
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
