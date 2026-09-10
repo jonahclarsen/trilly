@@ -156,7 +156,8 @@ async fn unlock(State(state): State<Shared>, Json(body): Json<Unlock>) -> Result
     };
     let keys = app.keys.clone();
     // Concurrent unlock requests share the mutex, but each successful browser
-    // session requires its own Keychain-authorized read. No native key cache.
+    // session reads through Keychain. Signed Trilly builds are trusted; the key
+    // is never cached outside an unlocked Rust session.
     let vault = tokio::task::spawn_blocking(move || match source {
         Some(source) if vault::Vault::is_legacy(&source)? => {
             let password = password
@@ -480,7 +481,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .unwrap()
         .to_path_buf();
     let ports = serde_json::from_str::<Value>(include_str!("../../port.json"))?;
-    let port = ports[if cfg!(feature = "synthetic-tests") {
+    let dev = cfg!(debug_assertions) && std::env::var("TRILLY_DEV").as_deref() == Ok("1");
+    let port = ports[if dev && cfg!(feature = "synthetic-tests") {
+        "dev_test_port"
+    } else if cfg!(feature = "synthetic-tests") {
         "test_port"
     } else {
         "port"
@@ -564,9 +568,38 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     });
     let origin = format!("http://127.0.0.1:{port}");
-    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+    let listen_port = if dev {
+        ports[if cfg!(feature = "synthetic-tests") {
+            "dev_test_backend_port"
+        } else {
+            "dev_backend_port"
+        }]
+        .as_u64()
+        .unwrap() as u16
+    } else {
+        port
+    };
+    let listener =
+        tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, listen_port)).await?;
     println!("Trilly: {origin}");
-    axum::serve(listener, router(shared, origin, root.join("dist")))
+    // Installed bundles remain usable after a development worktree is removed.
+    let bundled_dist = std::env::current_exe()?
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("Resources/dist");
+    let dist = if bundled_dist.is_dir() {
+        bundled_dist
+    } else {
+        root.join("dist")
+    };
+    if std::env::var("TRILLY_NO_OPEN").as_deref() != Ok("1") && !cfg!(feature = "synthetic-tests") {
+        let _ = std::process::Command::new("/usr/bin/open")
+            .arg(&origin)
+            .spawn();
+    }
+    axum::serve(listener, router(shared, origin, dist))
         .with_graceful_shutdown(async {
             tokio::signal::ctrl_c().await.ok();
         })

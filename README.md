@@ -29,28 +29,63 @@ pnpm install
 pnpm start
 ```
 
-Your browser opens at **http://127.0.0.1:28753**. Confirm the native macOS
-Keychain password prompt, enter your YNAB personal access token in Settings,
-and select a plan and account. There is no separate Trilly login or passphrase.
-Your Mac password goes only into the macOS dialog; Trilly never receives it.
-Use “Allow” for the current unlock rather than permanently trusting the process.
-If the key's access rules changed (for example, after “Always Allow”), Unlock
-first restores password-required access through macOS, then requests the key.
-You may see an additional native prompt to authorize that access update. A
-cancelled or failed repair leaves Trilly locked and can be retried; it never
-replaces the encryption key or vault.
+Your browser opens at **http://127.0.0.1:28753**. Trilly uses your macOS
+Keychain to open the vault automatically. Enter your YNAB personal access token
+in Settings, then select a plan and account. There is no separate Trilly login.
+
+Trilly now trusts its certificate-signed app, so normal unlocks and rebuilt
+versions do not require repeated approval while your Keychain is unlocked.
+For an existing vault, macOS may ask you once to approve changing its Keychain
+access rules. Confirm that native prompt to authorize the signed Trilly app.
+A cancelled migration leaves the original key and vault intact; click Unlock
+to retry. A locked Keychain or changed signing identity may still require native
+authorization. Your Mac password goes only into macOS dialogs, never Trilly.
 
 If an existing passphrase-protected vault is found, Trilly asks for its old
-vault passphrase once, then requests macOS authorization to migrate it. A wrong
-passphrase or cancelled native prompt leaves the original encrypted data intact.
-The old encrypted file is retained as a backup when migrating from the previous
-app directory. It still requires the old vault passphrase; keep that backup and
-passphrase together in a safe place until you are satisfied with the migration.
+vault passphrase once, then migrates it to Keychain storage. A wrong passphrase
+or cancelled native prompt leaves the original encrypted data intact. The old
+encrypted file is retained as a backup when migrating from the previous app
+directory. It still requires the old vault passphrase; keep that backup and
+passphrase together until you are satisfied with the migration.
 
-`pnpm dev` builds the frontend and runs the debug Rust backend. Restart it after
-source changes. `pnpm start` uses the optimized Rust build. Both bind only to
-127.0.0.1 and use the permanent random port saved in `port.json`; there is no
-separate frontend server or cloud host.
+### Development and the installed app
+
+```sh
+pnpm dev          # frontend hot updates and automatic Rust rebuilds
+pnpm start        # build, install, and run the release app
+pnpm install:app  # build and install the release app without launching it
+```
+
+Each runner installs **~/Applications/Trilly.app**, with bundle identifier
+`app.trilly`, and launches the executable inside that permanent bundle. You
+can also open the installed app from Finder. It contains its built frontend,
+so it remains usable after a temporary development worktree is removed.
+Only one runner may update the app at a time; stop it before switching between
+`dev` and `start`. Close a directly launched app before starting a runner.
+
+A certificate-based code-signing identity must be available in your Keychain.
+If exactly one is available, the runner selects it and remembers its public
+fingerprint in `~/Library/Application Support/trilly-development/signing.json`.
+With multiple identities, select one for the first run using
+`TRILLY_SIGNING_IDENTITY="certificate name or fingerprint" pnpm dev`.
+The runner never exports a private key or falls back to ad-hoc signing. Keep
+using the same identity for debug and release builds. If the certificate is
+replaced, select its replacement explicitly; Keychain may ask for approval
+again. A bundle identifier alone does not establish trust across rebuilds.
+
+In development, Vite serves the existing public port **28753** and proxies API
+calls to Rust on loopback port **32943**. Both ports were chosen once using a
+cryptographically secure random generator and are recorded in `port.json`.
+Svelte and CSS edits update the open page while Rust stays running. Component
+hot updates reuse the browser's in-memory session and preserve an explicit
+lock; edits that require a full reload reopen through Keychain. Rust edits
+build and sign a replacement before restarting the backend and reloading the
+page. Failed builds keep the previous backend running.
+
+Dev HTTP and hot-update WebSocket requests enforce the loopback Host and
+Origin boundary. Production serves the built UI directly from Rust and does
+not run Vite. The development server can serve project source to local
+clients; run `pnpm start` when you do not need hot updates.
 
 ## Review
 
@@ -105,22 +140,38 @@ better accuracy than YNAB. Sparse or ambiguous history can produce poor choices.
 ## Encryption and its limits
 
 Trilly creates a random **256-bit encryption key** and stores it in the macOS
-file-based Keychain. Its access control list has no trusted applications and
-requires password entry before the key can be read. The same native Keychain
-read is required on first setup, subsequent browser opens/reloads, and after a
-lock. Cancelling does not create an authenticated browser session. The prompt
-uses your default Keychain password, normally the same as your Mac login password.
-This implementation uses the password prompt, not Touch ID or a Secure Enclave key.
+file-based Keychain. Its decrypt access list trusts the signed Trilly app.
+macOS checks the stored code-signing requirement, allowing new builds with the
+same signing identity to read the key without another prompt. Production
+Keychain access rejects unsigned and ad-hoc-signed executables. This uses
+legacy Keychain APIs and does not require an app provisioning profile.
 
-The Rust backend verifies the Keychain access rules before reading the key and
-rejects a key whose rules have been weakened. The Keychain enforces the access
-restriction; it is not merely an authentication flag in Trilly. macOS's legacy
-file-based Keychain APIs work with local Rust executables without requiring an
-Apple Developer provisioning profile. A native test creates an isolated,
-synthetic Keychain and verifies that even its creating process cannot silently
-retrieve the key when UI interaction is disabled. The same test repairs synthetic
-trusted-app, password-optional, and unrestricted rules and confirms that none
-can return a key without native authentication.
+The backend checks the decrypt ACL's shape and app path before requesting the
+key; macOS enforces the signing requirement on the actual read. Empty,
+unrestricted, or different app lists are migrated to Trilly-only trust through
+native authorization. Migration preserves the encryption key and owner ACLs.
+A denied or failed access update returns no key and leaves the session locked.
+
+**Lock is a session and memory control, not an authentication barrier.** It
+clears the backend's key and data and revokes the browser credential. Unlock,
+a page reload, or an app restart can retrieve the key again without proving
+you are present. Someone using your unlocked Mac can reopen Trilly. Code signed
+with the trusted identity can access the key; this policy also trusts future
+builds. Use macOS screen lock to restrict access when you step away.
+
+<details>
+<summary>Locked session preview (synthetic data)</summary>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/locked-dark.webp">
+  <img alt="Trilly locked session with an Unlock button to reopen the saved vault" src="docs/screenshots/locked-light.webp" width="1280">
+</picture>
+</details>
+
+Native tests use isolated synthetic Keychains. They verify migration preserves
+the key, denied migration returns no key, and repeated trusted reads need no
+UI. A separate signed fixture is rebuilt with different code and verifies it
+can still read, while a different bundle identifier or ad-hoc signature cannot
+read silently. No tests access your installed vault or its Keychain item.
 
 **XChaCha20-Poly1305** encrypts and authenticates the entire vault, including
 transaction history, token, pending edits, and undo history. Each save uses a
@@ -133,18 +184,18 @@ cancelled first unlock to retry without creating more Keychain entries.
 
 The encryption key and structured vault data are zeroized when the Rust session
 locks. The browser retains only an in-memory session credential and the data it
-needs to display. Reloading requires another native unlock. Only appearance and
-logo preferences go in localStorage. Browser and backend both lock after six
+needs to display. Reloading obtains a new session through the trusted app. Only
+appearance and logo preferences go in localStorage. Browser and backend both lock after six
 hours of inactivity.
 
 Host and Origin validation, a custom API header, authenticated private
 endpoints, no browser caching, and a restrictive Content Security Policy protect
 the local server. Browser traffic stays on HTTP loopback; YNAB traffic uses
-HTTPS. There are no external categorization services, third-party scripts,
+HTTPS. There are no external categorization services, third-party remote scripts,
 telemetry, or transaction/token logs.
 
 **An unlocked app still handles plaintext.** A sufficiently privileged agent,
-debugger, extension, or modified app could access it. Native authentication does
+debugger, extension, or modified app could access it. Keychain storage does
 not isolate a running app from every process on your Mac. JavaScript and
 HTTP-library buffers cannot reliably be wiped; OS swap/crash dumps are outside
 Trilly's control. Use FileVault and a trusted browser, and lock Trilly before
@@ -185,7 +236,7 @@ pnpm screenshots
 ```
 
 This builds the frontend, opens an isolated static preview with synthetic API
-fixtures, and writes light/dark review and settings WebPs to `docs/screenshots/`.
+fixtures, and writes light/dark review, settings, picker, and locked-session WebPs to `docs/screenshots/`.
 It does not connect to the running app or start a backend. Review all WebP
 images, update the README references or
 captions when necessary, and commit and push them with the UI change so the
@@ -198,11 +249,14 @@ pnpm check
 pnpm build
 cargo test --manifest-path server/Cargo.toml
 pnpm test:browser
+pnpm test:dev
+pnpm test:signing
 ```
 
 Browser tests use an isolated temporary vault, a separate permanent random test
-port, and a debug-only synthetic authentication provider. They never open the
-real Keychain or interrupt the running app. Synthetic authentication is excluded
+port, and a debug-only synthetic authentication provider. They never open your
+real vault or its Keychain item, or interrupt the running app. Development and
+signing tests use your existing signing identity without exporting its key. Synthetic authentication is excluded
 from normal builds and cannot compile in release mode. Chrome is used if
 installed; otherwise install Playwright Chromium with
 `pnpm exec playwright install chromium`. API fixtures, screenshots, passwords,
@@ -217,5 +271,6 @@ runs the server without automatically opening a browser.
 References: [YNAB API](https://api.ynab.com/),
 [endpoint specification](https://api.ynab.com/papi/open_api_spec.yaml),
 [macOS Keychain](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains),
+[code-signing requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements),
 [Argon2](https://docs.rs/argon2/0.5.3/argon2/),
 [XChaCha20-Poly1305](https://docs.rs/chacha20poly1305/0.10.1/chacha20poly1305/).

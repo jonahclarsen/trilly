@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 import { existsSync } from 'node:fs'
 
 export default defineConfig({
+  outputDir: './test-results/screenshots',
   testDir: './tests',
   testMatch: 'screenshots.spec.ts',
   workers: 1,

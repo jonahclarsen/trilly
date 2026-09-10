@@ -1,4 +1,7 @@
 {
   "port": 28753,
-  "test_port": 22200
+  "test_port": 22200,
+  "dev_backend_port": 32943,
+  "dev_test_port": 8629,
+  "dev_test_backend_port": 33816
 }

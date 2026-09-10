@@ -6,7 +6,7 @@
   import Picker from './lib/Picker.svelte'
   import LogoSettings from './lib/LogoSettings.svelte'
   import { logoFont, readLogo, saveLogo } from './lib/logo'
-  import { api, ApiError, setSession } from './lib/api'
+  import { api, ApiError, setSession, hasSession, shouldAutoUnlock } from './lib/api'
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { shortcuts } from './lib/shortcuts'
@@ -86,10 +86,19 @@
   })
 
   onMount(() => {
+    let mounted = true
     api<{ mode: 'macos' | 'migration' | 'unsupported' }>('status').then(result => {
+      if (!mounted) return
       unlockMode = result.mode; ready = true
-      if (unlockMode === 'macos') void unlock()
-    }).catch(handleError)
+      if (hasSession()) {
+        void api<Snapshot>('state').then(snapshot => {
+          if (!mounted) return
+          data = snapshot
+          if (!snapshot.connected) modal = 'settings'
+          if (snapshot.pending) scheduleSync()
+        }).catch(error => { if (mounted) handleError(error) })
+      } else if (unlockMode === 'macos' && shouldAutoUnlock()) void unlock()
+    }).catch(error => { if (mounted) handleError(error) })
     const media = matchMedia('(prefers-color-scheme: dark)')
     const update = () => {
       now = Date.now(); systemDark = media.matches
@@ -106,7 +115,7 @@
       if (data && Date.now() - lastActivity >= IDLE_TIMEOUT_MS) void lock()
     }
     document.addEventListener('visibilitychange', wake)
-    return () => { media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
+    return () => { mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
   })
 
   function forget() {
@@ -266,7 +275,7 @@
           <p class="muted">Trilly uses your Mac’s Keychain to unlock.</p>
         {:else}
           <h1>{busy ? 'Unlocking…' : 'Locked'}</h1>
-          <p class="muted">{busy ? 'Confirm in the macOS password prompt.' : 'Unlock with your Mac password.'}</p>
+          <p class="muted">{busy ? 'Opening your Keychain vault…' : 'Open your saved vault.'}</p>
           <Button primary icon="lock" label="Unlock" shortcut="Enter" disabled={!ready || busy} onclick={() => void unlock()}>Unlock</Button>
         {/if}
       </div>

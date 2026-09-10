@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 import { readFileSync, existsSync } from 'node:fs'
 const { test_port: port } = JSON.parse(readFileSync('port.json', 'utf8'))
 export default defineConfig({
+  outputDir: './test-results/browser',
   testDir: './tests', testMatch: 'app.spec.ts', fullyParallel: false, workers: 1,
   use: {
     baseURL: `http://127.0.0.1:${port}`, viewport: { width: 1280, height: 900 },

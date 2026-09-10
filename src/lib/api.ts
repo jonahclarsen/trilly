@@ -1,5 +1,13 @@
-let session = ''
-export function setSession(value: string) { session = value }
+// HMR keeps only this module's in-memory credential, never browser storage.
+let session: string = import.meta.hot?.data.session ?? ''
+let autoUnlock: boolean = import.meta.hot?.data.autoUnlock ?? true
+export function setSession(value: string) {
+  session = value; autoUnlock = false
+  if (import.meta.hot) { import.meta.hot.data.session = value; import.meta.hot.data.autoUnlock = false }
+}
+export function hasSession() { return session !== '' }
+export function shouldAutoUnlock() { return autoUnlock }
+if (import.meta.hot) import.meta.hot.dispose(data => { data.session = session; data.autoUnlock = autoUnlock })
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message) }
 }

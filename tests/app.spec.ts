@@ -257,11 +257,11 @@ test('a Keychain access error leaves Unlock usable and retries native authentica
   let attempts = 0
   await page.route('**/api/unlock', route => {
     attempts++
-    if (attempts < 3) return route.fulfill({ status: 400, json: { error: 'Trilly could not restore password-required access to the vault key. Unlock again and allow the native Keychain access update.' } })
+    if (attempts < 3) return route.fulfill({ status: 400, json: { error: 'Trilly could not authorize this signed app to access the vault key. Unlock again and allow the native Keychain access update.' } })
     return route.fallback()
   })
   await page.reload()
-  await expect(page.getByRole('alert')).toContainText('password-required access')
+  await expect(page.getByRole('alert')).toContainText('authorize this signed app')
   await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Unlock', exact: true }).click()
   await expect.poll(() => attempts).toBe(2)

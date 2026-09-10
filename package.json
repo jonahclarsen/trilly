@@ -11,7 +11,10 @@
     "check": "svelte-check --tsconfig tsconfig.json",
     "test": "cargo test --manifest-path server/Cargo.toml && playwright test",
     "test:browser": "playwright test",
-    "screenshots": "pnpm build && playwright test --config playwright.screenshots.config.ts"
+    "screenshots": "pnpm build && playwright test --config playwright.screenshots.config.ts",
+    "install:app": "node scripts/start.mjs --release --install-only",
+    "test:dev": "playwright test --config playwright.dev.config.ts",
+    "test:signing": "node scripts/test-signing.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

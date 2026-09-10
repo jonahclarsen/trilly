@@ -32,9 +32,13 @@ passphrase, unlocked browser, or process memory. Never retrieve the user's
 Keychain keys. Use only synthetic fixtures, isolated
 test vaults, temporary test Keychains, and test passwords.
 Do not ask the user to put secrets in chat, source files, shell commands, or logs.
-The user authorized macOS Keychain storage with native password confirmation
-on every unlock. Never weaken that ACL or add silent unlock, telemetry, or
-external AI services. Never collect a macOS password in the browser or backend.
+The user authorized permanent Keychain trust for certificate-signed Trilly
+builds, including silent unlock across rebuilds and restarts. Trust only Trilly's
+signing identity, never all applications. Lock clears the in-memory session;
+it is not proof of user presence, and reload can reopen the vault silently.
+Existing items may require one native approval to migrate decrypt access.
+Preserve their encryption keys and owner ACLs. Never add telemetry or external
+AI services. Never collect a macOS password in the browser or backend.
 Native SecKeychainItemSetAccess can display authorization UI even after
 SecKeychainSetUserInteractionAllowed(false). Automated repair tests must use
 new synthetic items with explicitly editable fixture-owner ACLs. Never test
@@ -63,3 +67,19 @@ serves a separate static build with mocked API calls; it must not use a real vau
 Run pnpm check, pnpm build, cargo test --manifest-path server/Cargo.toml, and
 pnpm test:browser. Use synthetic data for all API and encryption checks.
 Document material security limitations honestly in README.md.
+
+## Development identity and hot updates
+
+`pnpm dev` serves Vite on the permanent app port and proxies API calls to the
+separate loopback dev backend port in port.json. Svelte hot updates reuse the
+in-memory browser session; Rust edits rebuild, sign, restart, and reload.
+`pnpm start` installs and launches the release bundle; `pnpm install:app` only
+installs it. Both use ~/Applications/Trilly.app with identifier app.trilly.
+Signing uses an existing certificate identity selected by public metadata and
+saved outside the repo in trilly-development/signing.json under Application
+Support. Never export the signing key or silently switch to ad-hoc signing.
+Run pnpm test:dev and pnpm test:signing for changes to these flows. Signed
+Keychain tests use new synthetic items and disable native authorization UI.
+The development browser tests temporarily edit and restore App.svelte and
+server/src/main.rs to exercise the actual file watchers. Run them in the
+dedicated worktree without concurrent edits to those files.

@@ -74,4 +74,13 @@ test('publish synthetic light and dark WebP screenshots', async ({ page }) => {
     await page.keyboard.press('Escape')
     await page.setViewportSize({ width: 1280, height: 940 })
   }
+  await page.getByRole('button', { name: 'Lock', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
+  for (const mode of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: mode })
+    await expect(page.locator('html')).toHaveAttribute('data-color-scheme', mode)
+    await page.mouse.move(0, 0)
+    await sharp(await page.screenshot({ type: 'png', animations: 'disabled' })).webp({ quality: 88, effort: 6 }).toFile(`docs/screenshots/locked-${mode}.webp`)
+  }
+
 })

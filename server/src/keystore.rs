@@ -34,7 +34,8 @@ mod mac {
             -128 | -25293 => Err("Unlock cancelled or authentication denied".into()),
             -25300 => Err("This vault's key is missing from your login Keychain. Restore that Keychain from backup.".into()),
             -25308 => Err("macOS needs an interactive login session to unlock Trilly".into()),
-            -70001 => Err("Trilly could not restore password-required access to the vault key. Unlock again and allow the native Keychain access update.".into()),
+            -70001 => Err("Trilly could not authorize this signed app to access the vault key. Unlock again and allow the native Keychain access update.".into()),
+            -70002 => Err("Run Trilly with pnpm dev or pnpm start so it uses the signed app bundle.".into()),
             _ => Err(format!("macOS Keychain could not unlock Trilly (error {code})")),
         }
     }
@@ -48,8 +49,8 @@ mod mac {
                 return self.read(id);
             }
             check(created)?;
-            // Read through the protected ACL, including first setup. No session is
-            // issued until the user has approved the native password prompt.
+            // Verify access through Keychain, including first setup. The signed app
+            // can read silently; macOS may require approval during migration.
             let verified = self.read(id)?;
             if verified.as_ref() != key.as_ref() {
                 return Err("Keychain verification failed".into());
@@ -64,11 +65,11 @@ mod mac {
     }
     #[cfg(test)]
     #[test]
-    fn native_keychain_repairs_changed_rules_and_refuses_silent_reads() {
+    fn native_keychain_migrates_synthetic_rules_and_preserves_key() {
         let dir = tempfile::tempdir().unwrap();
         let path = CString::new(dir.path().join("synthetic.keychain").to_str().unwrap()).unwrap();
         assert_eq!(unsafe { trilly_keychain_test(path.as_ptr(), 0) }, 0);
-        for scenario in 1..=3 {
+        for scenario in 1..=4 {
             let path = CString::new(
                 dir.path()
                     .join(format!("repair-{scenario}.keychain"))
