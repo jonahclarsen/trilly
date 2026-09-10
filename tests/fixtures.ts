@@ -20,7 +20,7 @@ export const suggestions: Suggestion[] = [
   { payee_id: 'market', category_id: 'dining', payee: 'Whole Foods', category: 'Dining out', count: 3, reason: '3 similar transactions' },
   { payee_id: 'restaurant', category_id: 'coffee', payee: 'Corner Kitchen', category: 'Coffee', count: 2, reason: '2 similar transactions' },
 ]
-export async function mockApp(page: Page, options: { syncError?: boolean; special?: boolean } = {}) {
+export async function mockApp(page: Page, options: { syncError?: boolean; special?: boolean; url?: string } = {}) {
   let state = structuredClone(synthetic)
   if (options.special) state.queue[0].transfer_account_id = 'checking'
   const previous: Snapshot[] = []
@@ -49,7 +49,7 @@ export async function mockApp(page: Page, options: { syncError?: boolean; specia
     }
     await route.fulfill({ json: response })
   })
-  await page.goto('/')
+  await page.goto(options.url ?? '/')
   await page.getByLabel('Passphrase', { exact: true }).fill('synthetic test passphrase')
   await page.getByRole('button', { name: 'Unlock', exact: true }).click()
   await page.getByRole('heading', { name: 'Whole Foods', exact: true }).waitFor()

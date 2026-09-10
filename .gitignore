@@ -7,3 +7,11 @@ playwright-report/
 *.vault
 *.vault.tmp
 .DS_Store
+.worktrees/
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+*.sqlite*
+*.db*

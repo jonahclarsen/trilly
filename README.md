@@ -4,6 +4,14 @@ A local, keyboard-driven YNAB review queue. Rust serves a Svelte UI in your
 browser. Transaction history, your YNAB token, pending edits, and undo history
 live in one encrypted vault on your computer. No external categorization service.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/review-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/review-light.webp">
+  <img alt="YNAB Plus transaction review with keyboard shortcuts and category suggestions" src="docs/screenshots/review-light.webp" width="1280">
+</picture>
+
+Screenshots use synthetic data. The preview follows your light/dark preference.
+
 ## Run
 
 Requires Rust, Node.js, and pnpm.
@@ -102,10 +110,31 @@ There is no recovery key or forgotten-passphrase bypass.
 
 ## Themes
 
-The eleven theme presets, daily Random selection, and light/dark palettes are
-copied from the owner's Balance app. Random is the default; system appearance
-is followed live. Theme choice can be changed in Settings even while locked.
-The compact layout also takes inspiration from the owner's Compressor app.
+The eleven theme presets, daily Random selection, and light/dark palettes come
+from the author's Balance app. Random is the default; system appearance is
+followed live. Theme choice can be changed in Settings even while locked.
+The compact layout also takes inspiration from the author's Compressor app.
+
+## Contributing and screenshots
+
+Do all work in a dedicated Git worktree. After completing a requested change,
+verify and commit it, integrate it onto main, and push main to GitHub. Remove
+the temporary worktree and branch afterward. Never commit or push secrets or
+personal financial data; see [AGENTS.md](AGENTS.md) for the complete rules.
+
+Whenever the UI changes, refresh the screenshots displayed in this README and
+push them with the change:
+
+```sh
+pnpm screenshots
+```
+
+This builds the frontend, opens an isolated static preview with synthetic API
+fixtures, and writes `docs/screenshots/review-light.webp` and
+`docs/screenshots/review-dark.webp`. It does not connect to the running app or
+start a backend. Review both WebP images, update the README references or
+captions when necessary, and commit and push them with the UI change so the
+GitHub preview stays current. Never take documentation screenshots of real data.
 
 ## Verification
 
