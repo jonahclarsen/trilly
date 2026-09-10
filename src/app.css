@@ -137,6 +137,9 @@ dialog.wide { width: min(660px, calc(100vw - 32px)); }
 .theme-schedule[aria-pressed='true'] { color: var(--accent-strong); }
 .logo-settings .setting-row { margin-bottom: 14px; }
 .logo-settings h3 { margin: 0; }
+.logo-reset { background: transparent; padding: 6px 10px; margin-block: 4px; font-size: 11px; }
+.logo-reset:disabled { color: var(--muted); }
+.logo-preview { display: flex; justify-content: center; padding: 12px 0; margin-bottom: 20px; }
 .logo-weight { margin-top: 20px; }
 .logo-weight > span { display: flex; justify-content: space-between; align-items: center; }
 output { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

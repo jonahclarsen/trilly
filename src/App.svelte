@@ -6,6 +6,7 @@
   import Modal from './lib/Modal.svelte'
   import Picker from './lib/Picker.svelte'
   import LogoSettings from './lib/LogoSettings.svelte'
+  import Wordmark from './lib/Wordmark.svelte'
   import { readLogo, saveLogo } from './lib/logo'
   import { api, ApiError, setSession, hasSession, shouldAutoUnlock } from './lib/api'
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
@@ -396,7 +397,7 @@
 
 <div class="app-shell">
   <header>
-    <span class="brand" style:color={logo.color} style:font-weight={logo.weight}>trilly</span>
+    <Wordmark value={logo} />
     <nav aria-label="App controls">
       {#if data}
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
