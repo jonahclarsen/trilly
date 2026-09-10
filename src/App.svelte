@@ -246,13 +246,13 @@
     <nav aria-label="App controls">
       {#if data}
         <span class="sync-state" aria-live="polite">{syncing ? 'Syncing' : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
-        <Button label="Sync" shortcut="R" disabled={busy || !data.plan_id} onclick={() => void sync()}>Sync</Button>
-        <Button label="Undo" shortcut="U" disabled={busy || !data.can_undo} onclick={() => void undo()}>Undo</Button>
+        <Button icon="sync" label="Sync" shortcut="R" disabled={busy || !data.plan_id} onclick={() => void sync()}>Sync</Button>
+        <Button icon="undo" label="Undo" shortcut="U" disabled={busy || !data.can_undo} onclick={() => void undo()}>Undo</Button>
         <span class="nav-divider"></span>
-        <Button label="Help" shortcut="?" onclick={() => modal = 'shortcuts'}>Help</Button>
+        <Button icon="keyboard" label="Help" shortcut="?" onclick={() => modal = 'shortcuts'}>Help</Button>
       {/if}
-      <Button label="Settings" shortcut="," onclick={() => modal = 'settings'}>Settings</Button>
-      {#if data}<Button label="Lock" shortcut="L" onclick={() => void lock()}>Lock</Button>{/if}
+      <Button icon="settings" label="Settings" shortcut="," onclick={() => modal = 'settings'}>Settings</Button>
+      {#if data}<Button icon="lock" label="Lock" shortcut="L" onclick={() => void lock()}>Lock</Button>{/if}
     </nav>
   </header>
 
@@ -325,15 +325,13 @@
           </div>
         </article>
 
-        {#if !special(current)}
+        {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
           <section class="suggestions" aria-label="Suggestions">
-            <div class="suggestion-heading"><h2>Suggestions</h2><small>1 / 2 / 3 · Choose & approve</small></div>
+            <div class="suggestion-heading"><h2>Suggestions</h2></div>
             {#if picksStatus === 'loading'}
               <p class="muted" role="status">Finding matches in approved history…</p>
             {:else if picksStatus === 'error'}
               <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
-            {:else if !picks.length}
-              <p class="muted" role="status">No matching approved history yet. Choose a payee and category with P and C.</p>
             {/if}
             {#each picks as suggestion, i}
               <button class="suggestion" disabled={busy} onclick={() => void approve(suggestion)}>

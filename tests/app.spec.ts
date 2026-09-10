@@ -272,13 +272,14 @@ test('a Keychain access error leaves Unlock usable and retries native authentica
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
-test('suggestions explain missing history and refresh after syncing the same transaction', async ({ page }) => {
+test('empty suggestions stay hidden and refresh after syncing the same transaction', async ({ page }) => {
   await mockApp(page)
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
   let matches = false
   await page.route('**/api/suggestions/*', route => route.fulfill({ json: matches ? suggestions : [] }))
   await page.keyboard.press('r')
-  await expect(page.getByRole('region', { name: 'Suggestions' })).toContainText('No matching approved history yet')
+  await expect(page.getByRole('region', { name: 'Suggestions' })).toHaveCount(0)
+  await expect(page.getByText(/No matching approved history|Choose & approve/)).toHaveCount(0)
   matches = true
   await page.keyboard.press('r')
   await expect(page.getByRole('button', { name: /24 similar transactions/ })).toBeVisible()
@@ -302,4 +303,23 @@ test('one Escape closes every modal and picker search keeps focus without an out
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).toHaveCount(0)
   }
+})
+
+
+test('navigation uses visible icon buttons and centers the sync status', async ({ page }) => {
+  await mockApp(page)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  const nav = page.getByRole('navigation', { name: 'App controls' })
+  const status = await nav.locator('.sync-state').boundingBox()
+  for (const name of ['Sync', 'Undo', 'Help', 'Settings', 'Lock']) {
+    const button = nav.getByRole('button', { name, exact: true })
+    await expect(button.locator('svg')).toBeVisible()
+    await expect(button).toContainText(name)
+    await expect(button).toHaveCSS('border-top-style', 'solid')
+    expect(await button.evaluate(node => getComputedStyle(node).borderTopColor)).not.toBe('rgba(0, 0, 0, 0)')
+    const box = await button.boundingBox()
+    expect(Math.abs((box!.y + box!.height / 2) - (status!.y + status!.height / 2))).toBeLessThan(1)
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
