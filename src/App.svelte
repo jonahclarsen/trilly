@@ -426,27 +426,27 @@
             </div>
           {/if}
 
+          {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
+            <section class="suggestions" aria-label="Suggestions">
+              <div class="suggestion-heading"><h2>Suggestions</h2></div>
+              {#if picksStatus === 'loading'}
+                <p class="muted" role="status">Finding matches in approved history…</p>
+              {:else if picksStatus === 'error'}
+                <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
+              {/if}
+              {#each picks as suggestion, i}
+                <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
+                  <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
+                </button>
+              {/each}
+            </section>
+          {/if}
+
           <div class="review-actions">
             <Button icon="skip" shortcut="S" disabled={busy && !syncing} onclick={skip}>Skip</Button>
             <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && (!payee || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
-
-        {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
-          <section class="suggestions" aria-label="Suggestions">
-            <div class="suggestion-heading"><h2>Suggestions</h2></div>
-            {#if picksStatus === 'loading'}
-              <p class="muted" role="status">Finding matches in approved history…</p>
-            {:else if picksStatus === 'error'}
-              <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
-            {/if}
-            {#each picks as suggestion, i}
-              <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
-                <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
-              </button>
-            {/each}
-          </section>
-        {/if}
       {:else}
         <section class="empty-state">
           <div class="complete-mark"><Icon name="check" /></div>

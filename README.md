@@ -7,7 +7,7 @@ live in one encrypted vault on your computer. No external categorization service
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/review-dark.webp">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/review-light.webp">
-  <img alt="Trilly transaction review with keyboard shortcuts and category suggestions" src="docs/screenshots/review-light.webp" width="1280">
+  <img alt="Trilly transaction review with suggestions below Payee and Category and above Skip and Approve" src="docs/screenshots/review-light.webp" width="1280">
 </picture>
 
 <details>
