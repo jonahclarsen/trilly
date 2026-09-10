@@ -62,6 +62,8 @@ can also open the installed app from Finder. It contains its built frontend,
 so it remains usable after a temporary development worktree is removed.
 Only one runner may update the app at a time; stop it before switching between
 `dev` and `start`. Close a directly launched app before starting a runner.
+macOS releases the runner lock automatically after a crash; a leftover lock
+directory or guard file does not prevent startup.
 
 A certificate-based code-signing identity must be available in your Keychain.
 If exactly one is available, the runner selects it and remembers its public

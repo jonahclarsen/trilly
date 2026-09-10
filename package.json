@@ -13,7 +13,7 @@
     "test:browser": "playwright test",
     "screenshots": "pnpm build && playwright test --config playwright.screenshots.config.ts",
     "install:app": "node scripts/start.mjs --release --install-only",
-    "test:dev": "playwright test --config playwright.dev.config.ts",
+    "test:dev": "node --test scripts/runner-lock.test.mjs && playwright test --config playwright.dev.config.ts",
     "test:signing": "node scripts/test-signing.mjs"
   },
   "devDependencies": {

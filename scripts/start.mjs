@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 import { watch } from 'node:fs'
-import { mkdir, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { acquireRunnerLock } from './runner-lock.mjs'
 import { run, signingIdentity, prepareBundle, installBundle, appPath, assertAppStopped } from './app-bundle.mjs'
 
 process.chdir(fileURLToPath(new URL('..', import.meta.url)))
@@ -20,10 +21,10 @@ const destination = synthetic ? join(process.env.TRILLY_DATA_DIR, 'Trilly.app') 
 const executable = join(destination, 'Contents/MacOS/trilly')
 const lock = synthetic ? join(process.env.TRILLY_DATA_DIR, 'runner.lock')
   : join(homedir(), 'Library/Application Support/trilly-development/runner.lock')
-await mkdir(join(lock, '..'), { recursive: true, mode: 0o700 })
-try { await mkdir(lock) } catch (error) {
-  if (error.code === 'EEXIST') throw new Error(`Another Trilly runner owns ${lock}. Stop it before starting a second runner. After a crash, remove this empty directory manually.`)
-  throw error
+let releaseLock
+try { releaseLock = await acquireRunnerLock(lock) } catch (error) {
+  console.error(error.message)
+  process.exit(1)
 }
 let backend, vite, watcher, timer, stopping = false, building = false, dirty = false, opened = false, launchedOnce = false
 let activeBuild = Promise.resolve()
@@ -45,7 +46,7 @@ async function cleanup() {
   await activeBuild.catch(() => {})
   await stopBackend()
   await vite?.close()
-  await rm(lock, { recursive: true, force: true })
+  await releaseLock()
 }
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { void cleanup() })
 function launchBackend() {
