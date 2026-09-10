@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
+import { mockApp } from './fixtures'
 
 function fetchStatus(url: string, headers: Record<string, string>) {
   return new Promise<number | undefined>((resolve, reject) => {
@@ -59,4 +60,25 @@ test('Rust changes rebuild the signed bundle and reload into a fresh session', a
     await expect.poll(() => unlocks, { timeout: 45000 }).toBe(initialUnlocks + 1)
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
   } finally { await writeFile(source, original) }
+})
+
+test('ordinary suggestion number keys work in development mode', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  const actions = await mockApp(page)
+  await expect(page.getByRole('button', { name: /24 similar transactions/ })).toBeEnabled()
+  await page.keyboard.press('1')
+  await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /3 similar transactions/ })).toBeEnabled()
+  await page.keyboard.press('2')
+  await expect(page.locator('.amount')).toContainText('19.30')
+  await expect(page.getByRole('button', { name: /2 similar transactions/ })).toBeEnabled()
+  await page.keyboard.press('3')
+  await expect.poll(() => actions.filter(action => action.action === 'review').length).toBe(3)
+  expect(actions.filter(action => action.action === 'review')).toEqual([
+    { action: 'review', id: 'one', payee_id: 'market', category_id: 'groceries' },
+    { action: 'review', id: 'two', payee_id: 'market', category_id: 'dining' },
+    { action: 'review', id: 'three', payee_id: 'restaurant', category_id: 'coffee' },
+  ])
+  expect(errors).toEqual([])
 })
