@@ -292,6 +292,7 @@ followed live. Settings offers Light, Dark, and System circles, and a Random
 sub-button to start daily themes tomorrow. Theme choice can be changed while locked.
 Every theme has a soft gradient background using only its own palette in both
 light and dark appearance; Graphite stays neutral and Iridescent stays prismatic.
+Dark gradients have a lifted base to keep the darkest areas soft rather than near-black.
 
 The logo uses Avenir Next with fixed CSS weight 750 and −0.8px letter spacing. The
 installed font determines the available rendered weight; fonts load locally

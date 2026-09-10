@@ -11,12 +11,15 @@
   --font-content: var(--font-interface);
   --font-mono: "Cascadia Mono", "Roboto Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   --app-background-base: #f1f6f2;
+  --app-background-lift: 0%;
+  --app-background-edge: color-mix(in srgb, var(--app-background-base), var(--ink) var(--app-background-lift));
+  --app-background-middle: color-mix(in srgb, color-mix(in srgb, var(--app-background-base) 55%, var(--sidebar)), var(--ink) var(--app-background-lift));
   /* Use only the active palette; these stops also follow its dark appearance.
      Iridescent supplies its own multicolor background below. */
   --app-background:
     radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 48%),
     radial-gradient(circle at 88% 82%, color-mix(in srgb, var(--theme-done) 12%, transparent), transparent 48%),
-    linear-gradient(145deg, var(--app-background-base), color-mix(in srgb, var(--app-background-base) 55%, var(--sidebar)) 52%, var(--app-background-base));
+    linear-gradient(145deg, var(--app-background-edge), var(--app-background-middle) 52%, var(--app-background-edge));
   --paper: #fffdf8;
   --paper-strong: #ffffff;
   --ink: #1d2428;
@@ -356,6 +359,8 @@
 
 :root[data-color-scheme='dark'] {
   color-scheme: dark;
+  /* Lift the gradient floor with this palette's ink to soften near-black areas. */
+  --app-background-lift: 12%;
   --app-background-base: #141817;
   --paper: #1b201f;
   --paper-strong: #232a28;
@@ -590,8 +595,8 @@
     radial-gradient(circle at 12% 18%, var(--iridescent-pink-dark, rgb(240 71 164 / 0.15)), transparent var(--iridescent-pink-reach, 34%)),
     radial-gradient(circle at 88% 16%, var(--iridescent-aqua-dark, rgb(51 198 218 / 0.14)), transparent var(--iridescent-aqua-reach, 32%)),
     radial-gradient(circle at 76% 88%, var(--iridescent-gold-dark, rgb(246 170 66 / 0.11)), transparent var(--iridescent-gold-reach, 36%)),
-    linear-gradient(var(--iridescent-angle, 145deg), var(--iridescent-base-dark-1, #15101b), var(--iridescent-base-dark-2, #10191e) 52%, var(--iridescent-base-dark-3, #1c1710));
-  --iridescent-app-background-base: var(--iridescent-base-dark-2, #10191e);
+    linear-gradient(var(--iridescent-angle, 145deg), color-mix(in srgb, var(--iridescent-base-dark-1, #15101b), var(--ink) var(--app-background-lift)), color-mix(in srgb, var(--iridescent-base-dark-2, #10191e), var(--ink) var(--app-background-lift)) 52%, color-mix(in srgb, var(--iridescent-base-dark-3, #1c1710), var(--ink) var(--app-background-lift)));
+  --iridescent-app-background-base: color-mix(in srgb, var(--iridescent-base-dark-2, #10191e), var(--ink) var(--app-background-lift));
   --paper: rgb(31 25 38 / 0.94);
   --paper-strong: #2a2232;
   --ink: #f4edf6;
