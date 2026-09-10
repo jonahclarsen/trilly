@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-const IDLE: Duration = Duration::from_secs(10 * 60);
+const IDLE: Duration = Duration::from_secs(6 * 60 * 60);
 type Shared = Arc<Mutex<App>>;
 struct App {
     path: PathBuf,

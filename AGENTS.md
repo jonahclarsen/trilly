@@ -40,8 +40,10 @@ external AI services. Never collect a macOS password in the browser or backend.
 
 Reuse components; keep labels short and functional. Icons in buttons must be
 SVGs. Keep shortcut handling and its reference together. Themes come from
-Balance; Random is the default, with system light/dark appearance. The Trilly
-wordmark is lowercase, bold sans serif, and sky blue in every theme.
+Balance; Iridescent is the default, with system light/dark appearance and an
+optional scheduled start for daily Random. The Trilly wordmark defaults to
+lowercase bold sky blue sans serif; its font, weight, spacing, and color are
+customizable in Settings. Use text for the top navigation.
 
 Whenever a requested change alters the UI, regenerate the README screenshots
 with pnpm screenshots. Review the resulting WebP files in docs/screenshots,
