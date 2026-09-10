@@ -2,6 +2,10 @@
   import { onMount, tick, untrack } from 'svelte'
   import { businessRows } from './lib/business'
   import Button from './lib/Button.svelte'
+  import AmazonReview from './lib/AmazonReview.svelte'
+  import { emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
+  import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
   import Modal from './lib/Modal.svelte'
   import Picker from './lib/Picker.svelte'
@@ -13,6 +17,116 @@
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { shortcuts, suggestionIndex } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
+
+  let amazon = $state<AmazonStore>(emptyAmazon())
+  let amazonReady = $state(false)
+  let amazonJob = $state('')
+  let amazonStatus = $state<AmazonStatus>({ running: false, pages: 0, orders: 0, queued: 0, active: 0, message: '', paused: [] })
+  let amazonMessage = $state('')
+  let amazonSetup = $state(false)
+  let amazonHTML = $state('')
+  let amazonOrderURL = $state('')
+  let amazonPasteMarket = $state('amazon.ca')
+  let amazonPasteBusy = $state(false)
+  let amazonDraft = $state<string | null>(null)
+  let amazonMarket = $state<string | null>(null)
+  let amazonPayment = $state<string | undefined>()
+  let amazonMemoTouched = $state(false)
+  let amazonPayeeTouched = $state(false)
+  let amazonScope = ''
+  let amazonGeneration = 0
+  let amazonImports = Promise.resolve()
+  const amazonPackets = new Set<string>()
+  function stopAmazon() {
+    if (amazonJob) amazonCommand('STOP', { job: amazonJob })
+    amazonJob = ''; amazonStatus = { ...amazonStatus, running: false, paused: [] }
+  }
+  function startAmazon() {
+    if (!data || !amazonTargets.length) return
+    if (!amazonReady) { amazonSetup = true; amazonCommand('PING'); return }
+    stopAmazon(); amazonJob = crypto.randomUUID(); amazonMessage = ''
+    amazonStatus = { running: true, pages: 0, orders: 0, queued: 0, active: 0, message: 'Opening Amazon…', paused: [] }
+    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount,
+      cached: amazon.orders.map(o => ({ key: `${o.marketplace}:${o.id}`, at: o.fetched_at })) })
+  }
+  async function saveAmazon(records: AmazonStore, plan: string, generation: number) {
+    if (generation !== amazonGeneration || data?.plan_id !== plan) return false
+    await api('amazon', { plan_id: plan, ...records })
+    if (generation !== amazonGeneration || data?.plan_id !== plan) return false
+    amazon = mergeAmazon(amazon, records)
+    return true
+  }
+  function receiveAmazon(message: Record<string, any>) {
+    if (message.type === 'READY') { amazonReady = true; return }
+    if (message.type === 'STATUS' && message.job !== amazonJob) { if (message.running) amazonCommand('STOP', { job: message.job }); return }
+    if (!data || !amazonJob || message.job !== amazonJob) return
+    if (message.type === 'STATUS') { amazonStatus = message as AmazonStatus; return }
+    if (message.type === 'ERROR') { amazonMessage = String(message.message); stopAmazon(); return }
+    if (message.type !== 'DATA' || typeof message.packet !== 'string' || !Array.isArray(message.orders) || !Array.isArray(message.payments)) return
+    const packet = message.packet, job = amazonJob, generation = amazonGeneration, plan = data.plan_id
+    if (amazonPackets.has(packet)) { amazonCommand('ACK', { job, packet }); return }
+    amazonImports = amazonImports.then(async () => {
+      if (amazonPackets.has(packet)) { amazonCommand('ACK', { job, packet }); return }
+      if (await saveAmazon({ orders: message.orders, payments: message.payments }, plan, generation)) {
+        amazonPackets.add(packet); amazonCommand('ACK', { job, packet })
+      }
+    }).catch(e => { if (generation === amazonGeneration) { amazonMessage = 'Amazon details could not be saved. Fetch again to retry.'; stopAmazon(); handleError(e) } })
+  }
+  async function pasteAmazon() {
+    if (!data || amazonPasteBusy || !amazonHTML.trim()) return
+    amazonPasteBusy = true; amazonMessage = ''
+    const plan = data.plan_id, generation = amazonGeneration
+    try {
+      if (amazonHTML.length > 5_000_000) throw new Error('Paste one Amazon page at a time (up to 5 MB).')
+      // Template contents stay inert: no scripts execute and no images are loaded.
+      const template = document.createElement('template'); template.innerHTML = amazonHTML
+      const parser = (globalThis as any).TrillyAmazonParser
+      const base = `https://www.${amazonPasteMarket}/`
+      const payments = parser.payments(template.content, base).payments
+      if (amazonOrderURL && parser.market(amazonOrderURL) !== amazonPasteMarket) throw new Error('Order URL must belong to the selected Amazon marketplace.')
+      const order = parser.order(template.content, amazonOrderURL || base)
+      if (order) for (const item of order.items) delete item.image_url
+      if (!payments.length && !order) throw new Error('No supported details found. For an order fragment, include its Amazon order URL.')
+      if (await saveAmazon({ payments, orders: order ? [order] : [] }, plan, generation)) { amazonHTML = ''; amazonOrderURL = ''; amazonMessage = 'Amazon details saved.' }
+    } catch (e) { amazonMessage = e instanceof Error ? e.message : 'Could not read Amazon HTML.' }
+    finally { amazonPasteBusy = false }
+  }
+  async function clearAmazon() {
+    if (!data || amazonPasteBusy) return
+    stopAmazon(); amazonGeneration++; amazonPasteBusy = true
+    const plan = data.plan_id, generation = amazonGeneration
+    try {
+      await amazonImports
+      await api('amazon', { plan_id: plan, clear: true, payments: [], orders: [] })
+      if (generation === amazonGeneration) { if (data) data = { ...data, amazon_assignments: [] }; amazon = emptyAmazon(); amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = 'Collected Amazon data cleared.' }
+    } catch (e) { handleError(e) }
+    finally { amazonPasteBusy = false }
+  }
+  function applyAmazonDraft(memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) {
+    if (!current) return
+    amazonPayment = paymentId
+    if (!automatic || !amazonMemoTouched) {
+      if (!automatic && memo) amazonMemoTouched = true
+      if (!current.memo || !automatic) amazonDraft = memo || null
+    }
+    if (!amazonPayeeTouched && !special(current)) {
+      amazonMarket = marketplace
+      const found = data?.payees.find(p => p.name.toLowerCase() === marketplace)
+      payee = found?.id ?? current.payee_id
+    }
+  }
+  $effect(() => {
+    const plan = data?.plan_id ?? ''
+    untrack(() => {
+      if (plan === amazonScope) return
+      stopAmazon(); amazonScope = plan; amazonGeneration++; amazon = emptyAmazon(); amazonPackets.clear(); amazonHTML = ''
+      const generation = amazonGeneration
+      if (plan) void api<AmazonStore & { plan_id: string }>('amazon').then(result => {
+        if (generation === amazonGeneration && result.plan_id === plan) amazon = mergeAmazon(result, amazon)
+      }).catch(e => { if (generation === amazonGeneration) handleError(e) })
+    })
+  })
+  $effect(() => { const amount = current?.amount; if (amazonJob) amazonCommand('PRIORITY', { job: amazonJob, amount }) })
 
   const preferences = readPreferences()
   let theme = $state<ThemeId>(preferences.theme)
@@ -65,10 +179,13 @@
   }
   function openDescription() {
     if (!current || busy || saving || saveFailed || descriptionPending) return
-    memoId = current.id; memoDraft = current.memo ?? ''; modal = 'description'
+    memoId = current.id; memoDraft = displayedMemo; modal = 'description'
   }
   async function saveDescription() {
+    const amazonEdit = !!current && current.id === memoId && isAmazon(current)
+    if (amazonEdit) memoDraft = memoDraft.toLowerCase()
     if (await act({ action: 'description', id: memoId, description: memoDraft })) {
+      if (amazonEdit) { amazonDraft = null; amazonMemoTouched = true }
       modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
       void sync(false)
     }
@@ -103,6 +220,8 @@
   let lastActivity = Date.now()
   let reviewElement = $state<HTMLElement>()
   const current = $derived(data?.queue.find(t => !skipped.includes(t.id)))
+  const amazonTargets = $derived((data?.amazon_targets ?? data?.queue ?? []).filter(isAmazon))
+  const displayedMemo = $derived(amazonDraft ?? current?.memo ?? '')
   const currentId = $derived(current?.id)
   const descriptionPending = $derived(!!current && !!data?.description_pending?.includes(current.id))
   const remaining = $derived(data?.queue.filter(t => !skipped.includes(t.id)).length ?? 0)
@@ -110,7 +229,7 @@
   const currentPlan = $derived(data?.plans.find(p => p.id === data?.plan_id))
   const currency = $derived(currentPlan?.currency_format?.iso_code)
   const categoryName = $derived(data?.categories.find(c => c.id === category)?.name ?? current?.category_name ?? 'Choose category')
-  const payeeName = $derived(data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
+  const payeeName = $derived(amazonMarket ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -121,6 +240,7 @@
     const id = currentId
     untrack(() => {
       const t = current
+      amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMemoTouched = false; amazonPayeeTouched = false
       payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
     })
   })
@@ -150,6 +270,8 @@
   })
 
   onMount(() => {
+    const unlistenAmazon = listenAmazon(receiveAmazon)
+    const amazonPing = setInterval(() => amazonCommand('PING'), 10000)
     // Capture shortcuts before focused controls can consume bubbling key events.
     window.addEventListener('keydown', keydown, true)
     let mounted = true
@@ -181,10 +303,11 @@
       if (data && Date.now() - lastActivity >= IDLE_TIMEOUT_MS) void lock()
     }
     document.addEventListener('visibilitychange', wake)
-    return () => { window.removeEventListener('keydown', keydown, true); mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
+    return () => { stopAmazon(); unlistenAmazon(); clearInterval(amazonPing); window.removeEventListener('keydown', keydown, true); mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
   })
 
   function forget() {
+    stopAmazon(); amazonGeneration++; amazonScope = ''; amazon = emptyAmazon(); amazonHTML = ''; amazonOrderURL = ''; amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = ''; amazonPackets.clear(); amazonSetup = false
     sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
@@ -231,11 +354,13 @@
   function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     const result = { ...snapshot, queue: [...snapshot.queue], undo_transactions: [...(snapshot.undo_transactions ?? [])] }
     if (event.body.action === 'review') {
+      if (typeof event.body.amazon_payment_id === 'string') result.amazon_assignments = [...(result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.body.id), { payment_id: event.body.amazon_payment_id, transaction_id: String(event.body.id) }]
       const transaction = result.queue.find(t => t.id === event.body.id)
       if (transaction) result.undo_transactions.push(transaction)
       result.queue = result.queue.filter(t => t.id !== event.body.id)
       result.pending++; result.can_undo = true
     } else if (event.body.action === 'undo') {
+      if (event.restore) result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.restore!.id)
       result.undo_transactions.pop()
       if (event.restore && event.restore.account_id === result.account_id) {
         result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
@@ -310,10 +435,10 @@
   }
   function approve(suggestion?: Suggestion) {
     if (!current || busy || saveFailed || !data || descriptionPending) return
-    const selectedPayee = suggestion ? suggestion.payee_id : payee
+    const selectedPayee = amazonMarket ? payee : suggestion ? suggestion.payee_id : payee
     const selectedCategory = suggestion ? suggestion.category_id : category
-    if (!special(current) && (!selectedPayee || !selectedCategory)) return
-    enqueue({ body: { action: 'review', id: current.id, payee_id: selectedPayee, category_id: selectedCategory } })
+    if (!special(current) && ((!selectedPayee && !amazonMarket) || !selectedCategory)) return
+    enqueue({ body: { action: 'review', id: current.id, payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(amazonDraft !== null ? { memo: amazonDraft.toLowerCase() } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
   }
   function undo() {
@@ -341,7 +466,7 @@
   async function pick(id: string) {
     if (modal === 'account') { skipped = []; await act({ action: 'account', id }) }
     if (modal === 'category') { category = id; edited = true }
-    if (modal === 'payee') { payee = id; edited = true }
+    if (modal === 'payee') { payee = id; edited = true; amazonPayeeTouched = true; amazonMarket = null }
     modal = null; await tick(); reviewElement?.focus()
   }
   function openPicker(kind: 'category' | 'payee') { if (current && !special(current) && !busy) modal = kind }
@@ -448,6 +573,28 @@
         {#if data.plan_id}<span class="count">{remaining} to review</span>{/if}
       </div>
 
+      {#if amazonTargets.length || amazon.orders.length || amazonStatus.running}
+        <section class="amazon-toolbar" aria-label="Amazon collection">
+          <div><strong>Amazon</strong><span>{amazonTargets.length} transactions across this plan</span></div>
+          <div class="amazon-toolbar-actions">
+            {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || !amazonTargets.length} onclick={startAmazon}>Fetch Amazon details</Button>{/if}
+            <Button icon="settings" onclick={() => amazonSetup = !amazonSetup}>Amazon setup</Button>
+          </div>
+          {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
+          {#each amazonStatus.paused as pause}<div class="amazon-paused"><span>{pause.marketplace}: {pause.reason}</span><Button onclick={() => amazonCommand('FOCUS', { job: amazonJob, tab: pause.tab })}>Open page</Button><Button onclick={() => amazonCommand('RESUME', { job: amazonJob })}>Resume</Button></div>{/each}
+          {#if amazonMessage}<p role="status">{amazonMessage}</p>{/if}
+        </section>
+      {/if}
+      {#if amazonSetup}
+        <section class="amazon-setup" aria-label="Amazon setup">
+          <h2>Amazon setup</h2>
+          <p>In Chrome, open chrome://extensions, enable Developer mode, and load the chromium-extension folder from the Trilly repository. Reload Trilly, then choose Fetch Amazon details. Sign in to Amazon when prompted in its own window.</p>
+          <p class="field-note">{amazonReady ? 'Extension connected.' : 'Extension not connected.'} Collection uses a separate window, up to six order tabs and two payment tabs. Results stay in your encrypted Trilly vault. Existing splits are edited in YNAB.</p>
+          <details><summary>Paste Amazon HTML instead</summary><label>Marketplace<select bind:value={amazonPasteMarket}><option value="amazon.ca">amazon.ca</option><option value="amazon.com">amazon.com</option></select></label><label>Order URL (optional, for order fragments)<input type="url" bind:value={amazonOrderURL} placeholder="https://www.amazon.ca/…" /></label><label>Payments page or order details<textarea bind:value={amazonHTML} rows="5" placeholder="Paste copied HTML"></textarea></label><Button disabled={amazonPasteBusy || !amazonHTML.trim()} onclick={() => void pasteAmazon()}>Import HTML</Button></details>
+          <Button disabled={amazonPasteBusy || (!amazon.orders.length && !amazon.payments.length)} onclick={() => void clearAmazon()}>Clear collected Amazon data</Button>
+        </section>
+      {/if}
+
       {#if data.conflicts}
         <div class="conflict-banner"><span>{data.conflicts} changed in YNAB</span><Button disabled={busy} onclick={() => void act({ action: 'discard_conflicts' })}>Discard conflicting edits</Button></div>
       {/if}
@@ -476,8 +623,10 @@
               <button class="field-button" disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
               <button class="field-button" disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
             {/if}
-            <button class="field-button" disabled={busy || !!saving || saveFailed || descriptionPending} onclick={openDescription} title={current.memo || 'Add description'}><span><small>Description</small><strong class="memo">{current.memo || 'Add description'}</strong></span><kbd>D</kbd></button>
+            <button class="field-button" disabled={busy || !!saving || saveFailed || descriptionPending} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
           </div>
+          {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
+          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed || descriptionPending} onchange={applyAmazonDraft} />{/key}{/if}
           {#if descriptionPending}<p class="field-note description-status" role="status">Description saved locally. Sync before approving.</p>{/if}
 
           {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
@@ -490,7 +639,7 @@
               {/if}
               {#each picks as suggestion, i}
                 <button class="suggestion" disabled={busy || saveFailed || descriptionPending} onclick={() => void approve(suggestion)}>
-                  <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
+                  <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{amazonMarket ?? suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
                 </button>
               {/each}
             </section>
@@ -499,7 +648,7 @@
           <div class="review-actions">
             <Button icon="business" shortcut="B" disabled={busy || !!saving || saveFailed || expenseSaved} onclick={openExpense}>{expenseSaved ? 'Business saved' : 'Business expense'}</Button>
             <Button icon="skip" shortcut="S" disabled={busy && !syncing} onclick={skip}>Skip</Button>
-            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || descriptionPending || (!special(current) && (!payee || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
+            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || descriptionPending || (!special(current) && ((!payee && !amazonMarket) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
       {:else}

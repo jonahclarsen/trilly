@@ -10,6 +10,8 @@ export type Transaction = {
 }
 export type Suggestion = { payee_id: string | null; category_id: string | null; payee: string; category: string; count: number; reason: string }
 export type Snapshot = {
+  amazon_targets?: Transaction[];
+  amazon_assignments?: { payment_id: string; transaction_id: string }[];
   business_expenses?: BusinessExpense[]; can_undo_archive?: boolean; can_undo_business?: boolean;
   description_pending?: string[];
   connected: boolean;

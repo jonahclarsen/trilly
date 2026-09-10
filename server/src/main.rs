@@ -1,3 +1,4 @@
+mod amazon;
 mod keystore;
 mod model;
 mod suggest;
@@ -120,6 +121,8 @@ fn snapshot(d: &Data) -> Value {
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
         "description_pending": d.pending.iter().filter(|p| p.change.memo_only).map(|p| &p.change.id).collect::<Vec<_>>(),
+        "amazon_assignments": d.amazon_assignments,
+        "amazon_targets": d.transactions.iter().filter(|t| !t.deleted && !t.approved && t.transfer_account_id.is_none()).collect::<Vec<_>>(),
         "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "business_expenses": d.business_expenses,
@@ -246,6 +249,47 @@ async fn suggestions(
     Ok(Json(json!(suggest::suggestions(d, t))))
 }
 
+async fn amazon_view(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<Value>> {
+    let mut app = state.lock().await;
+    let d = &authorize(&mut app, &headers)?.vault.data;
+    Ok(Json(
+        json!({"plan_id": d.plan_id, "payments": d.amazon.payments, "orders": d.amazon.orders}),
+    ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AmazonImport {
+    plan_id: String,
+    #[serde(default)]
+    clear: bool,
+    #[serde(default)]
+    payments: Vec<amazon::Payment>,
+    #[serde(default)]
+    orders: Vec<amazon::Order>,
+}
+async fn amazon_import(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<AmazonImport>,
+) -> Result<Json<Value>> {
+    let mut app = state.lock().await;
+    let session = authorize(&mut app, &headers)?;
+    if body.plan_id.is_empty() || body.plan_id != session.vault.data.plan_id {
+        return Err("Amazon collection belongs to another plan".into());
+    }
+    let mut next = session.vault.data.clone();
+    if body.clear {
+        next.amazon = amazon::Store::default();
+        next.amazon_assignments.clear();
+    }
+    next.amazon.merge(amazon::Store {
+        payments: body.payments,
+        orders: body.orders,
+    })?;
+    session.vault.commit(next)?;
+    Ok(Json(json!({"saved": true})))
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 enum Action {
@@ -277,6 +321,12 @@ enum Action {
     },
     Review {
         id: String,
+        #[serde(default)]
+        memo: Option<String>,
+        #[serde(default)]
+        amazon_marketplace: Option<String>,
+        #[serde(default)]
+        amazon_payment_id: Option<String>,
         payee_id: Option<String>,
         category_id: Option<String>,
     },
@@ -368,9 +418,53 @@ async fn action(
         Action::Description { id, description } => save_description(&mut next, &id, description)?,
         Action::Review {
             id,
-            payee_id,
+            memo,
+            amazon_marketplace,
+            amazon_payment_id,
+            mut payee_id,
             category_id,
         } => {
+            if let Some(payment_id) = &amazon_payment_id {
+                if !next.amazon.payments.iter().any(|p| p.id == *payment_id) {
+                    return Err("Amazon payment not found".into());
+                }
+                if next
+                    .amazon_assignments
+                    .iter()
+                    .any(|a| a.payment_id == *payment_id && a.transaction_id != id)
+                {
+                    return Err(
+                        "This Amazon payment is already assigned to another transaction".into(),
+                    );
+                }
+            }
+            let payee_name = if let Some(market) = amazon_marketplace {
+                if !matches!(market.as_str(), "amazon.ca" | "amazon.com") {
+                    return Err("Invalid Amazon marketplace".into());
+                }
+                payee_id = next
+                    .payees
+                    .iter()
+                    .find(|p| {
+                        !p.deleted
+                            && p.transfer_account_id.is_none()
+                            && p.name.eq_ignore_ascii_case(&market)
+                    })
+                    .map(|p| p.id.clone());
+                if payee_id.is_none() {
+                    Some(market)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if memo
+                .as_ref()
+                .is_some_and(|value| value.chars().count() > 500)
+            {
+                return Err("Description must be 500 characters or fewer".into());
+            }
             let t = next
                 .transactions
                 .iter()
@@ -381,7 +475,9 @@ async fn action(
             if next.pending.iter().any(|p| p.change.id == id) {
                 return Err("Transaction already queued".into());
             }
-            if t.special() && (t.payee_id != payee_id || t.category_id != category_id) {
+            if t.special()
+                && (payee_name.is_some() || t.payee_id != payee_id || t.category_id != category_id)
+            {
                 return Err("Edit splits, transfers and reconciled transactions in YNAB".into());
             }
             if !t.special() {
@@ -394,20 +490,23 @@ async fn action(
                 }) {
                     return Err("Choose a category".into());
                 }
-                if !payee_id.as_ref().is_some_and(|id| {
-                    next.payees
-                        .iter()
-                        .any(|p| p.id == *id && !p.deleted && p.transfer_account_id.is_none())
-                }) {
+                if payee_name.is_none()
+                    && !payee_id.as_ref().is_some_and(|id| {
+                        next.payees
+                            .iter()
+                            .any(|p| p.id == *id && !p.deleted && p.transfer_account_id.is_none())
+                    })
+                {
                     return Err("Choose a payee".into());
                 }
             }
             let pending = Pending {
                 before: t.clone(),
                 change: Change {
-                    memo: None,
+                    payee_name,
+                    memo,
                     memo_only: false,
-                    id,
+                    id: id.clone(),
                     payee_id,
                     category_id,
                     approved: true,
@@ -415,6 +514,13 @@ async fn action(
                 conflict: false,
             };
             next.pending.push(pending.clone());
+            if let Some(payment_id) = amazon_payment_id {
+                next.amazon_assignments.retain(|a| a.transaction_id != id);
+                next.amazon_assignments.push(amazon::Assignment {
+                    payment_id,
+                    transaction_id: id.clone(),
+                });
+            }
             next.undo.push(pending);
             if next.undo.len() > 100 {
                 next.undo.remove(0);
@@ -430,6 +536,8 @@ async fn action(
                 .collect();
             next.pending.retain(|p| !p.conflict);
             next.undo.retain(|p| !ids.contains(&p.change.id));
+            next.amazon_assignments
+                .retain(|a| !ids.contains(&a.transaction_id));
         }
         Action::Sync { full } => {
             if next.token.is_empty() {
@@ -631,6 +739,10 @@ fn undo_business_expense(data: &mut Data) -> Result<()> {
 
 fn undo(data: &mut Data) -> Result<()> {
     let previous = data.undo.last().ok_or("Nothing to undo")?.clone();
+    if !previous.change.memo_only {
+        data.amazon_assignments
+            .retain(|a| a.transaction_id != previous.change.id);
+    }
     if let Some(index) = data
         .pending
         .iter()
@@ -648,12 +760,20 @@ fn undo(data: &mut Data) -> Result<()> {
     let mut applied = previous.before.clone();
     applied.approved = previous.change.approved;
     applied.payee_id = previous.change.payee_id.clone();
+    if let Some(name) = &previous.change.payee_name {
+        applied.payee_name = Some(name.clone());
+        applied.payee_id = data
+            .transactions
+            .iter()
+            .find(|t| t.id == applied.id && t.matches_change(&previous.change))
+            .and_then(|t| t.payee_id.clone());
+    }
     applied.category_id = previous.change.category_id.clone();
     let mut reverse = Change::from(&previous.before);
-    if previous.change.memo_only {
+    if previous.change.memo.is_some() {
         applied.memo = previous.change.memo.clone();
         reverse.memo = Some(previous.before.memo.clone().unwrap_or_default());
-        reverse.memo_only = true;
+        reverse.memo_only = previous.change.memo_only;
     }
     data.pending.push(Pending {
         before: applied,
@@ -707,6 +827,12 @@ fn router(shared: Shared, origin: String, dist: PathBuf) -> Router {
         .route("/api/state", get(state_view))
         .route("/api/action", post(action))
         .route("/api/suggestions/{id}", get(suggestions))
+        .route(
+            "/api/amazon",
+            get(amazon_view)
+                .post(amazon_import)
+                .layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
         .fallback_service(ServeDir::new(dist))
         .layer(DefaultBodyLimit::max(32 * 1024))
         .layer(middleware::from_fn_with_state(origin, boundary))
@@ -965,6 +1091,80 @@ mod tests {
             assert_eq!(result.headers()["cache-control"], "no-store");
         }
     }
+    #[tokio::test]
+    async fn amazon_import_is_authenticated_plan_scoped_encrypted_and_does_not_change_review() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("amazon-synthetic.vault");
+        let mut vault =
+            vault::Vault::create_native(path.clone(), &keystore::SyntheticKeyStore).unwrap();
+        let mut data = Data::default();
+        data.plan_id = "synthetic-plan".into();
+        data.account_id = "synthetic-card".into();
+        data.transactions.push(Transaction {
+            id: "synthetic-bank".into(),
+            account_id: "synthetic-card".into(),
+            amount: -10000,
+            ..Default::default()
+        });
+        vault.commit(data).unwrap();
+        let app = Arc::new(Mutex::new(App {
+            path: path.clone(),
+            legacy_path: None,
+            keys: Arc::new(keystore::SyntheticKeyStore),
+            session: Some(Session {
+                bearer: Zeroizing::new("synthetic-session".into()),
+                vault,
+                active: Instant::now(),
+            }),
+            ynab: ynab::Ynab::new(),
+            last_unlock: None,
+        }));
+        let service = router(
+            app.clone(),
+            "http://127.0.0.1:12345".into(),
+            dir.path().into(),
+        );
+        let mut body = json!({"plan_id": "synthetic-plan", "payments": [], "orders": [{
+            "id": "000-0000000-0000001", "marketplace": "amazon.ca", "url": "https://www.amazon.ca/gp/your-account/order-details?orderID=000-0000000-0000001",
+            "date": "2026-09-01", "currency": "CAD", "total": 10000, "payment_method": "synthetic card", "fetched_at": "2026-09-02T00:00:00Z", "totals": [],
+            "items": [{"id": "synthetic-item", "title": "synthetic-only-product", "quantity": 1, "unit_price": 10000, "price_text": "$10.00", "product_url": "https://www.amazon.ca/dp/SYNTHETIC", "image": format!("data:image/png;base64,{}", "A".repeat(40000)), "seller": "synthetic seller", "status": "Delivered", "details": ""}]
+        }]});
+        for (session, plan, expected) in [
+            ("wrong", "synthetic-plan", 401),
+            ("synthetic-session", "other-plan", 400),
+            ("synthetic-session", "synthetic-plan", 200),
+        ] {
+            body["plan_id"] = json!(plan);
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/amazon")
+                .header("host", "127.0.0.1:12345")
+                .header("origin", "http://127.0.0.1:12345")
+                .header("x-trilly", "1")
+                .header("x-session", session)
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(body.to_string()))
+                .unwrap();
+            let response = service.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status().as_u16(), expected);
+        }
+        let locked = app.lock().await;
+        let saved = &locked.session.as_ref().unwrap().vault.data;
+        assert_eq!(saved.amazon.orders.len(), 1);
+        assert_eq!(snapshot(saved)["queue"].as_array().unwrap().len(), 1);
+        assert!(!saved.transactions[0].approved);
+        assert!(saved.pending.is_empty());
+        assert!(
+            !String::from_utf8_lossy(&std::fs::read(&path).unwrap())
+                .contains("synthetic-only-product")
+        );
+        let reopened = vault::Vault::open_native(path, &keystore::SyntheticKeyStore).unwrap();
+        assert_eq!(
+            reopened.data.amazon.orders[0].items[0].title,
+            "synthetic-only-product"
+        );
+    }
+
     #[test]
     fn undo_retains_a_durable_reverse_for_ambiguous_network_outcomes() {
         let mut data = Data::default();
@@ -973,6 +1173,7 @@ mod tests {
             ..Default::default()
         };
         let change = Change {
+            payee_name: None,
             memo: None,
             memo_only: false,
             id: "t".into(),

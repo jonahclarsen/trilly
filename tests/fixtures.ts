@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import type { AmazonStore } from '../src/lib/amazon'
 import type { Snapshot, Transaction, Suggestion } from '../src/lib/types'
 
 function transaction(id: string, payee: string, description: string, amount: number, category: string | null): Transaction {
@@ -20,8 +21,8 @@ export const suggestions: Suggestion[] = [
   { payee_id: 'market', category_id: 'dining', payee: 'Whole Foods', category: 'Dining out', count: 3, reason: '3 similar transactions' },
   { payee_id: 'restaurant', category_id: 'coffee', payee: 'Corner Kitchen', category: 'Coffee', count: 2, reason: '2 similar transactions' },
 ]
-export async function mockApp(page: Page, options: { syncError?: boolean; durableUndo?: boolean; special?: boolean; url?: string } = {}) {
-  let state = structuredClone(synthetic)
+export async function mockApp(page: Page, options: { syncError?: boolean; durableUndo?: boolean; special?: boolean; url?: string; state?: Snapshot; amazon?: AmazonStore } = {}) {
+  let state = structuredClone(options.state ?? synthetic)
   if (options.special) state.queue[0].transfer_account_id = 'checking'
   const businessHistory: { expenses: NonNullable<Snapshot['business_expenses']>; archive: boolean }[] = []
   let undoRestore: Snapshot | undefined
@@ -34,6 +35,7 @@ export async function mockApp(page: Page, options: { syncError?: boolean; durabl
     else if (path === '/api/unlock') response = { session: 'synthetic-session', state }
     else if (path.startsWith('/api/suggestions/')) response = suggestions
     else if (path === '/api/state') response = state
+    else if (path === '/api/amazon') response = { plan_id: state.plan_id, ...(options.amazon ?? { payments: [], orders: [] }) }
     else if (path === '/api/action') {
       const body = route.request().postDataJSON()
       actions.push(body)
@@ -73,6 +75,7 @@ export async function mockApp(page: Page, options: { syncError?: boolean; durabl
     await route.fulfill({ json: response })
   })
   await page.goto(options.url ?? '/')
-  await page.getByRole('heading', { name: 'Whole Foods', exact: true }).waitFor()
+  if (options.state) await page.getByRole('article', { name: 'Transaction to review' }).waitFor()
+  else await page.getByRole('heading', { name: 'Whole Foods', exact: true }).waitFor()
   return actions
 }

@@ -154,6 +154,21 @@ impl Ynab {
                 completed.push(pending.change.id.clone());
                 continue;
             }
+            // Undo may have been queued before an uncertain create-payee response.
+            // Resolve only the expected canonical Amazon name; compare every other
+            // field normally before allowing the reverse edit.
+            if pending.before.payee_id.is_none() {
+                if let Some(t) = current {
+                    if pending.before.payee_name.as_deref().is_some_and(|name| {
+                        matches!(name, "amazon.ca" | "amazon.com")
+                            && t.payee_name
+                                .as_deref()
+                                .is_some_and(|n| n.eq_ignore_ascii_case(name))
+                    }) {
+                        pending.before.payee_id = t.payee_id.clone();
+                    }
+                }
+            }
             if !current.is_some_and(|t| t.same_editable_state(&pending.before)) {
                 pending.conflict = true;
                 continue;
@@ -167,6 +182,14 @@ impl Ynab {
             } else {
                 json!({"id": pending.change.id, "approved": pending.change.approved, "payee_id": pending.change.payee_id, "category_id": pending.change.category_id})
             });
+            if let Some(name) = &pending.change.payee_name {
+                updates.last_mut().unwrap()["payee_name"] = json!(name);
+            }
+            if !pending.change.memo_only {
+                if let Some(memo) = &pending.change.memo {
+                    updates.last_mut().unwrap()["memo"] = json!(memo);
+                }
+            }
         }
         data.pending.retain(|p| !completed.contains(&p.change.id));
         if !updates.is_empty() {
@@ -180,6 +203,15 @@ impl Ynab {
                 .await?;
             let updated: Vec<Transaction> = parse(&response["transactions"])?;
             for t in updated {
+                if let (Some(id), Some(name)) = (&t.payee_id, &t.payee_name) {
+                    if !data.payees.iter().any(|p| p.id == *id) {
+                        data.payees.push(Payee {
+                            id: id.clone(),
+                            name: name.clone(),
+                            ..Default::default()
+                        });
+                    }
+                }
                 let applied = data
                     .pending
                     .iter()
@@ -257,6 +289,10 @@ mod tests {
             }
             if update.get("payee_id").is_some() {
                 t.payee_id = serde_json::from_value(update["payee_id"].clone()).unwrap();
+            }
+            if let Some(name) = update.get("payee_name").and_then(Value::as_str) {
+                t.payee_name = Some(name.into());
+                t.payee_id = Some("created-amazon-payee".into());
             }
             if update.get("category_id").is_some() {
                 t.category_id = serde_json::from_value(update["category_id"].clone()).unwrap();
@@ -342,6 +378,72 @@ mod tests {
             data,
             server,
         )
+    }
+
+    #[tokio::test]
+    async fn amazon_approval_combines_memo_payee_and_category_and_undo_restores_every_field() {
+        let (api, mock, mut data, server) = setup().await;
+        data.pending[0].change.memo = Some("refund for synthetic cable".into());
+        data.pending[0].change.payee_name = Some("amazon.ca".into());
+        data.pending[0].change.payee_id = None;
+        data.undo.push(data.pending[0].clone());
+        api.refresh(&mut data, false).await.unwrap();
+        api.flush(&mut data).await.unwrap();
+        assert!(data.pending.is_empty());
+        assert_eq!(
+            data.transactions[0].memo.as_deref(),
+            Some("refund for synthetic cable")
+        );
+        assert_eq!(data.payees[0].name, "amazon.ca");
+        let write = mock.lock().await.writes[0]["transactions"][0].clone();
+        assert_eq!(write["approved"], true);
+        assert_eq!(write["payee_name"], "amazon.ca");
+        assert_eq!(write["memo"], "refund for synthetic cable");
+        assert!(write.get("amount").is_none());
+        crate::undo(&mut data).unwrap();
+        api.refresh(&mut data, false).await.unwrap();
+        api.flush(&mut data).await.unwrap();
+        assert!(!data.transactions[0].approved);
+        assert_eq!(
+            data.transactions[0].payee_id.as_deref(),
+            Some("synthetic-payee")
+        );
+        assert_eq!(data.transactions[0].memo.as_deref().unwrap_or(""), "");
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn amazon_undo_recovers_even_when_new_payee_write_response_was_lost() {
+        let (api, mock, mut data, server) = setup().await;
+        data.pending[0].change.memo = Some("synthetic notebook".into());
+        data.pending[0].change.payee_name = Some("amazon.com".into());
+        data.pending[0].change.payee_id = None;
+        data.undo.push(data.pending[0].clone());
+        mock.lock().await.fail_after_write = true;
+        assert!(api.flush(&mut data).await.is_err());
+        crate::undo(&mut data).unwrap();
+        mock.lock().await.fail_after_write = false;
+        api.refresh(&mut data, false).await.unwrap();
+        api.flush(&mut data).await.unwrap();
+        assert!(!data.transactions[0].approved);
+        assert_eq!(
+            data.transactions[0].payee_id.as_deref(),
+            Some("synthetic-payee")
+        );
+        assert_eq!(data.transactions[0].memo.as_deref().unwrap_or(""), "");
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn combined_approval_does_not_treat_a_different_memo_as_saved() {
+        let (api, mock, mut data, server) = setup().await;
+        data.pending[0].change.memo = Some("synthetic cable".into());
+        mock.lock().await.transactions[0].memo = Some("external edit".into());
+        api.refresh(&mut data, false).await.unwrap();
+        assert!(api.flush(&mut data).await.is_err());
+        assert!(data.pending[0].conflict);
+        assert!(mock.lock().await.writes.is_empty());
+        server.abort();
     }
 
     #[tokio::test]

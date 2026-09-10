@@ -1,0 +1,43 @@
+.amazon-toolbar, .amazon-setup { display: grid; gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.amazon-toolbar > div:first-child, .amazon-toolbar-actions, .amazon-paused { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.amazon-toolbar span, .amazon-toolbar p { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.amazon-toolbar-actions button { background: transparent; }
+.amazon-setup p { line-height: 1.6; font-size: 13px; }
+.amazon-setup details[open], .amazon-search[open] { display: grid; gap: 12px; }
+.amazon-setup label { margin: 12px 0; }
+.amazon-review { display: grid; gap: 14px; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 20px; }
+.amazon-review h2 { font-size: 15px; }
+.amazon-candidate { display: grid; justify-content: stretch; text-align: left; gap: 6px; width: 100%; background: transparent; }
+.amazon-candidate.selected { border-color: var(--accent-strong); background: var(--active-nav); }
+.amazon-candidate span { font-size: 12px; }
+.amazon-order { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.amazon-order-heading { display: flex; justify-content: space-between; gap: 16px; padding: 16px; border-bottom: 1px solid var(--line); background: var(--paper-strong); }
+.amazon-order-heading > div { display: grid; gap: 5px; }
+.amazon-order-heading span, .amazon-order-heading a { font-size: 12px; }
+.amazon-order-heading a { align-self: start; flex-shrink: 0; }
+.amazon-method { padding: 12px 16px 0; font-size: 12px; color: var(--muted); }
+.amazon-item { display: flex; gap: 14px; padding: 18px 16px; }
+.amazon-item + .amazon-item { border-top: 1px solid var(--line); }
+.amazon-item input[type=checkbox] { width: 17px; height: 17px; flex: 0 0 17px; margin: 4px 0 0; accent-color: var(--accent); }
+.amazon-item img { object-fit: contain; border-radius: 7px; background: white; flex-shrink: 0; }
+.amazon-item-copy { min-width: 0; display: grid; gap: 7px; font-size: 12px; line-height: 1.5; }
+.amazon-product, .amazon-item-copy strong { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+.amazon-shipment { color: var(--theme-done); }
+.amazon-totals { margin: 0; border-top: 1px solid var(--line); padding: 16px; display: grid; gap: 9px; font-size: 12px; }
+.amazon-totals > div, .amazon-payments > div, .amazon-allocation > div { display: flex; justify-content: space-between; gap: 18px; }
+.amazon-totals dd { margin: 0; white-space: nowrap; }
+.amazon-totals > div:last-child { font-weight: 600; }
+.amazon-payments { border-top: 1px solid var(--line); padding: 16px; display: grid; gap: 12px; font-size: 12px; }
+.amazon-payments small { display: block; margin-top: 4px; }
+.amazon-fetched { display: block; padding: 0 16px 16px; line-height: 1.5; }
+.amazon-evidence summary, .amazon-search summary, .amazon-setup summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.amazon-evidence p { margin-top: 10px; line-height: 1.6; font-size: 12px; overflow-wrap: anywhere; }
+.amazon-combinations, .amazon-allocation { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; font-size: 12px; }
+.amazon-combinations button, .amazon-search button { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.amazon-allocation > div > span:last-child { white-space: nowrap; }
+@media (max-width: 600px) {
+  .amazon-order-heading { flex-direction: column; }
+  .amazon-item { padding: 12px; gap: 9px; }
+  .amazon-item img { width: 52px; height: 52px; }
+  .amazon-toolbar-actions button { padding: 9px; }
+}

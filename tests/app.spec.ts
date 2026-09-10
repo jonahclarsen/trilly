@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { mockApp, suggestions } from './fixtures'
+import { amazonState, amazonRecords } from './amazon-fixture'
 
 test('native unlock opens automatically without a browser password and lock revokes access', async ({ page }) => {
   const unlockRequests: unknown[] = []
@@ -572,4 +573,24 @@ test('business description selects the chosen payee and D saves a transaction de
   await expect(page.locator('.memo')).toHaveText('Project materials')
   expect(actions.find(a => a.action === 'description')).toEqual({ action: 'description', id: 'one', description: 'Project materials' })
   expect(actions.some(a => a.action === 'review')).toBe(false)
+})
+
+test('Amazon cards fill lowercase descriptions and combine them with approval', async ({ page }) => {
+  const actions = await mockApp(page, { state: amazonState, amazon: amazonRecords })
+  await expect(page.getByRole('article', { name: 'Amazon order 000-0000000-0000001' })).toBeVisible()
+  await expect(page.locator('.memo')).toHaveText('usb-c charging cable; ruled notebook')
+  await page.locator('.workspace').focus()
+  await page.keyboard.press('Enter')
+  await expect.poll(() => actions.find(a => a.action === 'review')).toMatchObject({ memo: 'usb-c charging cable; ruled notebook', amazon_marketplace: 'amazon.ca', amazon_payment_id: 'synthetic-payment' })
+})
+
+test('multi-product refunds require choosing products and use refund for', async ({ page }) => {
+  const state = structuredClone(amazonState), records = structuredClone(amazonRecords)
+  state.queue[0].amount = 11200
+  records.payments[0].amount = 11200; records.payments[0].refund = true
+  await mockApp(page, { state, amazon: records })
+  await expect(page.getByRole('article', { name: 'Amazon order 000-0000000-0000001' })).toBeVisible()
+  await expect(page.locator('.memo')).toHaveText('Add description')
+  await page.getByRole('checkbox', { name: 'Include ruled notebook in description' }).check()
+  await expect(page.locator('.memo')).toHaveText('refund for ruled notebook')
 })

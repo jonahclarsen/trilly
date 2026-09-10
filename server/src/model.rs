@@ -95,8 +95,18 @@ impl Transaction {
             return self.memo.as_deref().unwrap_or("") == change.memo.as_deref().unwrap_or("");
         }
         self.approved == change.approved
-            && self.payee_id == change.payee_id
+            && if let Some(name) = &change.payee_name {
+                self.payee_name
+                    .as_ref()
+                    .is_some_and(|p| p.eq_ignore_ascii_case(name))
+            } else {
+                self.payee_id == change.payee_id
+            }
             && self.category_id == change.category_id
+            && change
+                .memo
+                .as_ref()
+                .is_none_or(|memo| self.memo.as_deref().unwrap_or("") == memo)
     }
     pub fn same_editable_state(&self, other: &Self) -> bool {
         self.id == other.id
@@ -118,6 +128,8 @@ impl Transaction {
 #[derive(Clone, Serialize, Deserialize, Zeroize)]
 pub struct Change {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payee_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
     #[serde(default)]
     pub memo_only: bool,
@@ -129,6 +141,7 @@ pub struct Change {
 impl From<&Transaction> for Change {
     fn from(t: &Transaction) -> Self {
         Self {
+            payee_name: None,
             memo: None,
             memo_only: false,
             id: t.id.clone(),
@@ -176,6 +189,10 @@ pub enum BusinessUndo {
 
 #[derive(Clone, Default, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Data {
+    #[serde(default)]
+    pub amazon: crate::amazon::Store,
+    #[serde(default)]
+    pub amazon_assignments: Vec<crate::amazon::Assignment>,
     #[serde(default)]
     pub business_undo: Vec<BusinessUndo>,
     #[serde(default)]

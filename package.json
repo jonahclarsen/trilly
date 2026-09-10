@@ -14,13 +14,15 @@
     "screenshots": "pnpm build && playwright test --config playwright.screenshots.config.ts",
     "install:app": "node scripts/start.mjs --release --install-only",
     "test:dev": "node --test scripts/runner-lock.test.mjs && playwright test --config playwright.dev.config.ts",
-    "test:signing": "node scripts/test-signing.mjs"
+    "test:signing": "node scripts/test-signing.mjs",
+    "test:amazon": "node --test tests/amazon/*.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.12.3",
+    "linkedom": "^0.18.13",
     "sharp": "^0.35.4",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.8",

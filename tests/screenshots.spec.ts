@@ -4,6 +4,7 @@ import { createServer, type Server } from 'node:http'
 import { resolve, sep, extname } from 'node:path'
 import { createRequire } from 'node:module'
 import { mockApp } from './fixtures'
+import { amazonState, amazonRecords } from './amazon-fixture'
 
 let server: Server
 let origin: string
@@ -110,4 +111,23 @@ test('publish synthetic light and dark WebP screenshots', async ({ page }) => {
     await sharp(await page.screenshot({ type: 'png', animations: 'disabled' })).webp({ quality: 88, effort: 6 }).toFile(`docs/screenshots/locked-${mode}.webp`)
   }
 
+})
+
+// Run only with fresh authorization, like the existing screenshot workflow.
+test('publish synthetic Amazon order cards in light and dark', async ({ page }) => {
+  const sharp: typeof import('sharp').default = createRequire(import.meta.url)('sharp')
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url())
+    if (url.origin !== origin || url.pathname.startsWith('/api/')) return route.abort()
+    return route.continue()
+  })
+  await page.addInitScript(() => localStorage.setItem('appearance', JSON.stringify({ theme: 'iridescent', appearance: 'system' })))
+  await mockApp(page, { url: origin, state: amazonState, amazon: amazonRecords })
+  await expect(page.getByRole('article', { name: 'Amazon order 000-0000000-0000001' })).toBeVisible()
+  for (const mode of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: mode })
+    await page.locator('.workspace').focus()
+    await page.mouse.move(0, 0)
+    await sharp(await page.screenshot({ type: 'png', animations: 'disabled', fullPage: true })).webp({ quality: 88, effort: 6 }).toFile(`docs/screenshots/amazon-${mode}.webp`)
+  }
 })

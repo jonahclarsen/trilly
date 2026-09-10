@@ -119,7 +119,8 @@ does not offer conditional transaction updates, so another edit between our
 read and write is still possible; avoid editing the same transaction in both
 apps simultaneously. Existing splits, transfers, reconciled transactions, and
 loan transactions can be approved, but should be edited in YNAB. New payees
-must currently be created there too. Pending bank transactions are not exposed
+are created in YNAB, except canonical Amazon payees, which Trilly can create
+when approving an Amazon match. Pending bank transactions are not exposed
 by YNAB's transactions endpoint.
 
 The first import fetches history since 2000; later syncs use YNAB's delta cursor.
@@ -179,6 +180,82 @@ approving the transaction or changing its payee/category. The transaction stays
 visible; approval waits until the description syncs. Offline changes remain saved
 and can be retried with Sync. Description changes share approval undo history;
 Undo restores the previous memo using a durable reverse edit.
+
+## Amazon purchases and refunds
+
+Import your bank CSVs into YNAB first. When unapproved Amazon transactions are
+present, **Fetch Amazon details** starts a batch for all accounts in the selected
+plan. Install the [Trilly Amazon extension](chromium-extension/README.md) through
+Chrome's **Load unpacked** control first, then reload Trilly. **Amazon setup**
+also provides an HTML-paste fallback for payments and order-detail pages.
+
+Collection uses your Amazon.ca and Amazon.com sessions in a separate unfocused
+window. Up to six order tabs work alongside two payment readers; pagination and
+order extraction overlap. Tabs close after extraction, results arrive as they
+are saved, and you can keep reviewing other transactions. **Stop** cancels the
+job. Sign-in, Amazon challenges, changed markup and timeouts pause the affected
+pages; use **Open page** and **Resume**. The collector only controls its own tabs.
+It scans back to the oldest unapproved Amazon transaction plus a 14-day margin,
+with a 100-page limit per marketplace. Cached orders are reused for 24 hours;
+refunds trigger refreshes. Restart collection to retry missing work.
+
+Trilly displays an order card with lowercase product titles, optional thumbnails,
+quantities, unit prices, sellers, shipment and return information, payment method,
+order date and number, item subtotal, shipping, tax, discounts and other summary
+rows supplied by Amazon. Related collected charges and refunds appear below the
+card. **Open order** opens the original Amazon order; product links are available
+on titles. Cards are rebuilt from structured fields. Raw Amazon HTML, scripts,
+addresses and account credentials are not stored or rendered.
+
+Matching keeps charges and refunds separate and uses exact signed amount and
+currency, nearby payment dates and uniqueness among bank transactions. Card
+information remains visible for manual comparison; account-to-card mapping is
+not inferred. Unknown dates, currency differences, competing transactions and
+repeated amounts require review. A selected payment is bound to the approved
+YNAB transaction so later reviews cannot automatically reuse it. Undo releases
+that binding. These are local heuristics, not a guarantee of identity.
+
+After collection finishes, an unambiguous product match proposes a lowercase
+YNAB description and the `amazon.ca` or `amazon.com` payee. Refund descriptions
+use **refund for [product]**. Full-order purchases can list multiple products;
+partial charges and multi-product refunds require choosing the relevant items.
+Existing descriptions and manually selected payees are preserved until you
+explicitly replace them. Long generated descriptions are shortened to YNAB's
+500-character limit; complete product titles remain in the card.
+
+Automatic descriptions are drafts until **Approve** writes the description,
+payee, category and approval together through the existing encrypted outbox.
+Missing canonical Amazon payees can be created by that same YNAB update. Undo
+restores the previous description, payee, category and approval. Explicit edits
+through **D / Save description** retain the existing immediate-save workflow,
+normalize Amazon descriptions to lowercase, and sync before approval.
+
+For ambiguous orders, select a payment and its products, or search collected
+orders by product or order number. The app offers combinations of recorded item
+prices that equal the payment, but labels them as suggestions: prices can exclude
+taxes, discounts or fees, and equal totals do not establish which items were paid
+for. Quantity-specific partial refunds may need manual adjustment. A selected
+multi-item purchase shows item subtotals to help prepare a category split in
+YNAB. Trilly does not create or edit splits; the YNAB API does not support updating
+subtransactions on an existing split. No estimated tax rates are invented.
+
+Collected records and thumbnails live in the encrypted vault. Older optional
+thumbnails are dropped above a 16 MB image budget; textual evidence remains. **Clear collected
+Amazon data** removes this cache and payment bindings; it does not change YNAB
+transactions. The extension uses memory-only session storage for its job and
+unacknowledged textual records, with bounded thumbnail transfers. The bridge is
+restricted to Trilly's exact loopback origin and uses the app's existing
+authenticated API. It never receives the YNAB token or vault credential. Lock,
+plan changes and closing Trilly cancel collection. Reload stops the old job;
+already saved records remain available. Amazon receives the normal page and
+thumbnail requests; there is no telemetry or external AI service.
+
+Live Amazon traversal and the new UI have not been verified in an automated
+browser. Validation uses the user-supplied local order layouts, synthetic DOM,
+Chrome API mocks, server-rendered cards and isolated Rust vault/API tests. The
+existing README screenshots show the standard review flow; Amazon screenshots
+await fresh authorization to run the isolated browser workflow. Local
+`example*.html` references are ignored and must never be committed.
 
 ## Business expenses
 
@@ -313,8 +390,9 @@ verify and commit it, integrate it onto main, and push main to GitHub. Remove
 the temporary worktree and branch afterward. Never commit or push secrets or
 personal financial data; see [AGENTS.md](AGENTS.md) for the complete rules.
 
-Whenever the UI changes, refresh the screenshots displayed in this README and
-push them with the change:
+Browser tests, screenshots, clipboard access, Keychain tests and native UI
+require fresh explicit user authorization before running (see AGENTS.md). When
+authorized, refresh the screenshots displayed in this README with UI changes:
 
 ```sh
 pnpm screenshots
@@ -332,7 +410,9 @@ GitHub preview stays current. Never take documentation screenshots of real data.
 ```sh
 pnpm check
 pnpm build
-cargo test --manifest-path server/Cargo.toml
+pnpm test:amazon
+cargo test --manifest-path server/Cargo.toml -- --skip native_keychain_migrates_synthetic_rules_and_preserves_key
+# The following workflows require fresh explicit authorization:
 pnpm test:browser
 pnpm test:dev
 pnpm test:signing
