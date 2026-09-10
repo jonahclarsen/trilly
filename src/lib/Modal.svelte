@@ -8,7 +8,7 @@
     // showModal focuses its first control; move to the picker only after opening.
     queueMicrotask(() => {
       if (!node.open) return
-      const input = node.querySelector<HTMLInputElement>('[data-modal-focus]')
+      const input = node.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-modal-focus]')
       input?.focus(); input?.select()
     })
     return { destroy() { window.removeEventListener('keydown', keydown, true); node.close() } }

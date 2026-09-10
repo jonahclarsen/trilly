@@ -97,7 +97,21 @@ fn snapshot(d: &Data) -> Value {
             t.account_id == d.account_id
                 && !t.approved
                 && !t.deleted
-                && !d.pending.iter().any(|p| p.change.id == t.id)
+                && !d
+                    .pending
+                    .iter()
+                    .any(|p| p.change.id == t.id && !p.change.memo_only)
+        })
+        .map(|t| {
+            let mut displayed = t.clone();
+            if let Some(pending) = d
+                .pending
+                .iter()
+                .find(|p| p.change.id == t.id && p.change.memo_only)
+            {
+                displayed.memo = pending.change.memo.clone();
+            }
+            displayed
         })
         .collect();
     queue.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.id.cmp(&b.id)));
@@ -105,6 +119,7 @@ fn snapshot(d: &Data) -> Value {
         "account_id": d.account_id, "accounts": d.accounts.iter().filter(|a| !a.deleted && !a.closed).collect::<Vec<_>>(),
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
+        "description_pending": d.pending.iter().filter(|p| p.change.memo_only).map(|p| &p.change.id).collect::<Vec<_>>(),
         "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "business_expenses": d.business_expenses,
@@ -256,6 +271,10 @@ enum Action {
     Account {
         id: String,
     },
+    Description {
+        id: String,
+        description: String,
+    },
     Review {
         id: String,
         payee_id: Option<String>,
@@ -346,6 +365,7 @@ async fn action(
             }
             next.account_id = id;
         }
+        Action::Description { id, description } => save_description(&mut next, &id, description)?,
         Action::Review {
             id,
             payee_id,
@@ -385,6 +405,8 @@ async fn action(
             let pending = Pending {
                 before: t.clone(),
                 change: Change {
+                    memo: None,
+                    memo_only: false,
                     id,
                     payee_id,
                     category_id,
@@ -434,6 +456,37 @@ async fn action(
         result["sync_error"] = json!(error);
     }
     Ok(Json(result))
+}
+
+fn save_description(data: &mut Data, id: &str, description: String) -> Result<()> {
+    if description.chars().count() > 500 {
+        return Err("Description must be 500 characters or fewer".into());
+    }
+    if data.pending.iter().any(|p| p.change.id == id) {
+        return Err("Sync the pending change before editing this description".into());
+    }
+    let before = data
+        .transactions
+        .iter()
+        .find(|t| t.id == id && t.account_id == data.account_id && !t.deleted && !t.approved)
+        .ok_or("Transaction is no longer awaiting approval")?;
+    if before.memo.as_deref().unwrap_or("") == description {
+        return Ok(());
+    }
+    let mut change = Change::from(before);
+    change.memo = Some(description);
+    change.memo_only = true;
+    let pending = Pending {
+        before: before.clone(),
+        change,
+        conflict: false,
+    };
+    data.pending.push(pending.clone());
+    data.undo.push(pending);
+    if data.undo.len() > 100 {
+        data.undo.remove(0);
+    }
+    Ok(())
 }
 
 fn add_business_expense(
@@ -596,9 +649,15 @@ fn undo(data: &mut Data) -> Result<()> {
     applied.approved = previous.change.approved;
     applied.payee_id = previous.change.payee_id.clone();
     applied.category_id = previous.change.category_id.clone();
+    let mut reverse = Change::from(&previous.before);
+    if previous.change.memo_only {
+        applied.memo = previous.change.memo.clone();
+        reverse.memo = Some(previous.before.memo.clone().unwrap_or_default());
+        reverse.memo_only = true;
+    }
     data.pending.push(Pending {
         before: applied,
-        change: Change::from(&previous.before),
+        change: reverse,
         conflict: false,
     });
     data.undo.pop();
@@ -914,6 +973,8 @@ mod tests {
             ..Default::default()
         };
         let change = Change {
+            memo: None,
+            memo_only: false,
             id: "t".into(),
             approved: true,
             payee_id: Some("p".into()),

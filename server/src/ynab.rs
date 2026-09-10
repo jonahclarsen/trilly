@@ -160,10 +160,12 @@ impl Ynab {
             }
             pending.conflict = false;
             // Never submit category/payee fields on a split, transfer, or loan.
-            updates.push(if pending.before.special() {
+            updates.push(if pending.change.memo_only {
+                json!({"id": pending.change.id, "memo": pending.change.memo})
+            } else if pending.before.special() {
                 json!({"id": pending.change.id, "approved": pending.change.approved})
             } else {
-                serde_json::to_value(&pending.change).map_err(|_| "Could not encode update")?
+                json!({"id": pending.change.id, "approved": pending.change.approved, "payee_id": pending.change.payee_id, "category_id": pending.change.category_id})
             });
         }
         data.pending.retain(|p| !completed.contains(&p.change.id));
@@ -247,7 +249,12 @@ mod tests {
                 .iter_mut()
                 .find(|t| t.id == update["id"].as_str().unwrap())
                 .unwrap();
-            t.approved = update["approved"].as_bool().unwrap();
+            if let Some(approved) = update["approved"].as_bool() {
+                t.approved = approved;
+            }
+            if let Some(memo) = update.get("memo") {
+                t.memo = serde_json::from_value(memo.clone()).unwrap();
+            }
             if update.get("payee_id").is_some() {
                 t.payee_id = serde_json::from_value(update["payee_id"].clone()).unwrap();
             }
@@ -265,6 +272,36 @@ mod tests {
             )
         }
     }
+    #[tokio::test]
+    async fn description_sync_only_writes_memo_and_undo_restores_it() {
+        let (ynab, mock, mut data, server) = setup().await;
+        data.pending.clear();
+        data.account_id = "synthetic-account".into();
+        crate::save_description(
+            &mut data,
+            "synthetic-transaction",
+            "Synthetic description".into(),
+        )
+        .unwrap();
+        let serialized = serde_json::to_vec(&data).unwrap();
+        data = serde_json::from_slice(&serialized).unwrap();
+        assert!(data.pending[0].change.memo_only);
+        let snapshot = crate::snapshot(&data);
+        assert_eq!(snapshot["queue"][0]["memo"], "Synthetic description");
+        ynab.flush(&mut data).await.unwrap();
+        assert!(data.pending.is_empty());
+        assert!(!data.transactions[0].approved);
+        assert_eq!(
+            mock.lock().await.writes[0]["transactions"][0],
+            json!({"id": "synthetic-transaction", "memo": "Synthetic description"})
+        );
+        crate::undo(&mut data).unwrap();
+        ynab.flush(&mut data).await.unwrap();
+        assert!(data.pending.is_empty());
+        assert_eq!(data.transactions[0].memo.as_deref().unwrap_or(""), "");
+        server.abort();
+    }
+
     async fn setup() -> (Ynab, Arc<Mutex<Mock>>, Data, tokio::task::JoinHandle<()>) {
         let before = Transaction {
             id: "synthetic-transaction".into(),

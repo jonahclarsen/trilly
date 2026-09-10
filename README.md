@@ -98,6 +98,7 @@ clients; run `pnpm start` when you do not need hot updates.
 | C / P | Search categories / payees; Enter selects |
 | S | Skip for this session |
 | B | Save a business expense |
+| D | Add or edit the transaction description (YNAB memo) |
 | U | Undo the last approval |
 | A | Choose account |
 | R | Refresh metadata and sync |
@@ -169,10 +170,20 @@ merchant name alone. Corrections start informing
 suggestions once YNAB confirms them. This is a local heuristic, not a claim of
 better accuracy than YNAB. Sparse or ambiguous history can produce poor choices.
 
+Press **D** or **Add description** / **Edit description** to edit the current
+transaction's YNAB memo, labeled Description in Trilly. Enter saves; Shift+Enter
+inserts a line break. Existing text starts selected. Empty text clears it. The
+500-character limit follows the [YNAB API](https://api.ynab.com/v1).
+The change is saved in the encrypted outbox and synced immediately, without
+approving the transaction or changing its payee/category. The transaction stays
+visible; approval waits until the description syncs. Offline changes remain saved
+and can be retried with Sync. Description changes share approval undo history;
+Undo restores the previous memo using a durable reverse edit.
+
 ## Business expenses
 
-Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description is
-focused; Enter saves, Shift+Enter adds a line, and Tab moves to the optional note.
+Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee and starts fully selected, so
+typing replaces it; Enter saves, Shift+Enter adds a line, and Tab moves to the optional note.
 Date, amount, and account are captured from the transaction. This does not approve
 or modify the YNAB transaction. The header's **Business** count opens the saved table.
 

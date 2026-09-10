@@ -47,7 +47,9 @@
     return request
   }
   let error = $state('')
-  let modal = $state<'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | null>(null)
+  let modal = $state<'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'description' | null>(null)
+  let memoDraft = $state('')
+  let memoId = $state('')
   let expenseId = $state('')
   let description = $state('')
   let expenseNote = $state('')
@@ -58,7 +60,17 @@
   const expenseSaved = $derived(expenses.some(e => e.plan_id === data?.plan_id && e.transaction_id === currentId))
   function openExpense() {
     if (!current || busy || saving || saveFailed || expenseSaved) return
-    expenseId = current.id; description = ''; expenseNote = ''; modal = 'expense'
+    expenseId = current.id; description = data?.payees.find(p => p.id === payee)?.name ?? current.payee_name ?? ''; expenseNote = ''; modal = 'expense'
+  }
+  function openDescription() {
+    if (!current || busy || saving || saveFailed || descriptionPending) return
+    memoId = current.id; memoDraft = current.memo ?? ''; modal = 'description'
+  }
+  async function saveDescription() {
+    if (await act({ action: 'description', id: memoId, description: memoDraft })) {
+      modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
+      void sync(false)
+    }
   }
   async function saveExpense() {
     if (await act({ action: 'business_expense', id: expenseId, description, note: expenseNote })) {
@@ -91,6 +103,7 @@
   let reviewElement = $state<HTMLElement>()
   const current = $derived(data?.queue.find(t => !skipped.includes(t.id)))
   const currentId = $derived(current?.id)
+  const descriptionPending = $derived(!!current && !!data?.description_pending?.includes(current.id))
   const remaining = $derived(data?.queue.filter(t => !skipped.includes(t.id)).length ?? 0)
   const currentAccount = $derived(data?.accounts.find(a => a.id === data?.account_id))
   const currentPlan = $derived(data?.plans.find(p => p.id === data?.plan_id))
@@ -172,7 +185,7 @@
 
   function forget() {
     sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
-    description = ''; expenseNote = ''; expenseId = ''; businessMessage = ''; showArchived = false
+    description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
     picks = []; skipped = []; payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
@@ -295,7 +308,7 @@
     enqueue({ body: { action: 'sync', full } })
   }
   function approve(suggestion?: Suggestion) {
-    if (!current || busy || saveFailed || !data) return
+    if (!current || busy || saveFailed || !data || descriptionPending) return
     const selectedPayee = suggestion ? suggestion.payee_id : payee
     const selectedCategory = suggestion ? suggestion.category_id : category
     if (!special(current) && (!selectedPayee || !selectedCategory)) return
@@ -357,7 +370,7 @@
     const key = event.key.toLowerCase()
     const actions: Record<string, () => void> = {
       enter: () => void approve(),
-      b: openExpense, c: () => openPicker('category'), p: () => openPicker('payee'), s: skip, u: () => void undo(),
+      d: openDescription, b: openExpense, c: () => openPicker('category'), p: () => openPicker('payee'), s: skip, u: () => void undo(),
       a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
     }
@@ -448,6 +461,10 @@
           {#if current.import_payee_name_original || current.import_payee_name}<p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>{/if}
           {#if current.memo}<p class="memo">{current.memo}</p>{/if}
 
+          <div class="description-control"><Button shortcut="D" disabled={busy || !!saving || saveFailed || descriptionPending} onclick={openDescription}>{current.memo ? 'Edit description' : 'Add description'}</Button>
+            {#if descriptionPending}<span class="field-note" role="status">Description saved locally. Sync before approving.</span>{/if}
+          </div>
+
           {#if special(current)}
             <div class="special-transaction">
               <span>{current.subtransactions.length ? 'Split transaction' : current.transfer_account_id ? 'Transfer' : current.cleared === 'reconciled' ? 'Reconciled' : 'Loan transaction'}</span>
@@ -472,7 +489,7 @@
                 <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
               {/if}
               {#each picks as suggestion, i}
-                <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
+                <button class="suggestion" disabled={busy || saveFailed || descriptionPending} onclick={() => void approve(suggestion)}>
                   <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
                 </button>
               {/each}
@@ -482,7 +499,7 @@
           <div class="review-actions">
             <Button icon="business" shortcut="B" disabled={busy || !!saving || saveFailed || expenseSaved} onclick={openExpense}>{expenseSaved ? 'Business saved' : 'Business expense'}</Button>
             <Button icon="skip" shortcut="S" disabled={busy && !syncing} onclick={skip}>Skip</Button>
-            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && (!payee || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
+            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || descriptionPending || (!special(current) && (!payee || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
       {:else}
@@ -547,6 +564,14 @@
         {/if}
       </section>
     {/if}
+  </Modal>
+{:else if modal === 'description'}
+  <Modal title="Description" subtitle={`${current?.date ?? ''} · ${payeeName}`} onclose={() => { modal = null; memoDraft = ''; memoId = '' }}>
+    {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
+    <form onsubmit={(event) => { event.preventDefault(); void saveDescription() }}>
+      <label>Description<textarea data-modal-focus bind:value={memoDraft} maxlength="500" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void saveDescription() } }}></textarea></label>
+      <Button type="submit" primary shortcut="Enter" disabled={busy || !!saving || saveFailed}>Save description</Button>
+    </form>
   </Modal>
 {:else if modal === 'expense'}
   <Modal title="Add business expense" subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = '' }}>

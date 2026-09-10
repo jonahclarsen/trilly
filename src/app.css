@@ -188,3 +188,5 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 
 .modal-heading.with-subtitle { margin-bottom: 6px; }
 .modal-subtitle { margin-bottom: 24px; line-height: 1.5; }
+
+.description-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 14px 0; }

@@ -91,6 +91,9 @@ impl Transaction {
             || self.cleared == "reconciled"
     }
     pub fn matches_change(&self, change: &Change) -> bool {
+        if change.memo_only {
+            return self.memo.as_deref().unwrap_or("") == change.memo.as_deref().unwrap_or("");
+        }
         self.approved == change.approved
             && self.payee_id == change.payee_id
             && self.category_id == change.category_id
@@ -114,6 +117,10 @@ impl Transaction {
 
 #[derive(Clone, Serialize, Deserialize, Zeroize)]
 pub struct Change {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+    #[serde(default)]
+    pub memo_only: bool,
     pub id: String,
     pub payee_id: Option<String>,
     pub category_id: Option<String>,
@@ -122,6 +129,8 @@ pub struct Change {
 impl From<&Transaction> for Change {
     fn from(t: &Transaction) -> Self {
         Self {
+            memo: None,
+            memo_only: false,
             id: t.id.clone(),
             payee_id: t.payee_id.clone(),
             category_id: t.category_id.clone(),

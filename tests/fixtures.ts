@@ -40,7 +40,9 @@ export async function mockApp(page: Page, options: { syncError?: boolean; durabl
       if (['business_expense', 'archive_business_expenses', 'remove_business_expense'].includes(body.action)) {
         businessHistory.push({ expenses: structuredClone(state.business_expenses!), archive: body.action === 'archive_business_expenses' })
       }
-      if (body.action === 'business_expense') {
+      if (body.action === 'description') {
+        state.queue.find(t => t.id === body.id)!.memo = body.description
+      } else if (body.action === 'business_expense') {
         const t = state.queue.find(t => t.id === body.id)!
         state.business_expenses!.push({ plan_id: state.plan_id, transaction_id: t.id, description: body.description.trim(), date: t.date, amount: -t.amount, account: state.accounts.find(a => a.id === t.account_id)!.name, note: body.note, archived: false })
       } else if (body.action === 'archive_business_expenses') {
