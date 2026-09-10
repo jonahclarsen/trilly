@@ -291,16 +291,16 @@ from the author's Balance app. Iridescent is the default; system appearance is
 followed live. Settings offers Light, Dark, and System circles, and a Random
 sub-button to start daily themes tomorrow. Theme choice can be changed while locked.
 
-The logo uses Avenir Next with default CSS weight 750 and −0.8px letter spacing. The
+The logo uses Avenir Next with fixed CSS weight 750 and −0.8px letter spacing. The
 installed font determines the available rendered weight; fonts load locally
 without network requests. Its default color is `#56c2f0` in both light and dark
 appearance. Settings keeps a color picker with hex and hue/saturation/lightness
-controls, a weight slider from 100 to 900 in steps of 1, and a reset button.
+controls and a reset button.
 A live logo preview sits above the controls and matches the header wordmark.
-The outlined Reset logo button is disabled when weight and color are at their defaults.
-Weight and color changes preview live and persist across reloads. Reset restores
-weight 750 and color `#56c2f0`. Existing custom colors are preserved. Payee and
-category pickers focus search immediately; click outside any modal or press Escape to close it.
+The outlined Reset logo button is disabled when the color matches its default.
+Color changes preview live and persist across reloads. Reset restores `#56c2f0`.
+Existing custom colors are preserved. Payee and category pickers focus search
+immediately; click outside any modal or press Escape to close it.
 The compact layout also takes inspiration from the author's Compressor app.
 
 ## Contributing and screenshots

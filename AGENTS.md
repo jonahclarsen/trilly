@@ -51,9 +51,10 @@ Reuse components; keep labels short and functional. Icons in buttons must be
 SVGs. Keep shortcut handling and its reference together. Themes come from
 Balance; Iridescent is the default, with system light/dark appearance and an
 optional scheduled start for daily Random. The lowercase Trilly wordmark uses
-Avenir Next with fixed −0.8px letter spacing. Settings offers a weight slider
-from 100 to 900 in steps of 1 (default 750) beside the color controls. The default
-color is `#56c2f0` in both appearances. Weight and color persist across reloads.
+Avenir Next with fixed CSS weight 750 and −0.8px letter spacing. Settings shows
+a live logo preview above the color controls. Only color is customizable and
+persists across reloads, defaulting to `#56c2f0` in both appearances. Reset logo
+has a subtle outline and is disabled when the color matches its default.
 Use text labels with SVG icons, transparent backgrounds, and subtle outlines for the top navigation. Settings uses a clean gear SVG.
 
 Whenever a requested change alters the UI, regenerate the README screenshots
