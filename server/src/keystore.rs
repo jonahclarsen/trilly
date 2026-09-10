@@ -23,7 +23,7 @@ mod mac {
         fn trilly_key_create(account: *const std::ffi::c_char, key: *const u8) -> i32;
         fn trilly_key_read(account: *const std::ffi::c_char, key: *mut u8) -> i32;
         #[cfg(test)]
-        fn trilly_keychain_test(path: *const std::ffi::c_char) -> i32;
+        fn trilly_keychain_test(path: *const std::ffi::c_char, scenario: i32) -> i32;
     }
     fn account(id: &[u8; 16]) -> CString {
         CString::new(id.iter().map(|b| format!("{b:02x}")).collect::<String>()).unwrap()
@@ -34,7 +34,7 @@ mod mac {
             -128 | -25293 => Err("Unlock cancelled or authentication denied".into()),
             -25300 => Err("This vault's key is missing from your login Keychain. Restore that Keychain from backup.".into()),
             -25308 => Err("macOS needs an interactive login session to unlock Trilly".into()),
-            -70001 => Err("The vault key's Keychain access rules changed. Trilly requires password confirmation for every unlock.".into()),
+            -70001 => Err("Trilly could not restore password-required access to the vault key. Unlock again and allow the native Keychain access update.".into()),
             _ => Err(format!("macOS Keychain could not unlock Trilly (error {code})")),
         }
     }
@@ -64,10 +64,24 @@ mod mac {
     }
     #[cfg(test)]
     #[test]
-    fn native_keychain_refuses_silent_reads_even_from_the_creating_process() {
+    fn native_keychain_repairs_changed_rules_and_refuses_silent_reads() {
         let dir = tempfile::tempdir().unwrap();
         let path = CString::new(dir.path().join("synthetic.keychain").to_str().unwrap()).unwrap();
-        assert_eq!(unsafe { trilly_keychain_test(path.as_ptr()) }, 0);
+        assert_eq!(unsafe { trilly_keychain_test(path.as_ptr(), 0) }, 0);
+        for scenario in 1..=3 {
+            let path = CString::new(
+                dir.path()
+                    .join(format!("repair-{scenario}.keychain"))
+                    .to_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                unsafe { trilly_keychain_test(path.as_ptr(), scenario) },
+                0,
+                "repair scenario {scenario}"
+            );
+        }
     }
 }
 #[cfg(not(target_os = "macos"))]

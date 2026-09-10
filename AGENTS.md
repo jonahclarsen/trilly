@@ -35,6 +35,11 @@ Do not ask the user to put secrets in chat, source files, shell commands, or log
 The user authorized macOS Keychain storage with native password confirmation
 on every unlock. Never weaken that ACL or add silent unlock, telemetry, or
 external AI services. Never collect a macOS password in the browser or backend.
+Native SecKeychainItemSetAccess can display authorization UI even after
+SecKeychainSetUserInteractionAllowed(false). Automated repair tests must use
+new synthetic items with explicitly editable fixture-owner ACLs. Never test
+native repair authorization denial by opening a real macOS prompt; use a mock.
+Do not change the real item's owner ACL to make tests or unlocks pass.
 
 ## UI
 
