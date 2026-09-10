@@ -396,7 +396,7 @@
 
 <div class="app-shell">
   <header>
-    <span class="brand" style:color={logo.color}>trilly</span>
+    <span class="brand" style:color={logo.color} style:font-weight={logo.weight}>trilly</span>
     <nav aria-label="App controls">
       {#if data}
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
