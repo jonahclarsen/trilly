@@ -459,11 +459,6 @@
           <div class="amount">{money(current.amount)}</div>
           <h1 class="payee-title">{payeeName}</h1>
           {#if current.import_payee_name_original || current.import_payee_name}<p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>{/if}
-          {#if current.memo}<p class="memo">{current.memo}</p>{/if}
-
-          <div class="description-control"><Button shortcut="D" disabled={busy || !!saving || saveFailed || descriptionPending} onclick={openDescription}>{current.memo ? 'Edit description' : 'Add description'}</Button>
-            {#if descriptionPending}<span class="field-note" role="status">Description saved locally. Sync before approving.</span>{/if}
-          </div>
 
           {#if special(current)}
             <div class="special-transaction">
@@ -473,12 +468,16 @@
             {#if current.subtransactions.length}
               <div class="splits">{#each current.subtransactions.filter(s => !s.deleted) as split}<div><span>{data.categories.find(c => c.id === split.category_id)?.name ?? 'Uncategorized'}</span><span>{money(split.amount)}</span></div>{/each}</div>
             {/if}
-          {:else}
-            <div class="fields">
+          {/if}
+
+          <div class="fields">
+            {#if !special(current)}
               <button class="field-button" disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>P</kbd></button>
               <button class="field-button" disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
-            </div>
-          {/if}
+            {/if}
+            <button class="field-button" disabled={busy || !!saving || saveFailed || descriptionPending} onclick={openDescription} title={current.memo || 'Add description'}><span><small>Description</small><strong class="memo">{current.memo || 'Add description'}</strong></span><kbd>D</kbd></button>
+          </div>
+          {#if descriptionPending}<p class="field-note description-status" role="status">Description saved locally. Sync before approving.</p>{/if}
 
           {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
             <section class="suggestions" aria-label="Suggestions">
