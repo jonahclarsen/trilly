@@ -290,6 +290,8 @@ The eleven theme presets, daily Random selection, and light/dark palettes come
 from the author's Balance app. Iridescent is the default; system appearance is
 followed live. Settings offers Light, Dark, and System circles, and a Random
 sub-button to start daily themes tomorrow. Theme choice can be changed while locked.
+Every theme has a soft gradient background using only its own palette in both
+light and dark appearance; Graphite stays neutral and Iridescent stays prismatic.
 
 The logo uses Avenir Next with fixed CSS weight 750 and −0.8px letter spacing. The
 installed font determines the available rendered weight; fonts load locally
