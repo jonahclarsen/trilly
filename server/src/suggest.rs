@@ -129,7 +129,10 @@ pub fn suggestions(data: &Data, target: &Transaction) -> Vec<Suggestion> {
         if !t.approved
             || t.deleted
             || t.id == target.id
-            || t.special()
+            // Reconciled history is useful evidence even though it cannot be edited.
+            || !t.subtransactions.is_empty()
+            || t.transfer_account_id.is_some()
+            || t.debt_transaction_type.is_some()
             || t.amount.signum() != target.amount.signum()
         {
             continue;
@@ -323,6 +326,24 @@ mod tests {
         assert!(suggestions(&data, &target).is_empty());
         data.payees[0].deleted = false;
         data.transactions[0].amount = 42000;
+        assert!(suggestions(&data, &target).is_empty());
+    }
+
+    #[test]
+    fn reconciled_history_informs_suggestions_but_special_targets_remain_protected() {
+        let (mut data, mut target) = fixture(&["Cedar Coffee House"]);
+        data.transactions[0].cleared = "reconciled".into();
+        assert_eq!(suggestions(&data, &target)[0].payee, "Cedar Coffee House");
+        target.cleared = "reconciled".into();
+        assert!(suggestions(&data, &target).is_empty());
+        target.cleared = "cleared".into();
+        data.transactions[0].transfer_account_id = Some("other".into());
+        assert!(suggestions(&data, &target).is_empty());
+        data.transactions[0].transfer_account_id = None;
+        data.transactions[0].debt_transaction_type = Some("payment".into());
+        assert!(suggestions(&data, &target).is_empty());
+        data.transactions[0].debt_transaction_type = None;
+        data.transactions[0].subtransactions.push(Split::default());
         assert!(suggestions(&data, &target).is_empty());
     }
 

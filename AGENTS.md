@@ -48,7 +48,8 @@ SVGs. Keep shortcut handling and its reference together. Themes come from
 Balance; Iridescent is the default, with system light/dark appearance and an
 optional scheduled start for daily Random. The Trilly wordmark defaults to
 lowercase bold sky blue sans serif; its font, weight, spacing, and color are
-customizable in Settings. Use text for the top navigation.
+customizable in Settings. Use text labels with SVG icons and visible button borders for the top
+navigation. Use sliders for Settings, not a gear.
 
 Whenever a requested change alters the UI, regenerate the README screenshots
 with pnpm screenshots. Review the resulting WebP files in docs/screenshots,

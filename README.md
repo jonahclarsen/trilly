@@ -85,8 +85,9 @@ by YNAB's transactions endpoint.
 
 The first import fetches history since 2000; later syncs use YNAB's delta cursor.
 Suggestions appear below the review actions. Press 1, 2, or 3 to apply a
-payee/category pair and approve. When no matches exist, that section explains
-how to choose manually with P and C. Suggestions refresh after syncing.
+payee/category pair and approve. Suggestions refresh after syncing; the section
+is hidden when there are no matches. Use P and C to choose manually.
+The top controls have text labels, SVG icons, and visible button borders.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/category-dark.webp">
@@ -97,7 +98,9 @@ Picker searches keep keyboard focus without an outer focus ring; Escape closes
 the modal with one press.
 
 The account selector filters the review queue; suggestions use confirmed
-history across the selected plan. Matching ignores case and punctuation and
+history across the selected plan, including approved reconciled transactions.
+Transfers, splits, and loan transactions are excluded from suggestion history.
+Matching ignores case and punctuation and
 compares imported descriptions and saved payee names. Consecutive matching
 words rank first (longer phrases win), then multiple shared words in any order,
 then single whole-word matches. Frequency, payee identity, amount, account,
