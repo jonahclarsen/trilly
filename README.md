@@ -97,8 +97,16 @@ Picker searches keep keyboard focus without an outer focus ring; Escape closes
 the modal with one press.
 
 The account selector filters the review queue; suggestions use confirmed
-history across the selected plan. Rankings consider imported merchant text,
-payee, amount, account, matching memos, and recency. Corrections start informing
+history across the selected plan. Matching ignores case and punctuation and
+compares imported descriptions and saved payee names. Consecutive matching
+words rank first (longer phrases win), then multiple shared words in any order,
+then single whole-word matches. Frequency, payee identity, amount, account,
+matching memos, and recency break ties within the same word-match strength.
+A small built-in stop list excludes Vancouver, BC, other common Canadian
+locations, and payment noise such as SQ and POS. It is not a complete place-name
+database and can also filter a location word used in a business name. Categories
+still come from approved history; the app does not invent a category from a
+merchant name alone. Corrections start informing
 suggestions once YNAB confirms them. This is a local heuristic, not a claim of
 better accuracy than YNAB. Sparse or ambiguous history can produce poor choices.
 
