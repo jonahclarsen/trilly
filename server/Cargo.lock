@@ -1505,6 +1505,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "trilly"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "axum",
+ "cc",
+ "chacha20poly1305",
+ "chrono",
+ "dirs",
+ "fs2",
+ "libc",
+ "rand 0.8.8",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tower-http",
+ "zeroize",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1835,28 +1858,6 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
-
-[[package]]
-name = "ynab-plus"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "axum",
- "chacha20poly1305",
- "chrono",
- "dirs",
- "fs2",
- "libc",
- "rand 0.8.8",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower",
- "tower-http",
- "zeroize",
-]
 
 [[package]]
 name = "yoke"

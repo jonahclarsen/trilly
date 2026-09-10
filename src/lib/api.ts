@@ -6,7 +6,7 @@ export class ApiError extends Error {
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { 'content-type': 'application/json', 'x-ynab-plus': '1', ...(session ? { 'x-session': session } : {}) },
+    headers: { 'content-type': 'application/json', 'x-trilly': '1', ...(session ? { 'x-session': session } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: 'no-store', credentials: 'omit',
   })

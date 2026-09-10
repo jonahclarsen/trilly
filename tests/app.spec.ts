@@ -1,29 +1,52 @@
 import { test, expect } from '@playwright/test'
 import { mockApp } from './fixtures'
 
-test('real encrypted vault requires its passphrase after reload and lock', async ({ page }) => {
+test('native unlock opens automatically without a browser password and lock revokes access', async ({ page }) => {
+  const unlockRequests: unknown[] = []
+  page.on('request', request => { if (request.url().endsWith('/api/unlock')) unlockRequests.push(request.postDataJSON()) })
   await page.goto('/')
-  await page.getByLabel('Passphrase', { exact: true }).fill('synthetic passphrase for tests')
-  await page.getByLabel('Confirm passphrase').fill('synthetic passphrase for tests')
-  await page.getByRole('button', { name: 'Create vault' }).click()
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByLabel('Passphrase', { exact: true })).toHaveCount(0)
+  expect(unlockRequests[0]).toEqual({})
   await page.getByRole('button', { name: 'Close', exact: true }).click()
   await page.getByRole('button', { name: 'Lock', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Unlock', exact: true })).toBeVisible()
-  await page.reload()
-  await page.getByLabel('Passphrase', { exact: true }).fill('incorrect synthetic passphrase')
+  await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
+  const privateRead = await page.request.get('/api/state', { headers: { 'x-trilly': '1' } })
+  expect(privateRead.status()).toBe(401)
   await expect(async () => {
-    await page.getByLabel('Passphrase', { exact: true }).fill('incorrect synthetic passphrase')
     await page.getByRole('button', { name: 'Unlock', exact: true }).click()
-    await expect(page.getByRole('alert')).toContainText('Incorrect passphrase')
-  }).toPass({ timeout: 15000, intervals: [2200] })
-  await page.getByLabel('Passphrase', { exact: true }).fill('synthetic passphrase for tests')
-  await expect(async () => {
-    // Failed attempts clear the field; refill on each retry.
-    await page.getByLabel('Passphrase', { exact: true }).fill('synthetic passphrase for tests')
-    await page.getByRole('button', { name: 'Unlock', exact: true }).click()
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
-  }).toPass({ timeout: 15000, intervals: [2200] })
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({ timeout: 1000 })
+  }).toPass({ timeout: 10000, intervals: [2200] })
+  expect(unlockRequests.every(body => JSON.stringify(body) === '{}')).toBe(true)
+})
+
+test('cancelled macOS authentication stays locked and offers an explicit retry', async ({ page }) => {
+  let prompts = 0
+  await page.route('**/api/status', route => route.fulfill({ json: { exists: true, mode: 'macos' } }))
+  await page.route('**/api/unlock', route => { prompts++; return route.fulfill({ status: 400, json: { error: 'Unlock cancelled or authentication denied' } }) })
+  await page.goto('/')
+  await expect(page.getByRole('alert')).toContainText('Unlock cancelled')
+  await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
+  expect(prompts).toBe(1)
+  await expect(page.locator('input[type="password"]')).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await expect.poll(() => prompts).toBe(2)
+})
+
+test('legacy migration requests only the old vault passphrase once', async ({ page }) => {
+  let request: unknown
+  await page.route('**/api/status', route => route.fulfill({ json: { exists: true, mode: 'migration' } }))
+  await page.route('**/api/unlock', route => {
+    request = route.request().postDataJSON()
+    return route.fulfill({ status: 400, json: { error: 'Synthetic migration cancellation' } })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Switch to macOS unlock' })).toBeVisible()
+  expect(request).toBeUndefined()
+  await page.getByLabel('Existing vault passphrase').fill('synthetic old vault passphrase')
+  await page.getByRole('button', { name: 'Migrate', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Synthetic migration cancellation')
+  expect(request).toEqual({ legacy_passphrase: 'synthetic old vault passphrase' })
 })
 
 test('one-key suggestions, category search, undo and skip', async ({ page }) => {
@@ -60,6 +83,9 @@ test('theme selection persists, follows system appearance, and stays within view
   await page.emulateMedia({ colorScheme: 'dark' })
   await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await expect(page).toHaveTitle('Trilly')
+  await expect(page.locator('.brand')).toHaveText('trilly')
+  await expect(page.locator('.brand')).toHaveCSS('color', 'rgb(56, 189, 248)')
   await page.getByRole('button', { name: 'Close', exact: true }).click()
   await page.screenshot({ path: 'test-results/review-dark.png', fullPage: true, animations: 'disabled' })
   await page.emulateMedia({ colorScheme: 'light' })
@@ -93,7 +119,7 @@ test('transfers only allow approval and lock clears displayed data', async ({ pa
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Edit in YNAB' })).toBeVisible()
   await page.keyboard.press('l')
-  await expect(page.getByRole('heading', { name: 'Unlock', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
   await expect(page.getByText('Whole Foods', { exact: true })).toHaveCount(0)
 })
 

@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test'
 import { readFileSync, existsSync } from 'node:fs'
-const { port } = JSON.parse(readFileSync('port.json', 'utf8'))
+const { test_port: port } = JSON.parse(readFileSync('port.json', 'utf8'))
 export default defineConfig({
   testDir: './tests', testMatch: 'app.spec.ts', fullyParallel: false, workers: 1,
   use: {

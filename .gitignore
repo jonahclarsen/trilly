@@ -15,3 +15,6 @@ playwright-report/
 *.log
 *.sqlite*
 *.db*
+*.key-id
+*.keychain*
+instance.lock
