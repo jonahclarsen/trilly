@@ -183,3 +183,8 @@ textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px;
 dialog form { display: grid; gap: 16px; }
 .review-actions { gap: 8px; flex-wrap: wrap; }
 textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offset: 3px; }
+
+.business-table td.expense-remove { min-width: 44px; width: 44px; padding: 6px 0; }
+
+.modal-heading.with-subtitle { margin-bottom: 6px; }
+.modal-subtitle { margin-bottom: 24px; line-height: 1.5; }

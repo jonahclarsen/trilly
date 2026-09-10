@@ -171,7 +171,7 @@ better accuracy than YNAB. Sparse or ambiguous history can produce poor choices.
 
 ## Business expenses
 
-Press **B** or click **Business expense** while reviewing. The description is
+Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description is
 focused; Enter saves, Shift+Enter adds a line, and Tab moves to the optional note.
 Date, amount, and account are captured from the transaction. This does not approve
 or modify the YNAB transaction. The header's **Business** count opens the saved table.
@@ -188,10 +188,14 @@ clipboard, outside vault encryption; clipboard managers may retain it.
 Expenses and archives survive restarts, syncs, account changes, plan changes, and
 token replacement in the encrypted vault. The queue combines saved expenses across
 plans; amounts are not currency-converted. **Archive all** clears the current queue
-without deleting records. **Undo archive**, U, or Command-Z / Ctrl-Z restores the
-latest archived batch, including after restart. Outside text fields, general Undo
-restores that batch before undoing approvals. **Show archived** displays older rows.
-Saved transactions cannot be added twice, including archived transactions.
+without deleting records. **Undo expense** / **Undo archive**, U, or Command-Z / Ctrl-Z reverses business
+expense additions, removals, and archives, newest first, including after restart.
+The most recent 100 business changes are retained. Outside text fields, general
+Undo reverses business changes before undoing approvals. Use the rightmost SVG
+close button to remove an individual row; Undo restores it. The save button shows
+its Enter shortcut. **Show archived** displays older rows.
+Saved transactions cannot be added twice, including archived transactions. Removing
+a row or undoing its addition allows that transaction to be added again.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/business-dark.webp">

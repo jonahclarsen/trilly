@@ -108,7 +108,8 @@ fn snapshot(d: &Data) -> Value {
         "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "business_expenses": d.business_expenses,
-        "can_undo_archive": !d.business_archive_undo.is_empty(),
+        "can_undo_business": !d.business_undo.is_empty() || !d.business_archive_undo.is_empty(),
+        "can_undo_archive": matches!(d.business_undo.last(), Some(BusinessUndo::Archived { .. })) || (d.business_undo.is_empty() && !d.business_archive_undo.is_empty()),
         "can_undo": !d.undo.is_empty(), "synced_at": d.synced_at,
         "history_count": d.transactions.iter().filter(|t| t.approved && !t.deleted).count()})
 }
@@ -240,6 +241,11 @@ enum Action {
     },
     ArchiveBusinessExpenses,
     UndoBusinessArchive,
+    UndoBusinessExpense,
+    RemoveBusinessExpense {
+        plan_id: String,
+        id: String,
+    },
     Lock,
     Token {
         token: Zeroizing<String>,
@@ -284,12 +290,11 @@ async fn action(
             note,
         } => add_business_expense(&mut next, &id, description, note)?,
         Action::ArchiveBusinessExpenses => archive_business_expenses(&mut next),
-        Action::UndoBusinessArchive => {
-            for index in std::mem::take(&mut next.business_archive_undo) {
-                if let Some(expense) = next.business_expenses.get_mut(index) {
-                    expense.archived = false;
-                }
-            }
+        Action::UndoBusinessArchive | Action::UndoBusinessExpense => {
+            undo_business_expense(&mut next)?
+        }
+        Action::RemoveBusinessExpense { plan_id, id } => {
+            remove_business_expense(&mut next, &plan_id, &id)?
         }
         Action::Token { token } => {
             if !next.pending.is_empty() {
@@ -299,9 +304,11 @@ async fn action(
             // A replacement token may belong to another user. Start a fresh cache.
             let expenses = std::mem::take(&mut next.business_expenses);
             let archive_undo = std::mem::take(&mut next.business_archive_undo);
+            let business_undo = std::mem::take(&mut next.business_undo);
             next = Data::default();
             next.business_expenses = expenses;
             next.business_archive_undo = archive_undo;
+            next.business_undo = business_undo;
             next.token = token.trim().into();
             next.plans = plans;
         }
@@ -316,9 +323,11 @@ async fn action(
             let plans = next.plans.clone();
             let expenses = std::mem::take(&mut next.business_expenses);
             let archive_undo = std::mem::take(&mut next.business_archive_undo);
+            let business_undo = std::mem::take(&mut next.business_undo);
             next = Data::default();
             next.business_expenses = expenses;
             next.business_archive_undo = archive_undo;
+            next.business_undo = business_undo;
             next.token = token;
             next.plans = plans;
             next.plan_id = id;
@@ -458,7 +467,7 @@ fn add_business_expense(
         .iter()
         .find(|a| a.id == transaction.account_id)
         .ok_or("Account not found")?;
-    data.business_expenses.push(model::BusinessExpense {
+    let expense = model::BusinessExpense {
         plan_id: data.plan_id.clone(),
         transaction_id: id.into(),
         description: description.trim().into(),
@@ -467,7 +476,15 @@ fn add_business_expense(
         account: account.name.clone(),
         note,
         archived: false,
-    });
+    };
+    remember_business(
+        data,
+        BusinessUndo::Added {
+            plan_id: expense.plan_id.clone(),
+            transaction_id: expense.transaction_id.clone(),
+        },
+    );
+    data.business_expenses.push(expense);
     Ok(())
 }
 
@@ -482,10 +499,81 @@ fn archive_business_expenses(data: &mut Data) {
     if indices.is_empty() {
         return;
     }
+    let keys = indices
+        .iter()
+        .map(|&i| {
+            let e = &data.business_expenses[i];
+            (e.plan_id.clone(), e.transaction_id.clone())
+        })
+        .collect();
+    remember_business(data, BusinessUndo::Archived { keys });
     for &index in &indices {
         data.business_expenses[index].archived = true;
     }
-    data.business_archive_undo = indices;
+}
+
+// Convert the previous index-based archive undo before rows can be removed.
+fn migrate_business_undo(data: &mut Data) {
+    let keys: Vec<_> = std::mem::take(&mut data.business_archive_undo)
+        .into_iter()
+        .filter_map(|i| data.business_expenses.get(i))
+        .map(|e| (e.plan_id.clone(), e.transaction_id.clone()))
+        .collect();
+    if !keys.is_empty() {
+        data.business_undo.push(BusinessUndo::Archived { keys });
+    }
+}
+
+fn remember_business(data: &mut Data, change: BusinessUndo) {
+    migrate_business_undo(data);
+    data.business_undo.push(change);
+    if data.business_undo.len() > 100 {
+        data.business_undo.remove(0);
+    }
+}
+
+fn remove_business_expense(data: &mut Data, plan_id: &str, id: &str) -> Result<()> {
+    let index = data
+        .business_expenses
+        .iter()
+        .position(|e| e.plan_id == plan_id && e.transaction_id == id)
+        .ok_or("Business expense not found")?;
+    migrate_business_undo(data);
+    let expense = data.business_expenses.remove(index);
+    remember_business(data, BusinessUndo::Removed { expense, index });
+    Ok(())
+}
+
+fn undo_business_expense(data: &mut Data) -> Result<()> {
+    migrate_business_undo(data);
+    match data
+        .business_undo
+        .pop()
+        .ok_or("No business expense change to undo")?
+    {
+        BusinessUndo::Added {
+            plan_id,
+            transaction_id,
+        } => {
+            data.business_expenses
+                .retain(|e| e.plan_id != plan_id || e.transaction_id != transaction_id);
+        }
+        BusinessUndo::Removed { expense, index } => {
+            data.business_expenses
+                .insert(index.min(data.business_expenses.len()), expense);
+        }
+        BusinessUndo::Archived { keys } => {
+            for expense in &mut data.business_expenses {
+                if keys
+                    .iter()
+                    .any(|(plan, id)| *plan == expense.plan_id && *id == expense.transaction_id)
+                {
+                    expense.archived = false;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn undo(data: &mut Data) -> Result<()> {
@@ -744,13 +832,42 @@ mod tests {
         let mut reopened = vault::Vault::open_native(path, &keystore::SyntheticKeyStore).unwrap();
         assert!(reopened.data.business_expenses[0].archived);
         assert_eq!(reopened.data.business_expenses[0].note, "Optional note");
-        assert_eq!(reopened.data.business_archive_undo, vec![0]);
-        for index in std::mem::take(&mut reopened.data.business_archive_undo) {
-            reopened.data.business_expenses[index].archived = false;
-        }
+        assert!(matches!(
+            reopened.data.business_undo.last(),
+            Some(BusinessUndo::Archived { .. })
+        ));
+        undo_business_expense(&mut reopened.data).unwrap();
         assert!(!reopened.data.business_expenses[0].archived);
         let old: Data = serde_json::from_str("{}").unwrap();
         assert!(old.business_expenses.is_empty());
+    }
+
+    #[test]
+    fn business_undo_handles_removal_readdition_and_legacy_archives() {
+        let mut data = Data::default();
+        data.business_expenses.push(BusinessExpense {
+            plan_id: "synthetic-plan".into(),
+            transaction_id: "synthetic-id".into(),
+            archived: true,
+            ..Default::default()
+        });
+        data.business_archive_undo = vec![0];
+        remove_business_expense(&mut data, "synthetic-plan", "synthetic-id").unwrap();
+        assert!(data.business_expenses.is_empty());
+        undo_business_expense(&mut data).unwrap();
+        assert!(data.business_expenses[0].archived);
+        undo_business_expense(&mut data).unwrap();
+        assert!(!data.business_expenses[0].archived);
+        remember_business(
+            &mut data,
+            BusinessUndo::Added {
+                plan_id: "synthetic-plan".into(),
+                transaction_id: "synthetic-id".into(),
+            },
+        );
+        undo_business_expense(&mut data).unwrap();
+        assert!(data.business_expenses.is_empty());
+        assert!(undo_business_expense(&mut data).is_err());
     }
 
     use super::*;

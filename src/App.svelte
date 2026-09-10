@@ -72,8 +72,12 @@
   async function archiveExpenses() {
     if (await act({ action: 'archive_business_expenses' })) businessMessage = 'Archived. Undo restores this batch.'
   }
-  async function undoArchive() {
-    if (await act({ action: 'undo_business_archive' })) businessMessage = 'Restored archived expenses.'
+  async function undoBusiness() {
+    if (!data?.can_undo_business && !data?.can_undo_archive) return
+    if (await act({ action: 'undo_business_expense' })) businessMessage = 'Business expense change undone.'
+  }
+  async function removeExpense(plan_id: string, id: string) {
+    if (await act({ action: 'remove_business_expense', plan_id, id })) businessMessage = 'Expense removed. Undo restores it.'
   }
   let skipped = $state<string[]>([])
   let picks = $state<Suggestion[]>([])
@@ -299,7 +303,8 @@
     reviewElement?.focus()
   }
   function undo() {
-    if (data?.can_undo_archive) { void undoArchive(); return }
+    if (data?.can_undo_business || data?.can_undo_archive) { void undoBusiness(); return }
+    if (modal === 'business') return
     if (!data?.can_undo || busy || saveFailed) return
     enqueue({ body: { action: 'undo' }, restore: data.undo_transactions?.at(-1) })
     skipped = []; reviewElement?.focus()
@@ -340,7 +345,7 @@
       }
       return
     }
-    if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoArchive(); return }
+    if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoBusiness(); return }
     if (modal) return
     if (typing) return
     const index = suggestionIndex(event)
@@ -383,7 +388,7 @@
       {#if data}
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
         <Button icon="sync" label="Sync" shortcut="R" disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
-        <Button icon="undo" label="Undo" shortcut="⌘Z / U" disabled={busy || saveFailed || (!data.can_undo && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
+        <Button icon="undo" label="Undo" shortcut="⌘Z / U" disabled={busy || saveFailed || (!data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
         <Button icon="business" label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business {activeExpenses.length}</Button>
         <span class="nav-divider"></span>
         <Button icon="keyboard" label="Help" shortcut="?" onclick={() => modal = 'shortcuts'}>Help</Button>
@@ -544,13 +549,12 @@
     {/if}
   </Modal>
 {:else if modal === 'expense'}
-  <Modal title="Business expense" onclose={() => { modal = null; description = ''; expenseNote = '' }}>
+  <Modal title="Add business expense" subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = '' }}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
-    <p class="muted">{current?.date} · {current ? money(-current.amount) : ''} · {currentAccount?.name}</p>
     <form onsubmit={(event) => { event.preventDefault(); void saveExpense() }}>
       <label>Description<textarea data-modal-focus bind:value={description} required maxlength="10000" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
       <label>Note (optional)<textarea bind:value={expenseNote} maxlength="10000" rows="2"></textarea></label>
-      <Button type="submit" primary disabled={busy || !!saving || saveFailed || !description.trim()}>Save expense</Button>
+      <Button type="submit" primary shortcut="Enter" disabled={busy || !!saving || saveFailed || !description.trim()}>Save expense</Button>
     </form>
   </Modal>
 {:else if modal === 'business'}
@@ -559,16 +563,16 @@
     <div class="business-actions">
       <Button primary disabled={!activeExpenses.length} onclick={() => void copyExpenses()}>Copy to sheet</Button>
       <Button disabled={busy || !!saving || saveFailed || !activeExpenses.length} onclick={() => void archiveExpenses()}>Archive all</Button>
-      {#if data?.can_undo_archive}<Button icon="undo" disabled={busy || !!saving || saveFailed} onclick={() => void undoArchive()}>Undo archive</Button>{/if}
+      {#if data?.can_undo_business || data?.can_undo_archive}<Button icon="undo" shortcut="⌘Z / U" disabled={busy || !!saving || saveFailed} onclick={() => void undoBusiness()}>{data?.can_undo_archive ? 'Undo archive' : 'Undo expense'}</Button>{/if}
       <Button onclick={() => showArchived = !showArchived}>{showArchived ? 'Show current' : 'Show archived'}</Button>
     </div>
     <p class="field-note">Copy current rows: description, date (yyyy-mm-dd), amount, account, note. Expenses are positive; refunds are negative.</p>
     {#if businessMessage}<p role="status">{businessMessage}</p>{/if}
     <div class="business-table"><table>
-      <thead><tr><th>Description</th><th>Date</th><th>Amount</th><th>Account</th><th>Note</th></tr></thead>
+      <thead><tr><th>Description</th><th>Date</th><th>Amount</th><th>Account</th><th>Note</th><th aria-label="Actions"></th></tr></thead>
       <tbody>{#each expenses.filter(e => e.archived === showArchived) as expense}
-        <tr><td>{expense.description}</td><td>{expense.date}</td><td>{expense.amount / 1000}</td><td>{expense.account}</td><td>{expense.note}</td></tr>
-      {:else}<tr><td colspan="5">{showArchived ? 'No archived expenses.' : 'No current expenses. Press B while reviewing a transaction to add one.'}</td></tr>{/each}</tbody>
+        <tr><td>{expense.description}</td><td>{expense.date}</td><td>{expense.amount / 1000}</td><td>{expense.account}</td><td>{expense.note}</td><td class="expense-remove"><Button icon="close" label={`Remove expense: ${expense.description}`} disabled={busy || !!saving || saveFailed} onclick={() => void removeExpense(expense.plan_id, expense.transaction_id)} /></td></tr>
+      {:else}<tr><td colspan="6">{showArchived ? 'No archived expenses.' : 'No current expenses. Press B while reviewing a transaction to add one.'}</td></tr>{/each}</tbody>
     </table></div>
   </Modal>
 {:else if modal === 'shortcuts'}

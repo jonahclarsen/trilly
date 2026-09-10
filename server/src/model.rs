@@ -150,8 +150,25 @@ pub struct BusinessExpense {
     pub archived: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize, Zeroize)]
+pub enum BusinessUndo {
+    Added {
+        plan_id: String,
+        transaction_id: String,
+    },
+    Removed {
+        expense: BusinessExpense,
+        index: usize,
+    },
+    Archived {
+        keys: Vec<(String, String)>,
+    },
+}
+
 #[derive(Clone, Default, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Data {
+    #[serde(default)]
+    pub business_undo: Vec<BusinessUndo>,
     #[serde(default)]
     pub business_expenses: Vec<BusinessExpense>,
     #[serde(default)]

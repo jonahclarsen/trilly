@@ -23,6 +23,7 @@ export const suggestions: Suggestion[] = [
 export async function mockApp(page: Page, options: { syncError?: boolean; durableUndo?: boolean; special?: boolean; url?: string } = {}) {
   let state = structuredClone(synthetic)
   if (options.special) state.queue[0].transfer_account_id = 'checking'
+  const businessHistory: { expenses: NonNullable<Snapshot['business_expenses']>; archive: boolean }[] = []
   let undoRestore: Snapshot | undefined
   const previous: Snapshot[] = []
   const actions: Record<string, unknown>[] = []
@@ -36,13 +37,19 @@ export async function mockApp(page: Page, options: { syncError?: boolean; durabl
     else if (path === '/api/action') {
       const body = route.request().postDataJSON()
       actions.push(body)
+      if (['business_expense', 'archive_business_expenses', 'remove_business_expense'].includes(body.action)) {
+        businessHistory.push({ expenses: structuredClone(state.business_expenses!), archive: body.action === 'archive_business_expenses' })
+      }
       if (body.action === 'business_expense') {
         const t = state.queue.find(t => t.id === body.id)!
         state.business_expenses!.push({ plan_id: state.plan_id, transaction_id: t.id, description: body.description.trim(), date: t.date, amount: -t.amount, account: state.accounts.find(a => a.id === t.account_id)!.name, note: body.note, archived: false })
       } else if (body.action === 'archive_business_expenses') {
         state.business_expenses!.forEach(e => e.archived = true); state.can_undo_archive = true
-      } else if (body.action === 'undo_business_archive') {
-        state.business_expenses!.forEach(e => e.archived = false); state.can_undo_archive = false
+      } else if (body.action === 'remove_business_expense') {
+        state.business_expenses = state.business_expenses!.filter(e => e.plan_id !== body.plan_id || e.transaction_id !== body.id)
+      } else if (body.action === 'undo_business_archive' || body.action === 'undo_business_expense') {
+        const previous = businessHistory.pop()
+        if (previous) state.business_expenses = previous.expenses
       } else if (body.action === 'review') {
         previous.push(structuredClone(state)); state.undo_transactions!.push(state.queue.find(t => t.id === body.id)!); state.queue = state.queue.filter(t => t.id !== body.id); state.pending++; state.can_undo = true
       } else if (body.action === 'undo') {
@@ -57,6 +64,8 @@ export async function mockApp(page: Page, options: { syncError?: boolean; durabl
       } else if (body.action === 'account') {
         state.account_id = body.id; state.queue = []
       }
+      state.can_undo_business = businessHistory.length > 0
+      state.can_undo_archive = businessHistory.at(-1)?.archive ?? false
       response = body.action === 'lock' ? { locked: true } : state
     }
     await route.fulfill({ json: response })

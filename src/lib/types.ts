@@ -10,7 +10,7 @@ export type Transaction = {
 }
 export type Suggestion = { payee_id: string | null; category_id: string | null; payee: string; category: string; count: number; reason: string }
 export type Snapshot = {
-  business_expenses?: BusinessExpense[]; can_undo_archive?: boolean;
+  business_expenses?: BusinessExpense[]; can_undo_archive?: boolean; can_undo_business?: boolean;
   connected: boolean;
   plans: { id: string; name: string; currency_format: { iso_code: string } | null }[];
   plan_id: string; account_id: string; accounts: Option[];

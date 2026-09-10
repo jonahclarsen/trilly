@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
   import Button from './Button.svelte'
-  let { title, onclose, children, wide = false }: { title: string; onclose: () => void; children: Snippet; wide?: boolean } = $props()
+  let { title, onclose, children, wide = false, subtitle }: { title: string; onclose: () => void; children: Snippet; wide?: boolean; subtitle?: string } = $props()
   function open(node: HTMLDialogElement) {
     window.addEventListener('keydown', keydown, true)
     node.showModal()
@@ -27,6 +27,7 @@
   }
 </script>
 <dialog onpointerdown={(event) => outsidePress = outside(event)} onclick={(event) => { if (outsidePress && outside(event)) onclose(); outsidePress = false }} use:open class:wide oncancel={(event) => { event.preventDefault(); onclose() }} aria-label={title}>
-  <div class="modal-heading"><h2>{title}</h2><Button icon="close" label="Close" shortcut="Esc" onclick={onclose} /></div>
+  <div class="modal-heading" class:with-subtitle={!!subtitle}><h2>{title}</h2><Button icon="close" label="Close" shortcut="Esc" onclick={onclose} /></div>
+  {#if subtitle}<p class="modal-subtitle muted">{subtitle}</p>{/if}
   {@render children()}
 </dialog>

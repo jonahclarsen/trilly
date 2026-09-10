@@ -77,7 +77,7 @@ test('publish synthetic light and dark WebP screenshots', async ({ page }) => {
   await page.keyboard.press('b')
   await page.getByLabel('Description', { exact: true }).fill('Office supplies')
   await page.getByLabel('Note (optional)').fill('Receipt filed')
-  await page.getByRole('button', { name: 'Save expense', exact: true }).click()
+  await page.getByRole('button', { name: 'Save expense Enter', exact: true }).click()
   await page.getByRole('button', { name: 'Business expenses (1)', exact: true }).click()
   for (const mode of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: mode })
