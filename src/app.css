@@ -170,3 +170,16 @@ input.hue-slider { appearance: none; height: 9px; border: 0; background: linear-
   .color-value { width: 82px; }
   .color-sliders label { display: grid; grid-template-columns: 1fr; gap: 4px; }
 }
+
+textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+.business-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.business-table { overflow-x: auto; }
+.business-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.business-table th, .business-table td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.business-table td { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 85px; }
+.business-table td:first-child { min-width: 140px; }
+
+.business-actions + .field-note { margin: 16px 0; }
+dialog form { display: grid; gap: 16px; }
+.review-actions { gap: 8px; flex-wrap: wrap; }
+textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offset: 3px; }

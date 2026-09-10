@@ -97,6 +97,7 @@ clients; run `pnpm start` when you do not need hot updates.
 | 1 / 2 / 3 | Apply that suggested pair, approve, and advance |
 | C / P | Search categories / payees; Enter selects |
 | S | Skip for this session |
+| B | Save a business expense |
 | U | Undo the last approval |
 | A | Choose account |
 | R | Refresh metadata and sync |
@@ -121,7 +122,7 @@ must currently be created there too. Pending bank transactions are not exposed
 by YNAB's transactions endpoint.
 
 The first import fetches history since 2000; later syncs use YNAB's delta cursor.
-Suggestions appear below the review actions. Press 1, 2, or 3 on the number
+Suggestions appear above the review actions. Press 1, 2, or 3 on the number
 row or numeric keypad to apply a payee/category pair and approve. Physical
 number keys also work on layouts that produce symbols and with Num Lock off.
 Suggestion shortcuts remain inactive while typing or while a dialog is open.
@@ -167,6 +168,35 @@ still come from approved history; the app does not invent a category from a
 merchant name alone. Corrections start informing
 suggestions once YNAB confirms them. This is a local heuristic, not a claim of
 better accuracy than YNAB. Sparse or ambiguous history can produce poor choices.
+
+## Business expenses
+
+Press **B** or click **Business expense** while reviewing. The description is
+focused; Enter saves, Shift+Enter adds a line, and Tab moves to the optional note.
+Date, amount, and account are captured from the transaction. This does not approve
+or modify the YNAB transaction. The header's **Business** count opens the saved table.
+
+**Copy to sheet** copies current rows without headers in this order: description,
+`yyyy-mm-dd` date, amount, account, note. Paste into the first destination cell.
+Amounts reverse the YNAB sign: expenses are positive and refunds negative, with
+up to three decimal places preserved. Excel's destination format and regional
+settings control date/number display; format the date column as `yyyy-mm-dd` if needed.
+Tabs and line breaks within text become spaces, and formula-like text is prefixed
+with an apostrophe to keep it literal. Copying places plaintext on the system
+clipboard, outside vault encryption; clipboard managers may retain it.
+
+Expenses and archives survive restarts, syncs, account changes, plan changes, and
+token replacement in the encrypted vault. The queue combines saved expenses across
+plans; amounts are not currency-converted. **Archive all** clears the current queue
+without deleting records. **Undo archive**, U, or Command-Z / Ctrl-Z restores the
+latest archived batch, including after restart. Outside text fields, general Undo
+restores that batch before undoing approvals. **Show archived** displays older rows.
+Saved transactions cannot be added twice, including archived transactions.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/business-dark.webp">
+  <img alt="Synthetic business expenses ready to copy to a spreadsheet, with archive and undo support" src="docs/screenshots/business-light.webp" width="660">
+</picture>
 
 ## Encryption and its limits
 

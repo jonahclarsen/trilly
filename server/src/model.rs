@@ -138,8 +138,24 @@ pub struct Pending {
     pub conflict: bool,
 }
 
+#[derive(Clone, Default, Serialize, Deserialize, Zeroize)]
+pub struct BusinessExpense {
+    pub plan_id: String,
+    pub transaction_id: String,
+    pub description: String,
+    pub date: String,
+    pub amount: i64,
+    pub account: String,
+    pub note: String,
+    pub archived: bool,
+}
+
 #[derive(Clone, Default, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Data {
+    #[serde(default)]
+    pub business_expenses: Vec<BusinessExpense>,
+    #[serde(default)]
+    pub business_archive_undo: Vec<usize>,
     #[serde(default)]
     pub token: String,
     #[serde(default)]

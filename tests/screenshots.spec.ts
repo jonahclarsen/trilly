@@ -74,6 +74,16 @@ test('publish synthetic light and dark WebP screenshots', async ({ page }) => {
     await page.keyboard.press('Escape')
     await page.setViewportSize({ width: 1280, height: 940 })
   }
+  await page.keyboard.press('b')
+  await page.getByLabel('Description', { exact: true }).fill('Office supplies')
+  await page.getByLabel('Note (optional)').fill('Receipt filed')
+  await page.getByRole('button', { name: 'Save expense', exact: true }).click()
+  await page.getByRole('button', { name: 'Business expenses (1)', exact: true }).click()
+  for (const mode of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: mode })
+    await sharp(await page.getByRole('dialog', { name: 'Business expenses', exact: true }).screenshot({ type: 'png', animations: 'disabled' })).webp({ quality: 88, effort: 6 }).toFile(`docs/screenshots/business-${mode}.webp`)
+  }
+  await page.keyboard.press('Escape')
   let release!: () => void
   const saving = new Promise<void>(resolve => release = resolve)
   await page.route('**/api/action', async route => {

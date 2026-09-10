@@ -13,7 +13,7 @@ export const synthetic: Snapshot = {
   categories: [{ id: 'groceries', name: 'Groceries', category_group_name: 'Everyday' }, { id: 'dining', name: 'Dining out', category_group_name: 'Everyday' }, { id: 'coffee', name: 'Coffee', category_group_name: 'Everyday' }],
   payees: [{ id: 'market', name: 'Whole Foods' }, { id: 'cafe', name: 'Brew House' }, { id: 'restaurant', name: 'Corner Kitchen' }],
   queue: [transaction('one', 'market', 'WHOLEFDS MKT #10482 VANCOUVER BC', -84270, 'groceries'), transaction('two', 'cafe', 'SQ *BREW HOUSE VANCOUVER', -6250, null), transaction('three', 'market', 'WHOLEFDS MKT #10482 VANCOUVER BC', -19300, 'groceries')],
-  undo_transactions: [], pending: 0, conflicts: 0, can_undo: false, synced_at: '2026-09-09T21:00:00Z', history_count: 1842,
+  business_expenses: [], can_undo_archive: false, undo_transactions: [], pending: 0, conflicts: 0, can_undo: false, synced_at: '2026-09-09T21:00:00Z', history_count: 1842,
 }
 export const suggestions: Suggestion[] = [
   { payee_id: 'market', category_id: 'groceries', payee: 'Whole Foods', category: 'Groceries', count: 24, reason: '24 similar transactions' },
@@ -36,7 +36,14 @@ export async function mockApp(page: Page, options: { syncError?: boolean; durabl
     else if (path === '/api/action') {
       const body = route.request().postDataJSON()
       actions.push(body)
-      if (body.action === 'review') {
+      if (body.action === 'business_expense') {
+        const t = state.queue.find(t => t.id === body.id)!
+        state.business_expenses!.push({ plan_id: state.plan_id, transaction_id: t.id, description: body.description.trim(), date: t.date, amount: -t.amount, account: state.accounts.find(a => a.id === t.account_id)!.name, note: body.note, archived: false })
+      } else if (body.action === 'archive_business_expenses') {
+        state.business_expenses!.forEach(e => e.archived = true); state.can_undo_archive = true
+      } else if (body.action === 'undo_business_archive') {
+        state.business_expenses!.forEach(e => e.archived = false); state.can_undo_archive = false
+      } else if (body.action === 'review') {
         previous.push(structuredClone(state)); state.undo_transactions!.push(state.queue.find(t => t.id === body.id)!); state.queue = state.queue.filter(t => t.id !== body.id); state.pending++; state.can_undo = true
       } else if (body.action === 'undo') {
         state = previous.pop() ?? state

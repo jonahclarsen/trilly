@@ -107,6 +107,8 @@ fn snapshot(d: &Data) -> Value {
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
         "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
+        "business_expenses": d.business_expenses,
+        "can_undo_archive": !d.business_archive_undo.is_empty(),
         "can_undo": !d.undo.is_empty(), "synced_at": d.synced_at,
         "history_count": d.transactions.iter().filter(|t| t.approved && !t.deleted).count()})
 }
@@ -231,6 +233,13 @@ async fn suggestions(
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 enum Action {
+    BusinessExpense {
+        id: String,
+        description: String,
+        note: String,
+    },
+    ArchiveBusinessExpenses,
+    UndoBusinessArchive,
     Lock,
     Token {
         token: Zeroizing<String>,
@@ -269,13 +278,30 @@ async fn action(
     let mut sync_error = None;
     match body {
         Action::Lock => unreachable!(),
+        Action::BusinessExpense {
+            id,
+            description,
+            note,
+        } => add_business_expense(&mut next, &id, description, note)?,
+        Action::ArchiveBusinessExpenses => archive_business_expenses(&mut next),
+        Action::UndoBusinessArchive => {
+            for index in std::mem::take(&mut next.business_archive_undo) {
+                if let Some(expense) = next.business_expenses.get_mut(index) {
+                    expense.archived = false;
+                }
+            }
+        }
         Action::Token { token } => {
             if !next.pending.is_empty() {
                 return Err("Sync or undo pending changes before replacing the token".into());
             }
             let plans = app.ynab.plans(token.trim()).await?;
             // A replacement token may belong to another user. Start a fresh cache.
+            let expenses = std::mem::take(&mut next.business_expenses);
+            let archive_undo = std::mem::take(&mut next.business_archive_undo);
             next = Data::default();
+            next.business_expenses = expenses;
+            next.business_archive_undo = archive_undo;
             next.token = token.trim().into();
             next.plans = plans;
         }
@@ -288,7 +314,11 @@ async fn action(
             }
             let token = next.token.clone();
             let plans = next.plans.clone();
+            let expenses = std::mem::take(&mut next.business_expenses);
+            let archive_undo = std::mem::take(&mut next.business_archive_undo);
             next = Data::default();
+            next.business_expenses = expenses;
+            next.business_archive_undo = archive_undo;
             next.token = token;
             next.plans = plans;
             next.plan_id = id;
@@ -395,6 +425,67 @@ async fn action(
         result["sync_error"] = json!(error);
     }
     Ok(Json(result))
+}
+
+fn add_business_expense(
+    data: &mut Data,
+    id: &str,
+    description: String,
+    note: String,
+) -> Result<()> {
+    if description.trim().is_empty() {
+        return Err("Description is required".into());
+    }
+    if description.len() > 10000 || note.len() > 10000 {
+        return Err("Description or note is too long".into());
+    }
+    if data
+        .business_expenses
+        .iter()
+        .any(|e| e.plan_id == data.plan_id && e.transaction_id == id)
+    {
+        return Err(
+            "Transaction is already saved as a business expense (possibly archived)".into(),
+        );
+    }
+    let transaction = data
+        .transactions
+        .iter()
+        .find(|t| t.id == id && !t.deleted)
+        .ok_or("Transaction not found")?;
+    let account = data
+        .accounts
+        .iter()
+        .find(|a| a.id == transaction.account_id)
+        .ok_or("Account not found")?;
+    data.business_expenses.push(model::BusinessExpense {
+        plan_id: data.plan_id.clone(),
+        transaction_id: id.into(),
+        description: description.trim().into(),
+        date: transaction.date.clone(),
+        amount: transaction.amount.checked_neg().ok_or("Invalid amount")?,
+        account: account.name.clone(),
+        note,
+        archived: false,
+    });
+    Ok(())
+}
+
+fn archive_business_expenses(data: &mut Data) {
+    let indices: Vec<_> = data
+        .business_expenses
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| !e.archived)
+        .map(|(i, _)| i)
+        .collect();
+    if indices.is_empty() {
+        return;
+    }
+    for &index in &indices {
+        data.business_expenses[index].archived = true;
+    }
+    data.business_archive_undo = indices;
 }
 
 fn undo(data: &mut Data) -> Result<()> {
@@ -610,6 +701,58 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn business_expenses_survive_encrypted_restart_and_archive_without_changing_transactions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("business.vault");
+        let mut vault =
+            vault::Vault::create_native(path.clone(), &keystore::SyntheticKeyStore).unwrap();
+        let mut data = Data::default();
+        data.plan_id = "synthetic-plan".into();
+        data.accounts.push(Account {
+            id: "card".into(),
+            name: "Synthetic card".into(),
+            ..Default::default()
+        });
+        data.transactions.push(Transaction {
+            id: "expense".into(),
+            account_id: "card".into(),
+            amount: -12345,
+            date: "2026-09-08".into(),
+            ..Default::default()
+        });
+        assert!(add_business_expense(&mut data, "missing", "Supplies".into(), "".into()).is_err());
+        assert!(add_business_expense(&mut data, "expense", " ".into(), "".into()).is_err());
+        add_business_expense(
+            &mut data,
+            "expense",
+            "Synthetic supplies".into(),
+            "Optional note".into(),
+        )
+        .unwrap();
+        assert_eq!(data.business_expenses[0].amount, 12345);
+        assert!(!data.transactions[0].approved);
+        assert!(data.pending.is_empty());
+        archive_business_expenses(&mut data);
+        archive_business_expenses(&mut data); // Empty archive must preserve undo.
+        assert!(add_business_expense(&mut data, "expense", "Duplicate".into(), "".into()).is_err());
+        vault.commit(data).unwrap();
+        drop(vault);
+        assert!(
+            !String::from_utf8_lossy(&std::fs::read(&path).unwrap()).contains("Synthetic supplies")
+        );
+        let mut reopened = vault::Vault::open_native(path, &keystore::SyntheticKeyStore).unwrap();
+        assert!(reopened.data.business_expenses[0].archived);
+        assert_eq!(reopened.data.business_expenses[0].note, "Optional note");
+        assert_eq!(reopened.data.business_archive_undo, vec![0]);
+        for index in std::mem::take(&mut reopened.data.business_archive_undo) {
+            reopened.data.business_expenses[index].archived = false;
+        }
+        assert!(!reopened.data.business_expenses[0].archived);
+        let old: Data = serde_json::from_str("{}").unwrap();
+        assert!(old.business_expenses.is_empty());
+    }
+
     use super::*;
     use tower::ServiceExt;
     #[tokio::test]

@@ -65,6 +65,13 @@ serves a separate static build with mocked API calls; it must not use a real vau
 
 ## Verification
 
+Do not run tests or screenshot workflows that launch/control browsers, access the
+system clipboard, interact with Keychain, or display native UI without fresh,
+explicit user authorization. These have disrupted the user's work. This restriction
+overrides the browser, screenshot, and native-test requirements elsewhere in this
+file. Use non-interactive static checks and builds; report any skipped verification.
+
+
 Run pnpm check, pnpm build, cargo test --manifest-path server/Cargo.toml, and
 pnpm test:browser. Use synthetic data for all API and encryption checks.
 Document material security limitations honestly in README.md.
