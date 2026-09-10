@@ -87,7 +87,8 @@ The first import fetches history since 2000; later syncs use YNAB's delta cursor
 Suggestions appear below the review actions. Press 1, 2, or 3 to apply a
 payee/category pair and approve. Suggestions refresh after syncing; the section
 is hidden when there are no matches. Use P and C to choose manually.
-The top controls have text labels, SVG icons, and visible button borders.
+The top controls have text labels, SVG icons, transparent backgrounds, and
+subtle outlines. Settings uses a gear icon.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/category-dark.webp">

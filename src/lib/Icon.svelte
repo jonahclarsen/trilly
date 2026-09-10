@@ -2,7 +2,7 @@
   export let name: 'lock' | 'settings' | 'sync' | 'check' | 'skip' | 'undo' | 'close' | 'search' | 'keyboard' | 'chevron' | 'external'
   const paths = {
     lock: 'M7 10V7a5 5 0 0 1 10 0v3M6 10h12a1 1 0 0 1 1 1v9H5v-9a1 1 0 0 1 1-1Zm6 4v3',
-    settings: 'M4 7h3m4 0h9M4 17h9m4 0h3M7 4h4v6H7V4Zm6 10h4v6h-4v-6Z',
+    settings: 'M9.5 2h5l.5 2.5 2 1.2 2.4-.8 2.5 4.2-1.9 1.7v2.4l1.9 1.7-2.5 4.2-2.4-.8-2 1.2-.5 2.5h-5L9 19.5l-2-1.2-2.4.8-2.5-4.2L4 13.2v-2.4L2.1 9.1l2.5-4.2 2.4.8 2-1.2L9.5 2ZM15.5 12a3.5 3.5 0 1 0-7 0 3.5 3.5 0 0 0 7 0Z',
     sync: 'M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5',
     check: 'm5 12 4 4L19 6', skip: 'm5 5 8 7-8 7M18 5v14',
     undo: 'm8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12h-3',

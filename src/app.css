@@ -112,8 +112,8 @@ dialog::backdrop { background: rgb(0 0 0 / .3); backdrop-filter: blur(4px); }
 /* Text navigation and review hierarchy. */
 .app-shell > header { border-bottom: 1px solid var(--line); padding-inline: 4vw; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 82px; height: auto; padding-block: 18px; flex-wrap: wrap; }
 nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-nav > button { padding: 8px 11px; gap: 7px; min-height: 38px; line-height: 20px; }
-nav > button svg { width: 18px; height: 18px; }
+nav > button { background: transparent; border-color: var(--line); padding: 6px 8px; gap: 6px; min-height: 34px; line-height: 20px; }
+nav > button svg { width: 16px; height: 16px; }
 nav > button kbd { display: none; }
 .sync-state { display: inline-flex; align-items: center; min-height: 38px; line-height: 20px; color: var(--muted); font-size: 11px; margin-right: 10px; }
 .transaction-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 15px; }
