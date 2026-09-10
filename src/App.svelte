@@ -10,7 +10,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { shortcuts } from './lib/shortcuts'
-  import { special, type Snapshot, type Suggestion, type Option } from './lib/types'
+  import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   const preferences = readPreferences()
   let theme = $state<ThemeId>(preferences.theme)
@@ -28,6 +28,23 @@
   let token = $state('')
   let busy = $state(false)
   let syncing = $state(false)
+  type QueuedAction = { body: Record<string, unknown>; restore?: Transaction }
+  let saving = $state(0)
+  let saveFailed = $state(false)
+  let confirmed: Snapshot | null = null
+  let events: QueuedAction[] = []
+  let draining = false
+  const suggestionCache = new Map<string, Promise<Suggestion[]>>()
+  let suggestionVersion = $state(0)
+  function matches(id: string) {
+    let request = suggestionCache.get(id)
+    if (!request) {
+      request = api<Suggestion[]>(`suggestions/${encodeURIComponent(id)}`)
+      suggestionCache.set(id, request)
+      request.catch(() => { if (suggestionCache.get(id) === request) suggestionCache.delete(id) })
+    }
+    return request
+  }
   let error = $state('')
   let modal = $state<'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | null>(null)
   let skipped = $state<string[]>([])
@@ -64,14 +81,15 @@
   $effect(() => {
     const snapshot = data
     const id = currentId
+    suggestionVersion
     let cancelled = false
     untrack(() => {
-      picks = []
       picksStatus = 'ready'
+      for (const t of snapshot?.queue.filter(t => !skipped.includes(t.id) && !special(t)).slice(0, 6) ?? []) void matches(t.id).catch(() => {})
       if (snapshot && id && current && !special(current)) {
         const epoch = sessionEpoch
         picksStatus = 'loading'
-        api<Suggestion[]>(`suggestions/${encodeURIComponent(id)}`).then(result => {
+        matches(id).then(result => {
           if (!cancelled && sessionEpoch === epoch && currentId === id) {
             picks = result; picksStatus = 'ready'
           }
@@ -120,6 +138,7 @@
 
   function forget() {
     sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
+    events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
     picks = []; skipped = []; payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
@@ -138,16 +157,13 @@
       setSession(result.session); epoch = ++sessionEpoch; data = result.state; unlockMode = 'macos'; lastActivity = Date.now()
       legacyPassphrase = ''
       if (!data.connected) modal = 'settings'
-      if (data.plan_id) {
-        syncing = true
-        const refreshed = await api<Snapshot>('action', { action: 'sync', full: true })
-        if (epoch === sessionEpoch) { data = refreshed; if (refreshed.sync_error) error = refreshed.sync_error }
-      }
+      busy = false
+      if (data.plan_id) void sync(true)
     } catch (e) { if (epoch === sessionEpoch) handleError(e); legacyPassphrase = '' }
-    finally { if (epoch === sessionEpoch) { busy = false; syncing = false } }
+    finally { if (epoch === sessionEpoch) { busy = false } }
   }
   async function act(action: Record<string, unknown>): Promise<boolean> {
-    if (busy || !data) return false
+    if (busy || saving || syncing || saveFailed || !data) return false
     error = ''; busy = true
     const epoch = sessionEpoch
     try {
@@ -163,21 +179,98 @@
     clearTimeout(syncTimer)
     syncTimer = setTimeout(() => { if (busy) scheduleSync(500); else void sync(false) }, delay)
   }
+  function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
+    const result = { ...snapshot, queue: [...snapshot.queue], undo_transactions: [...(snapshot.undo_transactions ?? [])] }
+    if (event.body.action === 'review') {
+      const transaction = result.queue.find(t => t.id === event.body.id)
+      if (transaction) result.undo_transactions.push(transaction)
+      result.queue = result.queue.filter(t => t.id !== event.body.id)
+      result.pending++; result.can_undo = true
+    } else if (event.body.action === 'undo') {
+      result.undo_transactions.pop()
+      if (event.restore && event.restore.account_id === result.account_id) {
+        result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
+      }
+      result.pending = Math.max(0, result.pending - 1)
+      result.can_undo = result.undo_transactions.length > 0
+    }
+    return result
+  }
+  function enqueue(event: QueuedAction) {
+    if (!data || saveFailed) return
+    if (!events.length) confirmed = data
+    events.push(event); saving = events.length
+    data = project(data, event)
+    void drain()
+  }
+  async function drain() {
+    if (draining) return
+    draining = true
+    let changed = false
+    const epoch = sessionEpoch
+    try {
+      while (events.length) {
+        const event = events[0]!
+        syncing = event.body.action === 'sync'
+        changed ||= !syncing
+        let result = await api<Snapshot>('action', event.body)
+        if (epoch !== sessionEpoch) return
+        // Undo writes a durable reverse edit. Keep its optimistic transaction
+        // visible until that reverse is confirmed, before sending another review.
+        if (event.body.action === 'undo' && result.pending) {
+          confirmed = result
+          result = await api<Snapshot>('action', { action: 'sync', full: false })
+          if (epoch !== sessionEpoch) return
+          if (result.sync_error) throw new Error(result.sync_error)
+        }
+        confirmed = result; events.shift(); saving = events.length
+        data = events.reduce(project, result)
+        if (result.sync_error) error = result.sync_error
+        if (event.body.action === 'sync') {
+          suggestionCache.clear(); suggestionVersion++
+        }
+      }
+      if (changed) scheduleSync()
+    } catch (e) {
+      if (epoch !== sessionEpoch) return
+      events = []; saving = 0; saveFailed = true
+      data = confirmed
+      handleError(e)
+      if (data) error = `Save could not be confirmed. Queued actions stopped. Reload saved state before continuing. ${error}`
+    } finally {
+      if (epoch === sessionEpoch) { draining = false; syncing = false }
+    }
+  }
+  async function recover() {
+    if (busy) return
+    busy = true
+    const epoch = sessionEpoch
+    try {
+      const result = await api<Snapshot>('state')
+      if (epoch !== sessionEpoch) return
+      data = result; confirmed = result; saveFailed = false; error = ''; skipped = []
+      suggestionCache.clear(); suggestionVersion++
+      if (result.pending) scheduleSync()
+    } catch (e) { if (epoch === sessionEpoch) handleError(e) }
+    finally { if (epoch === sessionEpoch) busy = false }
+  }
   async function sync(full = true) {
-    if (busy || !data?.plan_id) return
-    clearTimeout(syncTimer); syncing = true
-    await act({ action: 'sync', full }); syncing = false
+    if (busy || saving || saveFailed || !data?.plan_id || (!full && !data.pending)) return
+    clearTimeout(syncTimer)
+    enqueue({ body: { action: 'sync', full } })
   }
-  async function approve(suggestion?: Suggestion) {
-    if (!current || busy || !data) return
-    const success = await act({ action: 'review', id: current.id,
-      payee_id: suggestion ? suggestion.payee_id : payee,
-      category_id: suggestion ? suggestion.category_id : category })
-    if (success) { scheduleSync(); reviewElement?.focus() }
+  function approve(suggestion?: Suggestion) {
+    if (!current || busy || saveFailed || !data) return
+    const selectedPayee = suggestion ? suggestion.payee_id : payee
+    const selectedCategory = suggestion ? suggestion.category_id : category
+    if (!special(current) && (!selectedPayee || !selectedCategory)) return
+    enqueue({ body: { action: 'review', id: current.id, payee_id: selectedPayee, category_id: selectedCategory } })
+    reviewElement?.focus()
   }
-  async function undo() {
-    if (!data?.can_undo || busy) return
-    if (await act({ action: 'undo' })) { skipped = []; scheduleSync(50) }
+  function undo() {
+    if (!data?.can_undo || busy || saveFailed) return
+    enqueue({ body: { action: 'undo' }, restore: data.undo_transactions?.at(-1) })
+    skipped = []; reviewElement?.focus()
   }
   function skip() {
     if (current && (!busy || syncing)) { skipped = [...skipped, current.id]; reviewElement?.focus() }
@@ -203,7 +296,12 @@
   function openPicker(kind: 'category' | 'payee') { if (current && !special(current) && !busy) modal = kind }
   function keydown(event: KeyboardEvent) {
     lastActivity = Date.now()
-    if (event.repeat || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
+    if (event.repeat || event.isComposing) return
+    const typing = (event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')
+    if (data && !modal && !typing && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
+      event.preventDefault(); undo(); return
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey) return
     if (!data) {
       if (event.key === 'Enter' && !modal && ready && !busy && unlockMode === 'macos') {
         event.preventDefault(); void unlock()
@@ -217,7 +315,7 @@
       enter: () => void approve(), '1': () => { if (picks[0]) void approve(picks[0]) },
       '2': () => { if (picks[1]) void approve(picks[1]) }, '3': () => { if (picks[2]) void approve(picks[2]) },
       c: () => openPicker('category'), p: () => openPicker('payee'), s: skip, u: () => void undo(),
-      a: () => { if (!busy) modal = 'account' }, r: () => void sync(),
+      a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
     }
     // Native focused buttons retain Enter/Space activation.
@@ -245,9 +343,9 @@
     <span class="brand" style:font-family={logoFont(logo.font).family} style:font-weight={logo.weight} style:letter-spacing={`${logo.spacing}px`} style:color={logo.color || undefined}>trilly</span>
     <nav aria-label="App controls">
       {#if data}
-        <span class="sync-state" aria-live="polite">{syncing ? 'Syncing' : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
-        <Button icon="sync" label="Sync" shortcut="R" disabled={busy || !data.plan_id} onclick={() => void sync()}>Sync</Button>
-        <Button icon="undo" label="Undo" shortcut="U" disabled={busy || !data.can_undo} onclick={() => void undo()}>Undo</Button>
+        <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
+        <Button icon="sync" label="Sync" shortcut="R" disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
+        <Button icon="undo" label="Undo" shortcut="⌘Z / U" disabled={busy || saveFailed || !data.can_undo} onclick={() => void undo()}>Undo</Button>
         <span class="nav-divider"></span>
         <Button icon="keyboard" label="Help" shortcut="?" onclick={() => modal = 'shortcuts'}>Help</Button>
       {/if}
@@ -257,6 +355,8 @@
   </header>
 
   {#if error}<div class="error" role="alert"><span>{error}</span><Button icon="close" label="Dismiss error" onclick={() => error = ''} /></div>{/if}
+
+  {#if saveFailed && data}<div class="error" role="status"><span>Review paused until saved state is checked.</span><Button disabled={busy} onclick={() => void recover()}>Reload saved state</Button></div>{/if}
 
   {#if !data}
     <main class="unlock-page">
@@ -285,7 +385,7 @@
       <div class="queue-heading">
         <div>
           <span class="eyebrow">{currentPlan?.name ?? 'Review'}</span>
-          <button class="account-button" disabled={busy || !data.accounts.length} onclick={() => modal = 'account'} title="Choose account (A)">{currentAccount?.name ?? 'Choose account'}<Icon name="chevron" /></button>
+          <button class="account-button" disabled={busy || !!saving || saveFailed || !data.accounts.length} onclick={() => modal = 'account'} title="Choose account (A)">{currentAccount?.name ?? 'Choose account'}<Icon name="chevron" /></button>
         </div>
         {#if data.plan_id}<span class="count">{remaining} to review</span>{/if}
       </div>
@@ -321,7 +421,7 @@
 
           <div class="review-actions">
             <Button icon="skip" shortcut="S" disabled={busy && !syncing} onclick={skip}>Skip</Button>
-            <Button primary icon="check" shortcut="Enter" disabled={busy || (!special(current) && (!payee || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
+            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && (!payee || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
 
@@ -334,7 +434,7 @@
               <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
             {/if}
             {#each picks as suggestion, i}
-              <button class="suggestion" disabled={busy} onclick={() => void approve(suggestion)}>
+              <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
                 <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
               </button>
             {/each}
@@ -398,7 +498,7 @@
           <Button onclick={() => replacingToken = true}>Replace access token</Button>
         {/if}
         {#if data.connected}
-          <label class="setting-row">Plan<select value={data.plan_id} disabled={busy || !!data.pending} onchange={async (event) => { skipped = []; if (await act({ action: 'plan', id: event.currentTarget.value })) closeSettings() }}><option value="" disabled>Choose plan</option>{#each data.plans as plan}<option value={plan.id}>{plan.name}</option>{/each}</select></label>
+          <label class="setting-row">Plan<select value={data.plan_id} disabled={busy || !!saving || saveFailed || !!data.pending} onchange={async (event) => { skipped = []; if (await act({ action: 'plan', id: event.currentTarget.value })) closeSettings() }}><option value="" disabled>Choose plan</option>{#each data.plans as plan}<option value={plan.id}>{plan.name}</option>{/each}</select></label>
         {/if}
       </section>
     {/if}

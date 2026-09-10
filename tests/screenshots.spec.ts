@@ -74,6 +74,23 @@ test('publish synthetic light and dark WebP screenshots', async ({ page }) => {
     await page.keyboard.press('Escape')
     await page.setViewportSize({ width: 1280, height: 940 })
   }
+  let release!: () => void
+  const saving = new Promise<void>(resolve => release = resolve)
+  await page.route('**/api/action', async route => {
+    if (route.request().postDataJSON().action === 'review') await saving
+    await route.fallback()
+  })
+  try {
+    await page.keyboard.press('1')
+    await expect(page.locator('.sync-state')).toHaveText('1 saving')
+    await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+    for (const mode of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: mode })
+      await page.mouse.move(0, 0)
+      await sharp(await page.screenshot({ type: 'png', animations: 'disabled', fullPage: true })).webp({ quality: 88, effort: 6 }).toFile(`docs/screenshots/saving-${mode}.webp`)
+    }
+  } finally { release() }
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Lock', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
   for (const mode of ['light', 'dark'] as const) {

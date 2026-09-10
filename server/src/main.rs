@@ -106,6 +106,7 @@ fn snapshot(d: &Data) -> Value {
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
         "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
+        "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "can_undo": !d.undo.is_empty(), "synced_at": d.synced_at,
         "history_count": d.transactions.iter().filter(|t| t.approved && !t.deleted).count()})
 }

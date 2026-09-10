@@ -14,6 +14,7 @@ export type Snapshot = {
   plan_id: string; account_id: string; accounts: Option[];
   categories: { id: string; name: string; category_group_name: string }[];
   payees: Option[]; queue: Transaction[]; pending: number; conflicts: number;
+  undo_transactions?: Transaction[];
   can_undo: boolean; synced_at: string | null; history_count: number; sync_error?: string;
 }
 export function special(t: Transaction) {

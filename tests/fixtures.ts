@@ -13,16 +13,17 @@ export const synthetic: Snapshot = {
   categories: [{ id: 'groceries', name: 'Groceries', category_group_name: 'Everyday' }, { id: 'dining', name: 'Dining out', category_group_name: 'Everyday' }, { id: 'coffee', name: 'Coffee', category_group_name: 'Everyday' }],
   payees: [{ id: 'market', name: 'Whole Foods' }, { id: 'cafe', name: 'Brew House' }, { id: 'restaurant', name: 'Corner Kitchen' }],
   queue: [transaction('one', 'market', 'WHOLEFDS MKT #10482 VANCOUVER BC', -84270, 'groceries'), transaction('two', 'cafe', 'SQ *BREW HOUSE VANCOUVER', -6250, null), transaction('three', 'market', 'WHOLEFDS MKT #10482 VANCOUVER BC', -19300, 'groceries')],
-  pending: 0, conflicts: 0, can_undo: false, synced_at: '2026-09-09T21:00:00Z', history_count: 1842,
+  undo_transactions: [], pending: 0, conflicts: 0, can_undo: false, synced_at: '2026-09-09T21:00:00Z', history_count: 1842,
 }
 export const suggestions: Suggestion[] = [
   { payee_id: 'market', category_id: 'groceries', payee: 'Whole Foods', category: 'Groceries', count: 24, reason: '24 similar transactions' },
   { payee_id: 'market', category_id: 'dining', payee: 'Whole Foods', category: 'Dining out', count: 3, reason: '3 similar transactions' },
   { payee_id: 'restaurant', category_id: 'coffee', payee: 'Corner Kitchen', category: 'Coffee', count: 2, reason: '2 similar transactions' },
 ]
-export async function mockApp(page: Page, options: { syncError?: boolean; special?: boolean; url?: string } = {}) {
+export async function mockApp(page: Page, options: { syncError?: boolean; durableUndo?: boolean; special?: boolean; url?: string } = {}) {
   let state = structuredClone(synthetic)
   if (options.special) state.queue[0].transfer_account_id = 'checking'
+  let undoRestore: Snapshot | undefined
   const previous: Snapshot[] = []
   const actions: Record<string, unknown>[] = []
   await page.route('**/api/**', async route => {
@@ -36,12 +37,16 @@ export async function mockApp(page: Page, options: { syncError?: boolean; specia
       const body = route.request().postDataJSON()
       actions.push(body)
       if (body.action === 'review') {
-        previous.push(structuredClone(state)); state.queue = state.queue.filter(t => t.id !== body.id); state.pending++; state.can_undo = true
+        previous.push(structuredClone(state)); state.undo_transactions!.push(state.queue.find(t => t.id === body.id)!); state.queue = state.queue.filter(t => t.id !== body.id); state.pending++; state.can_undo = true
       } else if (body.action === 'undo') {
         state = previous.pop() ?? state
+        if (options.durableUndo) {
+          undoRestore = structuredClone(state)
+          state.queue = state.queue.slice(1); state.pending++
+        }
       } else if (body.action === 'sync') {
         if (options.syncError) state.sync_error = 'YNAB is unavailable. Changes remain saved locally.'
-        else { state.pending = 0; delete state.sync_error }
+        else { if (undoRestore) { state = undoRestore; undoRestore = undefined }; state.pending = 0; delete state.sync_error }
       } else if (body.action === 'account') {
         state.account_id = body.id; state.queue = []
       }

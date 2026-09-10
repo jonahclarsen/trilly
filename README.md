@@ -121,7 +121,22 @@ by YNAB's transactions endpoint.
 The first import fetches history since 2000; later syncs use YNAB's delta cursor.
 Suggestions appear below the review actions. Press 1, 2, or 3 to apply a
 payee/category pair and approve. Suggestions refresh after syncing; the section
-is hidden when there are no matches. Use P and C to choose manually.
+is hidden when there are no matches. Upcoming suggestions are preloaded. Use P
+and C to choose manually. Approve and undo update the screen immediately while
+requests save in order. Undo uses Command-Z on Mac, Ctrl-Z, or U; text fields
+keep their native undo. The header shows saves in progress and changes pending
+YNAB sync. A failed or uncertain save pauses review and offers “Reload saved
+state”; later queued actions are cancelled, so check the restored queue before
+continuing. Changes still saving in the browser can be lost on reload or lock.
+
+<details>
+<summary>Background saving preview (synthetic data)</summary>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/saving-dark.webp">
+  <img alt="Next transaction ready to review while the header shows one save in progress" src="docs/screenshots/saving-light.webp" width="1280">
+</picture>
+</details>
+
 The top controls have text labels, SVG icons, transparent backgrounds, and
 subtle outlines. Settings uses a gear icon.
 

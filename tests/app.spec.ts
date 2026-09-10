@@ -323,3 +323,115 @@ test('navigation uses visible icon buttons and centers the sync status', async (
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+test('preloads suggestions and queues number keys and Command-Z behind a slow save', async ({ page }) => {
+  const loaded = new Set<string>()
+  page.on('response', response => { if (response.url().includes('/api/suggestions/')) loaded.add(response.url().split('/').at(-1)!) })
+  const actions = await mockApp(page)
+  await expect.poll(() => loaded.has('two') && loaded.has('three')).toBe(true)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  let release!: () => void
+  const gate = new Promise<void>(resolve => release = resolve)
+  let started = false
+  await page.route('**/api/action', async route => {
+    if (route.request().postDataJSON().action === 'review' && !started) { started = true; await gate }
+    await route.fallback()
+  })
+  try {
+    await page.keyboard.press('1')
+    await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /24 similar transactions/ })).toBeEnabled()
+    await page.keyboard.press('2')
+    await expect(page.locator('.amount')).toContainText('19.30')
+    await page.keyboard.press('Meta+z')
+    await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+    await expect(page.locator('.sync-state')).toHaveText('3 saving')
+    expect(actions.filter(a => a.action === 'review')).toHaveLength(0)
+  } finally { release() }
+  await expect(page.locator('.sync-state')).not.toContainText('saving')
+  expect(actions.filter(a => ['review', 'undo'].includes(a.action as string)).map(a => a.action)).toEqual(['review', 'review', 'undo'])
+  await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+})
+
+test('failed save cancels later queued actions and reloads authoritative state', async ({ page }) => {
+  const actions = await mockApp(page)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  let release!: () => void
+  const gate = new Promise<void>(resolve => release = resolve)
+  await page.route('**/api/action', async route => {
+    if (route.request().postDataJSON().action === 'review') {
+      await gate
+      await route.fulfill({ status: 500, json: { error: 'Synthetic save failure' } })
+    } else await route.fallback()
+  })
+  try {
+    await page.keyboard.press('1')
+    await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+    await page.keyboard.press('Meta+z')
+  } finally { release() }
+  await expect(page.getByRole('alert')).toContainText('Save could not be confirmed')
+  await expect(page.getByRole('button', { name: /24 similar transactions/ })).toBeDisabled()
+  await page.getByRole('button', { name: 'Reload saved state' }).click()
+  await expect(page.getByRole('button', { name: /24 similar transactions/ })).toBeEnabled()
+  expect(actions.filter(a => a.action === 'undo')).toHaveLength(0)
+})
+
+test('Escape closes a populated payee search before an input handler consumes it', async ({ page }) => {
+  await mockApp(page)
+  await page.keyboard.press('p')
+  const search = page.getByRole('combobox', { name: 'Search payee' })
+  await search.fill('Brew')
+  // Model a browser/input handler consuming Escape before it can bubble.
+  await search.evaluate(input => input.addEventListener('keydown', event => {
+    if ((event as KeyboardEvent).key === 'Escape') event.stopPropagation()
+  }))
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
+test('suggestion keys remain active during a slow sync', async ({ page }) => {
+  const actions = await mockApp(page)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  let release!: () => void
+  const gate = new Promise<void>(resolve => release = resolve)
+  await page.route('**/api/action', async route => {
+    if (route.request().postDataJSON().action === 'sync') await gate
+    await route.fallback()
+  })
+  try {
+    await page.keyboard.press('r')
+    await page.keyboard.press('3')
+    await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+    await page.keyboard.press('Meta+z')
+    await expect(page.locator('.amount')).toContainText('84.27')
+  } finally { release() }
+  await expect(page.locator('.sync-state')).not.toContainText('saving')
+  expect(actions.filter(a => ['review', 'undo'].includes(a.action as string)).map(a => a.action)).toEqual(['review', 'undo'])
+})
+
+
+test('undo stays visible while its durable reverse syncs before the next review', async ({ page }) => {
+  const actions = await mockApp(page, { durableUndo: true })
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  await page.keyboard.press('1')
+  await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  let release!: () => void
+  const gate = new Promise<void>(resolve => release = resolve)
+  let reversing = false
+  await page.route('**/api/action', async route => {
+    if (route.request().postDataJSON().action === 'sync') { reversing = true; await gate }
+    await route.fallback()
+  })
+  try {
+    await page.keyboard.press('Meta+z')
+    await expect.poll(() => reversing).toBe(true)
+    await expect(page.locator('.amount')).toContainText('84.27')
+    await page.keyboard.press('2')
+    await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+    expect(actions.filter(a => a.action === 'review')).toHaveLength(1)
+  } finally { release() }
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  expect(actions.filter(a => a.action === 'review')).toHaveLength(2)
+  await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+})
