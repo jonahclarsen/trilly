@@ -521,7 +521,7 @@
 {#if modal === 'settings'}
   <Modal title="Settings" onclose={closeSettings} wide>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
-    <section class="settings-section">
+    <section class="settings-section theme-settings">
       <div class="setting-row">
         <span>Appearance</span>
         <div class="appearance-options" role="group" aria-label="Appearance">
@@ -534,11 +534,18 @@
         </div>
       </div>
       <div class="setting-label">Theme</div>
-      <div class="theme-grid">
+      <div class="theme-grid" role="group" aria-label="Color theme">
         {#each THEME_OPTIONS as preset}
-          <div class="theme-option" class:chosen={theme === preset.id}>
-            <button class="theme-select" aria-pressed={theme === preset.id} onclick={() => { theme = preset.id; randomStart = '' }}>
-              <span class="theme-swatch" style:background={'checkboxColor' in preset ? preset.checkboxColor : '#888888'}></span><span>{preset.name}</span>
+          <div class="theme-option" class:chosen={theme === preset.id} class:has-schedule={preset.id === 'random' && theme !== 'random'}>
+            <button class="theme-select" aria-label={preset.name} aria-describedby={`theme-description-${preset.id}`} aria-pressed={theme === preset.id} onclick={() => { theme = preset.id; randomStart = '' }}>
+              <span class="theme-swatches" aria-hidden="true">
+                {#each preset.swatches as swatch}<span style:--theme-swatch={swatch}></span>{/each}
+              </span>
+              <span class="theme-option-copy">
+                <strong>{preset.name}</strong>
+                <small id={`theme-description-${preset.id}`}>{preset.description}</small>
+              </span>
+              <span class="theme-selected-mark" aria-hidden="true"><Icon name="check" /></span>
             </button>
             {#if preset.id === 'random' && theme !== 'random'}
               <button class="theme-schedule" aria-pressed={!!randomStart} onclick={() => randomStart = randomStart ? '' : tomorrow()}>{randomStart ? 'Cancel start' : 'Start tomorrow'}</button>
