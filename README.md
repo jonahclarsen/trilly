@@ -121,9 +121,11 @@ must currently be created there too. Pending bank transactions are not exposed
 by YNAB's transactions endpoint.
 
 The first import fetches history since 2000; later syncs use YNAB's delta cursor.
-Suggestions appear below the review actions. Press 1, 2, or 3 to apply a
-payee/category pair and approve. Suggestions refresh after syncing; the section
-is hidden when there are no matches. Upcoming suggestions are preloaded. Use P
+Suggestions appear below the review actions. Press 1, 2, or 3 on the number
+row or numeric keypad to apply a payee/category pair and approve. Physical
+number keys also work on layouts that produce symbols and with Num Lock off.
+Suggestion shortcuts remain inactive while typing or while a dialog is open.
+Suggestions refresh after syncing; the section is hidden when there are no matches. Upcoming suggestions are preloaded. Use P
 and C to choose manually. Approve and undo update the screen immediately while
 requests save in order. Undo uses Command-Z on Mac, Ctrl-Z, or U; text fields
 keep their native undo. The header shows saves in progress and changes pending

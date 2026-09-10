@@ -9,7 +9,7 @@
   import { api, ApiError, setSession, hasSession, shouldAutoUnlock } from './lib/api'
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
-  import { shortcuts } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   const preferences = readPreferences()
@@ -104,6 +104,8 @@
   })
 
   onMount(() => {
+    // Capture shortcuts before focused controls can consume bubbling key events.
+    window.addEventListener('keydown', keydown, true)
     let mounted = true
     api<{ mode: 'macos' | 'migration' | 'unsupported' }>('status').then(result => {
       if (!mounted) return
@@ -133,7 +135,7 @@
       if (data && Date.now() - lastActivity >= IDLE_TIMEOUT_MS) void lock()
     }
     document.addEventListener('visibilitychange', wake)
-    return () => { mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
+    return () => { window.removeEventListener('keydown', keydown, true); mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
   })
 
   function forget() {
@@ -309,11 +311,16 @@
       return
     }
     if (modal) return
-    if ((event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable="true"]')) return
+    if (typing) return
+    const index = suggestionIndex(event)
+    if (index !== undefined) {
+      event.preventDefault()
+      if (picks[index]) approve(picks[index])
+      return
+    }
     const key = event.key.toLowerCase()
     const actions: Record<string, () => void> = {
-      enter: () => void approve(), '1': () => { if (picks[0]) void approve(picks[0]) },
-      '2': () => { if (picks[1]) void approve(picks[1]) }, '3': () => { if (picks[2]) void approve(picks[2]) },
+      enter: () => void approve(),
       c: () => openPicker('category'), p: () => openPicker('payee'), s: skip, u: () => void undo(),
       a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
@@ -336,7 +343,7 @@
   function focus(node: HTMLElement) { node.focus() }
 </script>
 
-<svelte:window onkeydown={keydown} onpointerdown={() => lastActivity = Date.now()} />
+<svelte:window onpointerdown={() => lastActivity = Date.now()} />
 
 <div class="app-shell">
   <header>

@@ -435,3 +435,51 @@ test('undo stays visible while its durable reverse syncs before the next review'
   expect(actions.filter(a => a.action === 'review')).toHaveLength(2)
   await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
 })
+
+test('number shortcuts reach suggestions when a focused control consumes bubbling events', async ({ page }) => {
+  const actions = await mockApp(page)
+  const suggestion = page.getByRole('button', { name: /24 similar transactions/ })
+  await expect(suggestion).toBeEnabled()
+  await suggestion.focus()
+  await suggestion.evaluate(button => button.addEventListener('keydown', event => event.stopPropagation()))
+  await page.keyboard.press('2')
+  await expect.poll(() => actions.find(action => action.action === 'review')).toMatchObject({
+    id: 'one', payee_id: 'market', category_id: 'dining',
+  })
+})
+
+for (const [key, code] of [['&', 'Digit1'], ['ArrowDown', 'Numpad2'], ['3', 'Numpad3']]) {
+  test(`suggestion shortcut recognizes ${code} producing ${key}`, async ({ page }) => {
+    const actions = await mockApp(page)
+    const suggestion = page.getByRole('button', { name: /24 similar transactions/ })
+    await expect(suggestion).toBeEnabled()
+    await suggestion.dispatchEvent('keydown', { key, code, bubbles: true })
+    const expected = suggestions[Number(code.at(-1)) - 1]
+    await expect.poll(() => actions.find(action => action.action === 'review')).toMatchObject({
+      id: 'one', payee_id: expected.payee_id, category_id: expected.category_id,
+    })
+  })
+}
+
+test('physical number shortcuts ignore typing, dialogs, modifiers, composition and repeats', async ({ page }) => {
+  const actions = await mockApp(page)
+  const suggestion = page.getByRole('button', { name: /24 similar transactions/ })
+  await expect(suggestion).toBeEnabled()
+  for (const flags of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }, { isComposing: true }, { repeat: true }]) {
+    await suggestion.dispatchEvent('keydown', { key: '&', code: 'Digit1', bubbles: true, ...flags })
+  }
+  await page.keyboard.press('p')
+  const search = page.getByRole('combobox')
+  await search.dispatchEvent('keydown', { key: '&', code: 'Digit1', bubbles: true })
+  await page.getByRole('button', { name: 'Close', exact: true }).dispatchEvent('keydown', { key: '1', code: 'Digit1', bubbles: true })
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.locator('.workspace').evaluate(workspace => {
+    const input = document.createElement('input')
+    input.setAttribute('aria-label', 'Synthetic typing fixture')
+    workspace.append(input)
+  })
+  await page.getByLabel('Synthetic typing fixture').press('1')
+  await expect(page.getByLabel('Synthetic typing fixture')).toHaveValue('1')
+  expect(actions.filter(action => action.action === 'review')).toHaveLength(0)
+})
