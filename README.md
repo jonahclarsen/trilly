@@ -34,6 +34,11 @@ Keychain password prompt, enter your YNAB personal access token in Settings,
 and select a plan and account. There is no separate Trilly login or passphrase.
 Your Mac password goes only into the macOS dialog; Trilly never receives it.
 Use “Allow” for the current unlock rather than permanently trusting the process.
+If the key's access rules changed (for example, after “Always Allow”), Unlock
+first restores password-required access through macOS, then requests the key.
+You may see an additional native prompt to authorize that access update. A
+cancelled or failed repair leaves Trilly locked and can be retried; it never
+replaces the encryption key or vault.
 
 If an existing passphrase-protected vault is found, Trilly asks for its old
 vault passphrase once, then requests macOS authorization to migrate it. A wrong
@@ -101,7 +106,9 @@ restriction; it is not merely an authentication flag in Trilly. macOS's legacy
 file-based Keychain APIs work with local Rust executables without requiring an
 Apple Developer provisioning profile. A native test creates an isolated,
 synthetic Keychain and verifies that even its creating process cannot silently
-retrieve the key when UI interaction is disabled.
+retrieve the key when UI interaction is disabled. The same test repairs synthetic
+trusted-app, password-optional, and unrestricted rules and confirms that none
+can return a key without native authentication.
 
 **XChaCha20-Poly1305** encrypts and authenticates the entire vault, including
 transaction history, token, pending edits, and undo history. Each save uses a

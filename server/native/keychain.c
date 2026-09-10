@@ -45,6 +45,22 @@ static OSStatus verify_access(SecKeychainItemRef item) {
     return result;
 }
 
+// Repair only the access rules of this exact item, before requesting its key.
+// SetAccess uses macOS authorization and may show a separate native prompt.
+// Never ignore a failed repair, replace the key, or fall back to a silent read.
+static OSStatus ensure_access(SecKeychainItemRef item) {
+    OSStatus result = verify_access(item);
+    if (result != POLICY_ERROR) return result;
+    SecAccessRef access = NULL;
+    result = SecKeychainItemCopyAccess(item, &access);
+    if (result != errSecSuccess) return result;
+    result = protect_access(access);
+    if (result == errSecSuccess) result = SecKeychainItemSetAccess(item, access);
+    CFRelease(access);
+    if (result == errSecSuccess) result = verify_access(item);
+    return result;
+}
+
 static OSStatus create_key(SecKeychainRef keychain, const char *account, const unsigned char *key, SecKeychainItemRef *created) {
     CFArrayRef nobody = CFArrayCreate(NULL, NULL, 0, &kCFTypeArrayCallBacks);
     SecAccessRef access = NULL;
@@ -73,7 +89,7 @@ static OSStatus read_key(SecKeychainRef keychain, const char *account, unsigned 
     OSStatus result = SecKeychainFindGenericPassword(keychain, (UInt32)strlen(SERVICE), SERVICE,
         (UInt32)strlen(account), account, NULL, NULL, &item);
     if (result != errSecSuccess) return result;
-    result = verify_access(item);
+    result = ensure_access(item);
     UInt32 length = 0; void *bytes = NULL;
     if (result == errSecSuccess) result = SecKeychainItemCopyContent(item, NULL, NULL, &length, &bytes);
     if (result == errSecSuccess) {
@@ -112,7 +128,8 @@ int trilly_key_read(const char *account, unsigned char *key) {
 
 // Uses only a new, isolated test Keychain, never the user's default Keychain.
 // UI is disabled: successful secret retrieval would be a security failure.
-int trilly_keychain_test(const char *path) {
+int trilly_keychain_test(const char *path, int scenario) {
+    if (scenario < 0 || scenario > 3) return errSecParam;
     Boolean allowed = true;
     SecKeychainGetUserInteractionAllowed(&allowed);
     SecKeychainSetUserInteractionAllowed(false);
@@ -121,12 +138,59 @@ int trilly_keychain_test(const char *path) {
     OSStatus result = SecKeychainCreate(path, (UInt32)strlen(password), password, false, NULL, &keychain);
     unsigned char key[32] = { 17 }; unsigned char output[32] = { 0 };
     SecKeychainItemRef item = NULL;
-    if (result == errSecSuccess) result = create_key(keychain, "synthetic-test-key", key, &item);
-    if (result == errSecSuccess) result = verify_access(item);
+    if (result == errSecSuccess && scenario == 0) result = create_key(keychain, "synthetic-test-key", key, &item);
+    if (result == errSecSuccess && scenario != 0) {
+        // Intentionally changed rules on a NEW synthetic item only. Permit ACL
+        // edits on this fixture so repair can be tested with all UI disabled.
+        SecAccessRef access = NULL;
+        result = SecAccessCreate(CFSTR("Synthetic test key"), NULL, &access);
+        CFArrayRef owners = result == errSecSuccess ? SecAccessCopyMatchingACLList(access, kSecACLAuthorizationChangeACL) : NULL;
+        // SetAccess can prompt despite interaction=false. This test must never
+        // reach it unless the NEW fixture explicitly permits owner ACL edits.
+        if (result == errSecSuccess && (!owners || CFArrayGetCount(owners) == 0)) result = POLICY_ERROR;
+        for (CFIndex i = 0; result == errSecSuccess && owners && i < CFArrayGetCount(owners); i++) {
+            result = SecACLSetContents((SecACLRef)CFArrayGetValueAtIndex(owners, i), NULL, CFSTR("Synthetic test owner"), 0);
+        }
+        if (owners) CFRelease(owners);
+        if (result == errSecSuccess && scenario != 1) {
+            CFArrayRef acls = SecAccessCopyMatchingACLList(access, kSecACLAuthorizationDecrypt);
+            CFArrayRef nobody = CFArrayCreate(NULL, NULL, 0, &kCFTypeArrayCallBacks);
+            for (CFIndex i = 0; result == errSecSuccess && acls && i < CFArrayGetCount(acls); i++) {
+                // 2: prompt lacks password requirement. 3: allow any process.
+                result = SecACLSetContents((SecACLRef)CFArrayGetValueAtIndex(acls, i), scenario == 2 ? nobody : NULL, CFSTR("Synthetic test key"), 0);
+            }
+            CFRelease(nobody);
+            if (acls) CFRelease(acls);
+        }
+        if (result == errSecSuccess) {
+            char account[] = "synthetic-test-key";
+            SecKeychainAttribute attributes[] = {
+                { kSecServiceItemAttr, (UInt32)strlen(SERVICE), (void *)SERVICE },
+                { kSecAccountItemAttr, (UInt32)strlen(account), account }
+            };
+            SecKeychainAttributeList list = { 2, attributes };
+            result = SecKeychainItemCreateFromContent(kSecGenericPasswordItemClass, &list, 32, key, keychain, access, &item);
+        }
+        if (access) CFRelease(access);
+        if (result == errSecSuccess && verify_access(item) != POLICY_ERROR) result = errSecDecode;
+    }
+    if (result == errSecSuccess && scenario == 0) result = verify_access(item);
     if (result == errSecSuccess) {
         OSStatus read = read_key(keychain, "synthetic-test-key", output);
         result = (read == errSecInteractionNotAllowed || read == errSecAuthFailed) ? errSecSuccess : (read == errSecSuccess ? POLICY_ERROR : read);
     }
+    if (result == errSecSuccess) result = verify_access(item);
+    if (result == errSecSuccess) {
+        result = SecKeychainLock(keychain);
+        if (result == errSecSuccess) result = SecKeychainUnlock(keychain, (UInt32)strlen(password), password, true);
+        if (result == errSecSuccess) result = verify_access(item);
+        if (result == errSecSuccess) {
+            OSStatus read = read_key(keychain, "synthetic-test-key", output);
+            result = (read == errSecInteractionNotAllowed || read == errSecAuthFailed) ? errSecSuccess : POLICY_ERROR;
+        }
+    }
+    // A failed/unavailable native prompt must never return even part of a key.
+    for (size_t i = 0; i < sizeof(output); i++) if (output[i] != 0) result = POLICY_ERROR;
     if (item) CFRelease(item);
     if (keychain) {
         OSStatus cleanup = SecKeychainDelete(keychain);
