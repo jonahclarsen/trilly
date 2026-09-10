@@ -338,7 +338,7 @@ mod tests {
         assert!(api.flush(&mut data).await.is_err());
         assert_eq!(data.pending.len(), 1);
         drop(vault);
-        let vault = crate::vault::Vault::unlock(path, "synthetic test passphrase").unwrap();
+        let vault = crate::vault::Vault::unlock_legacy(path, "synthetic test passphrase").unwrap();
         data = vault.data.clone();
         api.refresh(&mut data, false).await.unwrap();
         api.flush(&mut data).await.unwrap();

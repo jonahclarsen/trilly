@@ -1,3 +1,4 @@
+mod keystore;
 mod model;
 mod suggest;
 mod vault;
@@ -28,6 +29,8 @@ const IDLE: Duration = Duration::from_secs(10 * 60);
 type Shared = Arc<Mutex<App>>;
 struct App {
     path: PathBuf,
+    legacy_path: Option<PathBuf>,
+    keys: Arc<dyn keystore::KeyStore>,
     session: Option<Session>,
     ynab: ynab::Ynab,
     last_unlock: Option<Instant>,
@@ -107,15 +110,27 @@ fn snapshot(d: &Data) -> Value {
         "history_count": d.transactions.iter().filter(|t| t.approved && !t.deleted).count()})
 }
 
-async fn status(State(state): State<Shared>) -> Json<Value> {
-    Json(json!({"exists": state.lock().await.path.exists()}))
+async fn status(State(state): State<Shared>) -> Result<Json<Value>> {
+    let app = state.lock().await;
+    let source = if app.path.exists() {
+        Some(&app.path)
+    } else {
+        app.legacy_path.as_ref()
+    };
+    let migration = source
+        .map(|p| vault::Vault::is_legacy(p))
+        .transpose()?
+        .unwrap_or(false);
+    Ok(Json(
+        json!({"exists": source.is_some(), "mode": if migration { "migration" } else if cfg!(target_os = "macos") || cfg!(feature = "synthetic-tests") { "macos" } else { "unsupported" }}),
+    ))
 }
 
 #[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+#[serde(deny_unknown_fields)]
 struct Unlock {
-    password: String,
     #[serde(default)]
-    create: bool,
+    legacy_passphrase: Option<String>,
 }
 async fn unlock(State(state): State<Shared>, Json(body): Json<Unlock>) -> Result<Json<Value>> {
     let mut app = state.lock().await;
@@ -130,13 +145,45 @@ async fn unlock(State(state): State<Shared>, Json(body): Json<Unlock>) -> Result
     }
     app.last_unlock = Some(Instant::now());
     let path = app.path.clone();
-    let password = Zeroizing::new(body.password.clone());
-    let create = body.create;
-    let vault = tokio::task::spawn_blocking(move || {
-        if create {
-            vault::Vault::create(path, &password)
-        } else {
-            vault::Vault::unlock(path, &password)
+    let password = body
+        .legacy_passphrase
+        .as_ref()
+        .map(|s| Zeroizing::new(s.clone()));
+    let source = if path.exists() {
+        Some(path.clone())
+    } else {
+        app.legacy_path.clone()
+    };
+    let keys = app.keys.clone();
+    // Concurrent unlock requests share the mutex, but each successful browser
+    // session requires its own Keychain-authorized read. No native key cache.
+    let vault = tokio::task::spawn_blocking(move || match source {
+        Some(source) if vault::Vault::is_legacy(&source)? => {
+            let password = password
+                .as_ref()
+                .ok_or("Enter your existing vault passphrase once to migrate")?;
+            vault::Vault::migrate(source, path, password, keys.as_ref())
+        }
+        Some(source) => {
+            if password.is_some() {
+                return Err(
+                    "macOS handles authentication; do not send your Mac password to Trilly".into(),
+                );
+            }
+            let mut opened = vault::Vault::open_native(source, keys.as_ref())?;
+            if opened.path != path {
+                opened.path = path;
+                opened.save(&opened.data)?;
+            }
+            Ok(opened)
+        }
+        None => {
+            if password.is_some() {
+                return Err(
+                    "macOS handles authentication; do not send your Mac password to Trilly".into(),
+                );
+            }
+            vault::Vault::create_native(path, keys.as_ref())
         }
     })
     .await
@@ -151,6 +198,7 @@ async fn unlock(State(state): State<Shared>, Json(body): Json<Unlock>) -> Result
     );
     random.zeroize();
     let result = json!({"session": *bearer, "state": snapshot(&vault.data)});
+    app.legacy_path = None;
     app.session = Some(Session {
         bearer,
         vault,
@@ -389,7 +437,7 @@ async fn boundary(State(origin): State<String>, req: Request, next: Next) -> Res
         .get("sec-fetch-site")
         .is_some_and(|h| h == "cross-site");
     let api = req.uri().path().starts_with("/api/");
-    let marker = req.headers().get("x-ynab-plus").is_some_and(|h| h == "1");
+    let marker = req.headers().get("x-trilly").is_some_and(|h| h == "1");
     let mut response = if host != expected_host
         || supplied_origin.is_some_and(|o| o != origin)
         || cross_site
@@ -431,16 +479,34 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .parent()
         .unwrap()
         .to_path_buf();
-    let port = serde_json::from_str::<Value>(include_str!("../../port.json"))?["port"]
-        .as_u64()
-        .unwrap() as u16;
-    let data_dir = std::env::var_os("YNAB_PLUS_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            dirs::data_local_dir()
-                .expect("Local data directory")
-                .join("ynab-plus")
-        });
+    let ports = serde_json::from_str::<Value>(include_str!("../../port.json"))?;
+    let port = ports[if cfg!(feature = "synthetic-tests") {
+        "test_port"
+    } else {
+        "port"
+    }]
+    .as_u64()
+    .unwrap() as u16;
+    #[cfg(feature = "synthetic-tests")]
+    if std::env::var("TRILLY_SYNTHETIC_TESTS").as_deref() != Ok("1")
+        || std::env::var_os("TRILLY_DATA_DIR").is_none()
+    {
+        return Err("Synthetic tests require an explicit isolated data directory".into());
+    }
+    let custom_dir = std::env::var_os("TRILLY_DATA_DIR");
+    let legacy_path = if custom_dir.is_none() {
+        // Compatibility with the original app name; never create a second empty
+        // vault while a user's existing encrypted history is waiting to migrate.
+        let old = dirs::data_local_dir().unwrap().join("ynab-plus/data.vault");
+        old.exists().then_some(old)
+    } else {
+        None
+    };
+    let data_dir = custom_dir.map(PathBuf::from).unwrap_or_else(|| {
+        dirs::data_local_dir()
+            .expect("Local data directory")
+            .join("trilly")
+    });
     std::fs::create_dir_all(&data_dir)?;
     #[cfg(unix)]
     {
@@ -453,9 +519,32 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .write(true)
         .open(data_dir.join("instance.lock"))?;
     fs2::FileExt::try_lock_exclusive(&lock_file)
-        .map_err(|_| "Another YNAB Plus instance is using this vault")?;
+        .map_err(|_| "Another Trilly instance is using this vault")?;
+    let legacy_lock = if !data_dir.join("data.vault").exists() {
+        if let Some(old) = &legacy_path {
+            let f = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(old.with_file_name("instance.lock"))?;
+            fs2::FileExt::try_lock_exclusive(&f)
+                .map_err(|_| "Close the previous app before migrating to Trilly")?;
+            Some(f)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let _legacy_lock = legacy_lock;
+    #[cfg(not(feature = "synthetic-tests"))]
+    let keys: Arc<dyn keystore::KeyStore> = Arc::new(keystore::MacKeyStore);
+    #[cfg(feature = "synthetic-tests")]
+    let keys: Arc<dyn keystore::KeyStore> = Arc::new(keystore::SyntheticKeyStore);
     let shared = Arc::new(Mutex::new(App {
         path: data_dir.join("data.vault"),
+        legacy_path,
+        keys,
         session: None,
         ynab: ynab::Ynab::new(),
         last_unlock: None,
@@ -476,7 +565,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     });
     let origin = format!("http://127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
-    println!("YNAB Plus: {origin}");
+    println!("Trilly: {origin}");
     axum::serve(listener, router(shared, origin, root.join("dist")))
         .with_graceful_shutdown(async {
             tokio::signal::ctrl_c().await.ok();
@@ -494,6 +583,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let app = Arc::new(Mutex::new(App {
             path: dir.path().join("test.vault"),
+            legacy_path: None,
+            keys: Arc::new(keystore::SyntheticKeyStore),
             session: None,
             ynab: ynab::Ynab::new(),
             last_unlock: None,
@@ -510,7 +601,7 @@ mod tests {
                 .header("host", host)
                 .header("origin", origin);
             if marker {
-                request = request.header("x-ynab-plus", "1");
+                request = request.header("x-trilly", "1");
             }
             let result = service
                 .clone()

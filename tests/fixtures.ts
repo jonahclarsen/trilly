@@ -28,7 +28,7 @@ export async function mockApp(page: Page, options: { syncError?: boolean; specia
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname
     let response: unknown = {}
-    if (path === '/api/status') response = { exists: true }
+    if (path === '/api/status') response = { exists: true, mode: 'macos' }
     else if (path === '/api/unlock') response = { session: 'synthetic-session', state }
     else if (path.startsWith('/api/suggestions/')) response = suggestions
     else if (path === '/api/state') response = state
@@ -50,8 +50,6 @@ export async function mockApp(page: Page, options: { syncError?: boolean; specia
     await route.fulfill({ json: response })
   })
   await page.goto(options.url ?? '/')
-  await page.getByLabel('Passphrase', { exact: true }).fill('synthetic test passphrase')
-  await page.getByRole('button', { name: 'Unlock', exact: true }).click()
   await page.getByRole('heading', { name: 'Whole Foods', exact: true }).waitFor()
   return actions
 }

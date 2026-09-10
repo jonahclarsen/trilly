@@ -1,4 +1,4 @@
-# YNAB Plus
+# Trilly
 
 A local, keyboard-driven YNAB review queue. Rust serves a Svelte UI in your
 browser. Transaction history, your YNAB token, pending edits, and undo history
@@ -7,23 +7,32 @@ live in one encrypted vault on your computer. No external categorization service
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/review-dark.webp">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/review-light.webp">
-  <img alt="YNAB Plus transaction review with keyboard shortcuts and category suggestions" src="docs/screenshots/review-light.webp" width="1280">
+  <img alt="Trilly transaction review with keyboard shortcuts and category suggestions" src="docs/screenshots/review-light.webp" width="1280">
 </picture>
 
 Screenshots use synthetic data. The preview follows your light/dark preference.
 
 ## Run
 
-Requires Rust, Node.js, and pnpm.
+Requires macOS, Xcode Command Line Tools, Rust, Node.js, and pnpm.
 
 ```sh
 pnpm install
 pnpm start
 ```
 
-Open **http://127.0.0.1:28753**. Create a passphrase, enter your personal access
-token in Settings, and select a plan and account. Enter secrets only in the app,
-not in a terminal, chat, or source file. The passphrase cannot be reset.
+Your browser opens at **http://127.0.0.1:28753**. Confirm the native macOS
+Keychain password prompt, enter your YNAB personal access token in Settings,
+and select a plan and account. There is no separate Trilly login or passphrase.
+Your Mac password goes only into the macOS dialog; Trilly never receives it.
+Use “Allow” for the current unlock rather than permanently trusting the process.
+
+If an existing passphrase-protected vault is found, Trilly asks for its old
+vault passphrase once, then requests macOS authorization to migrate it. A wrong
+passphrase or cancelled native prompt leaves the original encrypted data intact.
+The old encrypted file is retained as a backup when migrating from the previous
+app directory. It still requires the old vault passphrase; keep that backup and
+passphrase together in a safe place until you are satisfied with the migration.
 
 `pnpm dev` builds the frontend and runs the debug Rust backend. Restart it after
 source changes. `pnpm start` uses the optimized Rust build. Both bind only to
@@ -70,43 +79,56 @@ better accuracy than YNAB. Sparse or ambiguous history can produce poor choices.
 
 ## Encryption and its limits
 
-The vault uses **Argon2id** (64 MiB, three iterations, one lane) to derive a
-256-bit key from your passphrase and a random 128-bit salt. **XChaCha20-Poly1305**
-encrypts and authenticates the entire payload with a new random 192-bit nonce
-on every save. The version and salt are authenticated too. Writes use an
-encrypted temporary file, fsync, atomic rename, and directory fsync. Vault files
-are mode 0600 inside a mode 0700 directory on Unix. A process lock prevents
-two instances from writing the same vault.
+Trilly creates a random **256-bit encryption key** and stores it in the macOS
+file-based Keychain. Its access control list has no trusted applications and
+requires password entry before the key can be read. The same native Keychain
+read is required on first setup, subsequent browser opens/reloads, and after a
+lock. Cancelling does not create an authenticated browser session. The prompt
+uses your default Keychain password, normally the same as your Mac login password.
+This implementation uses the password prompt, not Touch ID or a Secure Enclave key.
 
-The key and passphrase are not saved in a keychain, environment file, browser
-storage, or source tree. The backend retains the derived key while unlocked
-and zeroizes its key and structured vault data on lock. The browser keeps its
-session credential only in memory; reloading requires unlocking again. The
-only localStorage entry is the selected theme and light/dark preference.
+The Rust backend verifies the Keychain access rules before reading the key and
+rejects a key whose rules have been weakened. The Keychain enforces the access
+restriction; it is not merely an authentication flag in Trilly. macOS's legacy
+file-based Keychain APIs work with local Rust executables without requiring an
+Apple Developer provisioning profile. A native test creates an isolated,
+synthetic Keychain and verifies that even its creating process cannot silently
+retrieve the key when UI interaction is disabled.
 
-Both browser and backend lock after ten minutes of inactivity. No transaction
-or token logging, telemetry, third-party scripts, or external fonts are used.
-The backend validates Host and Origin, requires a custom API header plus an
-unlocked session credential for private endpoints, disables browser caching,
-and uses a restrictive Content Security Policy. YNAB requests use HTTPS;
-browser-to-backend requests use HTTP on loopback and never bind to the LAN.
+**XChaCha20-Poly1305** encrypts and authenticates the entire vault, including
+transaction history, token, pending edits, and undo history. Each save uses a
+fresh random 192-bit nonce. The format version and random key identifier are
+also authenticated. The file contains no plaintext decryption key. An encrypted
+temporary file, fsync, atomic rename, and directory fsync protect saves. Vaults
+are mode 0600 inside a mode 0700 directory; an instance lock prevents concurrent
+writers. A pending `.key-id` file contains only a random identifier, allowing a
+cancelled first unlock to retry without creating more Keychain entries.
 
-**This protects locked files, not a compromised running computer.** An agent,
-extension, debugger, or other process with access to the unlocked browser or
-backend can potentially read plaintext. A process able to alter the app before
-unlocking could capture the passphrase. JavaScript and HTTP-library buffers
-cannot reliably be wiped; OS swap/crash dumps and browser password managers
-are outside this app's control. Use full-disk encryption, a trusted browser,
-and a strong unique passphrase. Lock the app before asking an agent to work on
-it. `AGENTS.md` forbids inspecting real vaults, keys, unlocked sessions, and
-screenshots; all verification uses synthetic data. That is an agent rule, not
-a cryptographic restriction on a process with full machine access.
+The encryption key and structured vault data are zeroized when the Rust session
+locks. The browser retains only an in-memory session credential and the data it
+needs to display. Reloading requires another native unlock. Only theme and
+light/dark preferences go in localStorage. Browser and backend both lock after
+ten minutes of inactivity.
 
-On macOS the encrypted file is
-`~/Library/Application Support/ynab-plus/data.vault`. On other systems it is
-inside the operating system's local data directory under `ynab-plus`.
-Back up this file while the app is locked; keep the passphrase separately.
-There is no recovery key or forgotten-passphrase bypass.
+Host and Origin validation, a custom API header, authenticated private
+endpoints, no browser caching, and a restrictive Content Security Policy protect
+the local server. Browser traffic stays on HTTP loopback; YNAB traffic uses
+HTTPS. There are no external categorization services, third-party scripts,
+telemetry, or transaction/token logs.
+
+**An unlocked app still handles plaintext.** A sufficiently privileged agent,
+debugger, extension, or modified app could access it. Native authentication does
+not isolate a running app from every process on your Mac. JavaScript and
+HTTP-library buffers cannot reliably be wiped; OS swap/crash dumps are outside
+Trilly's control. Use FileVault and a trusted browser, and lock Trilly before
+asking an agent to work on it. [AGENTS.md](AGENTS.md) forbids inspection of real
+vaults, Keychain secrets, unlocked browsers, and process memory.
+
+Data lives at `~/Library/Application Support/trilly/data.vault`. Back up the
+vault **and your Keychain** using a trusted Mac backup mechanism. A vault file
+alone cannot be restored on another Mac without its corresponding Keychain key.
+There is no application recovery-password bypass. Legacy passphrase vaults use
+Argon2id (64 MiB, three iterations, one lane) only for the one-time migration.
 
 ## Themes
 
@@ -145,18 +167,22 @@ cargo test --manifest-path server/Cargo.toml
 pnpm test:browser
 ```
 
-Browser tests use an isolated temporary vault and refuse to reuse an existing
-server on the app's port. Stop the normal app before running them. Chrome is
-used if installed; otherwise install Playwright Chromium with
+Browser tests use an isolated temporary vault, a separate permanent random test
+port, and a debug-only synthetic authentication provider. They never open the
+real Keychain or interrupt the running app. Synthetic authentication is excluded
+from normal builds and cannot compile in release mode. Chrome is used if
+installed; otherwise install Playwright Chromium with
 `pnpm exec playwright install chromium`. API fixtures, screenshots, passwords,
 and encryption tests contain only synthetic data. Rust tests exercise actual
 HTTP requests against a local mock YNAB server, including lost responses,
 conflicts, delta sync, and undo. No real YNAB token is needed for tests.
 
-The backend's `YNAB_PLUS_DATA_DIR` override exists for isolated testing. Never
-point automated tests at the normal vault directory.
+The backend's `TRILLY_DATA_DIR` override exists for isolated testing. Never
+point automated tests at the normal vault directory. `TRILLY_NO_OPEN=1 pnpm start`
+runs the server without automatically opening a browser.
 
 References: [YNAB API](https://api.ynab.com/),
 [endpoint specification](https://api.ynab.com/papi/open_api_spec.yaml),
+[macOS Keychain](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains),
 [Argon2](https://docs.rs/argon2/0.5.3/argon2/),
 [XChaCha20-Poly1305](https://docs.rs/chacha20poly1305/0.10.1/chacha20poly1305/).

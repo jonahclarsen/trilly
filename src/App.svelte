@@ -14,10 +14,9 @@
   let theme = $state<ThemeId>(preferences.theme)
   let appearance = $state<Appearance>(preferences.appearance)
   let ready = $state(false)
-  let exists = $state(false)
+  let unlockMode = $state<'macos' | 'migration' | 'unsupported'>('macos')
   let data = $state<Snapshot | null>(null)
-  let password = $state('')
-  let confirmation = $state('')
+  let legacyPassphrase = $state('')
   let token = $state('')
   let busy = $state(false)
   let syncing = $state(false)
@@ -60,7 +59,10 @@
   })
 
   onMount(() => {
-    api<{ exists: boolean }>('status').then(result => { exists = result.exists; ready = true }).catch(handleError)
+    api<{ mode: 'macos' | 'migration' | 'unsupported' }>('status').then(result => {
+      unlockMode = result.mode; ready = true
+      if (unlockMode === 'macos') void unlock()
+    }).catch(handleError)
     const media = matchMedia('(prefers-color-scheme: dark)')
     const update = () => applyAppearance(theme, appearance)
     media.addEventListener('change', update)
@@ -76,7 +78,7 @@
   })
 
   function forget() {
-    sessionEpoch++; setSession(''); data = null; password = ''; confirmation = ''; token = ''; modal = null
+    sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; modal = null
     picks = []; skipped = []; payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
@@ -86,16 +88,22 @@
   async function unlock() {
     if (busy) return
     error = ''
-    if (!exists && password !== confirmation) { error = 'Passphrases don’t match'; return }
+    if (unlockMode === 'unsupported') return
     busy = true
+    let epoch = sessionEpoch
     try {
-      const result = await api<{ session: string; state: Snapshot }>('unlock', { password, create: !exists })
-      setSession(result.session); sessionEpoch++; data = result.state; exists = true; lastActivity = Date.now()
-      password = ''; confirmation = ''
+      const result = await api<{ session: string; state: Snapshot }>('unlock', unlockMode === 'migration' ? { legacy_passphrase: legacyPassphrase } : {})
+      if (epoch !== sessionEpoch) return
+      setSession(result.session); epoch = ++sessionEpoch; data = result.state; unlockMode = 'macos'; lastActivity = Date.now()
+      legacyPassphrase = ''
       if (!data.connected) modal = 'settings'
-      if (data.plan_id) scheduleSync(50)
-    } catch (e) { handleError(e); password = ''; confirmation = '' }
-    finally { busy = false }
+      if (data.plan_id) {
+        syncing = true
+        const refreshed = await api<Snapshot>('action', { action: 'sync', full: true })
+        if (epoch === sessionEpoch) { data = refreshed; if (refreshed.sync_error) error = refreshed.sync_error }
+      }
+    } catch (e) { if (epoch === sessionEpoch) handleError(e); legacyPassphrase = '' }
+    finally { if (epoch === sessionEpoch) { busy = false; syncing = false } }
   }
   async function act(action: Record<string, unknown>): Promise<boolean> {
     if (busy || !data) return false
@@ -131,7 +139,7 @@
     if (await act({ action: 'undo' })) { skipped = []; scheduleSync(50) }
   }
   function skip() {
-    if (current && !busy) { skipped = [...skipped, current.id]; reviewElement?.focus() }
+    if (current && (!busy || syncing)) { skipped = [...skipped, current.id]; reviewElement?.focus() }
   }
   async function lock() {
     const request = api('action', { action: 'lock' })
@@ -154,7 +162,13 @@
   function openPicker(kind: 'category' | 'payee') { if (current && !special(current) && !busy) modal = kind }
   function keydown(event: KeyboardEvent) {
     lastActivity = Date.now()
-    if (event.repeat || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || !data) return
+    if (event.repeat || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
+    if (!data) {
+      if (event.key === 'Enter' && !modal && ready && !busy && unlockMode === 'macos') {
+        event.preventDefault(); void unlock()
+      }
+      return
+    }
     if (modal) return
     if ((event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable="true"]')) return
     const key = event.key.toLowerCase()
@@ -180,7 +194,7 @@
 
 <div class="app-shell">
   <header>
-    <span class="brand">YNAB Plus</span>
+    <span class="brand">trilly</span>
     <nav aria-label="App controls">
       {#if data}
         <span class="sync-state" aria-live="polite">{syncing ? 'Syncing' : data.pending ? `${data.pending} pending` : data.synced_at ? 'Synced' : ''}</span>
@@ -198,17 +212,25 @@
 
   {#if !data}
     <main class="unlock-page">
-      <form class="unlock-card" onsubmit={(event) => { event.preventDefault(); void unlock() }}>
+      <div class="unlock-card">
         <div class="lock-mark"><Icon name="lock" /></div>
-        <h1>{exists ? 'Unlock' : 'Create your vault'}</h1>
-        <p class="muted">{exists ? 'Your data stays on this computer.' : 'Encrypted locally. Only your passphrase unlocks it.'}</p>
-        <label>Passphrase<input use:focus type="password" bind:value={password} autocomplete={exists ? 'current-password' : 'new-password'} minlength={exists ? 1 : 14} required disabled={!ready || busy} /></label>
-        {#if !exists}
-          <label>Confirm passphrase<input type="password" bind:value={confirmation} autocomplete="new-password" minlength="14" required disabled={!ready || busy} /></label>
-          <p class="field-note">At least 14 characters. No reset if you lose it.</p>
+        {#if unlockMode === 'migration'}
+          <h1>Switch to macOS unlock</h1>
+          <p class="muted">Enter your existing vault passphrase once.</p>
+          <form onsubmit={(event) => { event.preventDefault(); void unlock() }}>
+            <label>Existing vault passphrase<input use:focus type="password" bind:value={legacyPassphrase} autocomplete="off" required disabled={!ready || busy} /></label>
+            <p class="field-note">Your Mac password is entered only in the macOS prompt.</p>
+            <Button type="submit" primary disabled={!ready || busy}>{busy ? 'Migrating…' : 'Migrate'}</Button>
+          </form>
+        {:else if unlockMode === 'unsupported'}
+          <h1>macOS required</h1>
+          <p class="muted">Trilly uses your Mac’s Keychain to unlock.</p>
+        {:else}
+          <h1>{busy ? 'Unlocking…' : 'Locked'}</h1>
+          <p class="muted">{busy ? 'Confirm in the macOS password prompt.' : 'Unlock with your Mac password.'}</p>
+          <Button primary icon="lock" label="Unlock" shortcut="Enter" disabled={!ready || busy} onclick={() => void unlock()}>Unlock</Button>
         {/if}
-        <Button type="submit" primary disabled={!ready || busy}>{busy ? 'Unlocking…' : exists ? 'Unlock' : 'Create vault'}</Button>
-      </form>
+      </div>
     </main>
   {:else}
     <main class="workspace" bind:this={reviewElement} tabindex="-1">
@@ -250,7 +272,7 @@
           {/if}
 
           <div class="review-actions">
-            <Button icon="skip" shortcut="S" disabled={busy} onclick={skip}>Skip</Button>
+            <Button icon="skip" shortcut="S" disabled={busy && !syncing} onclick={skip}>Skip</Button>
             <Button primary icon="check" shortcut="Enter" disabled={busy || (!special(current) && (!payee || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
@@ -307,7 +329,7 @@
           <label class="setting-row">Plan<select value={data.plan_id} disabled={busy || !!data.pending} onchange={async (event) => { skipped = []; if (await act({ action: 'plan', id: event.currentTarget.value })) modal = null }}><option value="" disabled>Choose plan</option>{#each data.plans as plan}<option value={plan.id}>{plan.name}</option>{/each}</select></label>
         {/if}
       </section>
-      <p class="field-note">Locks after 10 minutes of inactivity. Your passphrase is never saved.</p>
+      <p class="field-note">macOS unlock. Locks after 10 minutes of inactivity.</p>
     {/if}
   </Modal>
 {:else if modal === 'shortcuts'}

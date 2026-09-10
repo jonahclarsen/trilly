@@ -1,4 +1,4 @@
-# YNAB Plus
+# Trilly
 
 Local Rust backend, Svelte browser frontend. Use pnpm. The permanent loopback
 port was chosen with a cryptographically secure random generator in port.json.
@@ -28,16 +28,20 @@ deleting it from the latest version alone is not sufficient.
 ## Private data
 
 Never read, decrypt, export, screenshot, or inspect the user's vault, token,
-passphrase, unlocked browser, or process memory. Never retrieve keys from a
-keychain. Use only synthetic fixtures, isolated test vaults, and test passwords.
+passphrase, unlocked browser, or process memory. Never retrieve the user's
+Keychain keys. Use only synthetic fixtures, isolated
+test vaults, temporary test Keychains, and test passwords.
 Do not ask the user to put secrets in chat, source files, shell commands, or logs.
-Do not add saved keys, automatic unlock, telemetry, or external AI services.
+The user authorized macOS Keychain storage with native password confirmation
+on every unlock. Never weaken that ACL or add silent unlock, telemetry, or
+external AI services. Never collect a macOS password in the browser or backend.
 
 ## UI
 
 Reuse components; keep labels short and functional. Icons in buttons must be
 SVGs. Keep shortcut handling and its reference together. Themes come from
-Balance; Random is the default, with system light/dark appearance.
+Balance; Random is the default, with system light/dark appearance. The Trilly
+wordmark is lowercase, bold sans serif, and sky blue in every theme.
 
 Whenever a requested change alters the UI, regenerate the README screenshots
 with pnpm screenshots. Review the resulting WebP files in docs/screenshots,

@@ -1,7 +1,13 @@
 [package]
-name = "ynab-plus"
+name = "trilly"
 version = "0.1.0"
 edition = "2024"
+
+[features]
+synthetic-tests = []
+
+[build-dependencies]
+cc = "1"
 
 [dependencies]
 argon2 = "0.5"
