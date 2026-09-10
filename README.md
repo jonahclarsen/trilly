@@ -95,7 +95,7 @@ clients; run `pnpm start` when you do not need hot updates.
 | --- | --- |
 | Enter | Approve the current payee/category and advance |
 | 1 / 2 / 3 | Apply that suggested pair, approve, and advance |
-| C / P | Search categories / payees; Enter selects |
+| C / E | Search categories / payees; Enter selects |
 | S | Skip for this session |
 | B | Save a business expense |
 | D | Add or edit the transaction description (YNAB memo) |
@@ -127,7 +127,7 @@ Suggestions appear above the review actions. Press 1, 2, or 3 on the number
 row or numeric keypad to apply a payee/category pair and approve. Physical
 number keys also work on layouts that produce symbols and with Num Lock off.
 Suggestion shortcuts remain inactive while typing or while a dialog is open.
-Suggestions refresh after syncing; the section is hidden when there are no matches. Upcoming suggestions are preloaded. Use P
+Suggestions refresh after syncing; the section is hidden when there are no matches. Upcoming suggestions are preloaded. Use E
 and C to choose manually. Approve and undo update the screen immediately while
 requests save in order. Undo uses Command-Z on Mac, Ctrl-Z, or U; text fields
 keep their native undo. The header shows saves in progress and changes pending

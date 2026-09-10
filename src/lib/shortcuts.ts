@@ -6,6 +6,6 @@ export function suggestionIndex(event: KeyboardEvent): number | undefined {
 
 export const shortcuts = [
   ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],
-  ['C', 'Choose category'], ['P', 'Choose payee'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo expense change / approval'],
+  ['C', 'Choose category'], ['E', 'Choose payee'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo expense change / approval'],
   ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['A', 'Choose account'], ['R', 'Sync'], [',', 'Settings'], ['L', 'Lock'], ['?', 'Help & shortcuts'],
 ] as const

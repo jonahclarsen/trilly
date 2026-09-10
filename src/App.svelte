@@ -370,7 +370,7 @@
     const key = event.key.toLowerCase()
     const actions: Record<string, () => void> = {
       enter: () => void approve(),
-      d: openDescription, b: openExpense, c: () => openPicker('category'), p: () => openPicker('payee'), s: skip, u: () => void undo(),
+      d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
     }
@@ -472,7 +472,7 @@
 
           <div class="fields">
             {#if !special(current)}
-              <button class="field-button" disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>P</kbd></button>
+              <button class="field-button" disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
               <button class="field-button" disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
             {/if}
             <button class="field-button" disabled={busy || !!saving || saveFailed || descriptionPending} onclick={openDescription} title={current.memo || 'Add description'}><span><small>Description</small><strong class="memo">{current.memo || 'Add description'}</strong></span><kbd>D</kbd></button>

@@ -134,7 +134,7 @@ test('sync preserves a draft category and typing never triggers global shortcuts
   await page.keyboard.press('r')
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
   await expect(page.getByRole('button', { name: 'Category Dining out C' })).toBeVisible()
-  await page.keyboard.press('p')
+  await page.keyboard.press('e')
   await page.getByRole('combobox', { name: 'Search payee' }).fill('123surcl')
   await expect(page.getByText('No matches', { exact: true })).toBeVisible()
   expect(actions.filter(a => ['review', 'undo', 'lock'].includes(a.action as string))).toHaveLength(0)
@@ -145,7 +145,7 @@ test('sync preserves a draft category and typing never triggers global shortcuts
 test('pickers focus search from keyboard and buttons; every modal dismisses outside', async ({ page }) => {
   await mockApp(page)
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
-  for (const key of ['p', 'c', 'a']) {
+  for (const key of ['e', 'c', 'a']) {
     await page.keyboard.press(key)
     await expect(page.getByRole('combobox')).toBeFocused()
     await page.keyboard.type('zznope')
@@ -153,11 +153,11 @@ test('pickers focus search from keyboard and buttons; every modal dismisses outs
     await page.mouse.click(5, 5)
     await expect(page.getByRole('dialog')).toHaveCount(0)
   }
-  await page.getByRole('button', { name: 'Payee Whole Foods P' }).click()
+  await page.getByRole('button', { name: 'Payee Whole Foods E' }).click()
   await expect(page.getByRole('combobox', { name: 'Search payee' })).toBeFocused()
   await page.keyboard.type('brew')
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('button', { name: 'Payee Brew House P' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Payee Brew House E' })).toBeVisible()
   for (const name of ['Help', 'Settings']) {
     await page.getByRole('button', { name, exact: true }).click()
     const dialog = page.getByRole('dialog', { name })
@@ -289,11 +289,11 @@ test('empty suggestions stay hidden and refresh after syncing the same transacti
 test('one Escape closes every modal and picker search keeps focus without an outline', async ({ page }) => {
   await mockApp(page)
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
-  for (const key of ['p', 'c', 'a', ',', '?']) {
+  for (const key of ['e', 'c', 'a', ',', '?']) {
     await page.locator('.workspace').focus()
     await page.keyboard.press(key)
     await expect(page.getByRole('dialog')).toBeVisible()
-    if (['p', 'c', 'a'].includes(key)) {
+    if (['e', 'c', 'a'].includes(key)) {
       const search = page.getByRole('combobox')
       await expect(search).toBeFocused()
       await page.keyboard.type('e')
@@ -378,7 +378,7 @@ test('failed save cancels later queued actions and reloads authoritative state',
 
 test('Escape closes a populated payee search before an input handler consumes it', async ({ page }) => {
   await mockApp(page)
-  await page.keyboard.press('p')
+  await page.keyboard.press('e')
   const search = page.getByRole('combobox', { name: 'Search payee' })
   await search.fill('Brew')
   // Model a browser/input handler consuming Escape before it can bubble.
@@ -468,7 +468,7 @@ test('physical number shortcuts ignore typing, dialogs, modifiers, composition a
   for (const flags of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }, { isComposing: true }, { repeat: true }]) {
     await suggestion.dispatchEvent('keydown', { key: '&', code: 'Digit1', bubbles: true, ...flags })
   }
-  await page.keyboard.press('p')
+  await page.keyboard.press('e')
   const search = page.getByRole('combobox')
   await search.dispatchEvent('keydown', { key: '&', code: 'Digit1', bubbles: true })
   await page.getByRole('button', { name: 'Close', exact: true }).dispatchEvent('keydown', { key: '1', code: 'Digit1', bubbles: true })
@@ -538,7 +538,7 @@ test('spreadsheet rows preserve precision and neutralize formulas and cell separ
 test('business description selects the chosen payee and D saves a transaction description', async ({ page }) => {
   const actions = await mockApp(page)
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
-  await page.keyboard.press('p')
+  await page.keyboard.press('e')
   await page.getByRole('combobox', { name: 'Search payee' }).fill('Brew House')
   await page.keyboard.press('Enter')
   await page.keyboard.press('b')
