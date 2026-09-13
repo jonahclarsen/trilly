@@ -12,6 +12,12 @@
   const canCreate = $derived(!!oncreate && !!newName && [...newName].length <= 200 && !options.some(o => o.name.toLowerCase() === newName.toLowerCase()))
   const choiceCount = $derived(results.length + (canCreate ? 1 : 0))
   function keydown(event: KeyboardEvent) {
+    if (event.isComposing) return
+    if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && canCreate && selected !== results.length) {
+      event.preventDefault(); event.stopPropagation()
+      oncreate?.(newName)
+      return
+    }
     if (['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) {
       event.preventDefault(); event.stopPropagation()
       if (event.key === 'Enter') { if (results[selected]) onpick(results[selected].id); else if (canCreate && selected === results.length) oncreate?.(newName); return }
@@ -31,10 +37,15 @@
     {/each}
     {#if canCreate}
       <button id={`choice-${results.length}`} type="button" role="option" aria-selected={selected === results.length} class:selected={selected === results.length} onclick={() => oncreate?.(newName)} onpointermove={() => selected = results.length}>
-        <strong>Creating “{newName}”</strong>
-        {#if selected === results.length}<kbd>Enter</kbd>{/if}
+        <strong>Create “{newName}”</strong>
+        {#if selected === results.length}<kbd>Enter</kbd>{:else}<kbd class="tab-shortcut" aria-label="Tab" title="Tab"><Icon name="tab" /></kbd>{/if}
       </button>
     {:else if !results.length}<p class="muted no-results">No matches</p>{/if}
     {#if oncreate && [...newName].length > 200}<p class="muted no-results">Payee names must be 200 characters or fewer.</p>{/if}
   </div>
 </Modal>
+
+<style>
+  .tab-shortcut { display: inline-flex; align-items: center; justify-content: center; }
+  .tab-shortcut :global(svg) { width: 12px; height: 12px; }
+</style>
