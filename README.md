@@ -18,11 +18,19 @@ live in one encrypted vault on your computer. No external categorization service
 </picture>
 </details>
 
-These screenshots predate the top-menu shortcuts, list view, new-payee picker option, and purchase-history links. Screenshot regeneration is pending authorization to run the isolated browser workflow.
+These screenshots predate the top-menu shortcuts, list view, new-payee picker option, inline payee renaming, and purchase-history links. Screenshot regeneration is pending authorization to run the isolated browser workflow.
 
 Screenshots use synthetic data and the default Iridescent theme. The previews follow your light/dark preference.
 
 Matching payees show a purchase-history link beneath the transaction heading, opening in a new tab. Matching ignores case: “steam purchase” links to Steam; “long & mcquade” or “long and mcquade” links to Long & McQuade; “namecheap” links to Namecheap orders; “paypal” links to PayPal. Buttons show the merchant name and an external-link icon. Press **F** outside text fields and dialogs in transaction view to open the first displayed merchant link. The internal registry is `server/src/purchase_history.json`; add a unique ID, merchant label, HTTPS URL, numeric `priority`, and alternative `payee_contains` phrases to extend it. There is no settings UI for these rules. Links follow the selected payee immediately. Only matches at the highest priority appear; ties retain registry order. Steam, Long & McQuade, and Namecheap use priority 10, while PayPal uses 0 (also the default when omitted), so a specific merchant takes precedence over PayPal. Higher numbers win; additional levels can be added in the registry. When the selected or original payee contains “paypal” and the description is empty, Trilly prefills `via paypal. ` and saves it on approval (or through the description editor). Existing descriptions and explicit description edits are preserved.
+
+Right-click an existing payee in the Payee picker and choose **Rename** to edit
+its name in place. **Enter** or leaving the field saves directly to YNAB;
+**Esc** cancels. Renaming changes the shared payee, including its existing
+transactions, independently of transaction approval and Undo. Names update
+immediately in Trilly while the ordered save queue sends the rename. If the
+save cannot be confirmed, use **Reload saved state**, sync, and retry if needed.
+Renames waiting in the browser are not durable across a reload.
 
 Type a payee name in the Payee picker and select **Creating “name”** below the
 matches (or as the only option when there are none). **Save & approve** queues

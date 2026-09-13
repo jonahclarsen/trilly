@@ -432,6 +432,10 @@ enum Action {
         payee_id: Option<String>,
         category_id: Option<String>,
     },
+    RenamePayee {
+        id: String,
+        name: String,
+    },
     Undo,
     DiscardConflicts,
     Sync {
@@ -646,6 +650,7 @@ async fn action(
                 next.undo.remove(0);
             }
         }
+        Action::RenamePayee { id, name } => app.ynab.rename_payee(&mut next, &id, &name).await?,
         Action::Undo => undo(&mut next)?,
         Action::DiscardConflicts => {
             let ids: Vec<_> = next

@@ -481,7 +481,7 @@
         confirmed = result; events.shift(); saving = events.length
         data = events.reduce(project, result)
         if (result.sync_error) error = result.sync_error
-        if (event.body.action === 'sync') {
+        if (event.body.action === 'sync' || event.body.action === 'rename_payee') {
           suggestionCache.clear(); suggestionVersion++
         }
       }
@@ -955,5 +955,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? (id, name) => enqueue({ body: { action: 'rename_payee', id, name } }) : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}

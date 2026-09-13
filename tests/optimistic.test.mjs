@@ -68,3 +68,23 @@ test('Amazon approval preserves the resolved payee spelling, including intention
   const approved = project(initial(), { body: { action: 'review', id: 'one', amazon_marketplace: 'amazon.ca' } })
   assert.equal(approved.review_rows[0].payee_name, 'amazon.ca')
 })
+
+
+test('payee rename replays over stale responses, updates history, and preserves unrelated payees', () => {
+  const saved = initial()
+  saved.payees = [{ id: 'p', name: 'Old' }, { id: 'other', name: 'Other' }]
+  saved.queue[0] = { ...saved.queue[0], payee_id: 'p', payee_name: 'Old' }
+  saved.review_rows = [...saved.queue, { id: 'other-row', payee_id: 'other', payee_name: 'Other' }]
+  saved.undo_transactions = [...saved.queue]
+  const rename = name => ({ body: { action: 'rename_payee', id: 'p', name } })
+  const first = project(saved, rename('First'))
+  const latest = [rename('Second')].reduce(project, first)
+  for (const rows of [latest.queue, latest.review_rows, latest.undo_transactions]) assert.equal(rows[0].payee_name, 'Second')
+  assert.equal(latest.payees[0].name, 'Second')
+  assert.equal(latest.review_rows[1].payee_name, 'Other')
+  assert.equal(latest.payees[1].name, 'Other')
+  assert.equal(saved.payees[0].name, 'Old')
+  assert.equal(saved.queue[0].payee_name, 'Old')
+  assert.equal(latest.pending, 0)
+  assert.equal(latest.can_undo, false)
+})

@@ -60,6 +60,40 @@ impl Ynab {
             .cloned()
             .ok_or_else(|| "Invalid response from YNAB".into())
     }
+    pub async fn rename_payee(&self, data: &mut Data, id: &str, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 200 {
+            return Err("Payee name must contain 1 to 200 characters".into());
+        }
+        if data.plan_id.is_empty() || data.token.is_empty() {
+            return Err("Connect YNAB and choose a plan first".into());
+        }
+        let index = data
+            .payees
+            .iter()
+            .position(|p| p.id == id && !p.deleted && p.transfer_account_id.is_none())
+            .ok_or("Choose an existing non-transfer payee")?;
+        let response = self.request(&data.token, Method::PATCH,
+            &format!("/plans/{}/payees/{id}", data.plan_id),
+            Some(json!({"payee": {"name": name}}))).await
+            .map_err(|_| "Payee rename could not be confirmed by YNAB. Reload saved state, sync, and retry the rename if needed.")?;
+        let payee: Payee = parse(&response["payee"])?;
+        if payee.id != id || payee.deleted || payee.transfer_account_id.is_some() {
+            return Err("Unexpected payee response from YNAB; sync before retrying".into());
+        }
+        let update = |t: &mut Transaction| {
+            if t.payee_id.as_deref() == Some(id) {
+                t.payee_name = Some(payee.name.clone());
+            }
+        };
+        data.transactions.iter_mut().for_each(update);
+        for pending in data.pending.iter_mut().chain(data.undo.iter_mut()) {
+            update(&mut pending.before);
+        }
+        data.payees[index] = payee;
+        // Do not advance the transaction delta cursor using payee server_knowledge.
+        Ok(())
+    }
     pub async fn plans(&self, token: &str) -> Result<Vec<Plan>, String> {
         let value = self.request(token, Method::GET, "/plans", None).await?;
         parse(&value["plans"])
@@ -260,6 +294,77 @@ mod tests {
         fail_after_write: bool,
         queries: Vec<HashMap<String, String>>,
     }
+    async fn rename_write(
+        State(s): State<Arc<Mutex<Mock>>>,
+        Json(body): Json<Value>,
+    ) -> (StatusCode, Json<Value>) {
+        let mut mock = s.lock().await;
+        mock.writes.push(body.clone());
+        if mock.fail_after_write {
+            return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({})));
+        }
+        (
+            StatusCode::OK,
+            Json(
+                json!({"data": {"payee": {"id": "synthetic-payee", "name": body["payee"]["name"], "deleted": false, "transfer_account_id": null}, "server_knowledge": 999}}),
+            ),
+        )
+    }
+    #[tokio::test]
+    async fn renaming_payee_updates_shared_names_without_changing_transaction_cursor_or_undo() {
+        let (api, mock, mut data, server) = setup().await;
+        data.payees.push(Payee {
+            id: "synthetic-payee".into(),
+            name: "Old".into(),
+            deleted: false,
+            transfer_account_id: None,
+        });
+        data.undo.push(data.pending[0].clone());
+        let knowledge = data.knowledge;
+        api.rename_payee(&mut data, "synthetic-payee", "  New name  ")
+            .await
+            .unwrap();
+        assert_eq!(
+            mock.lock().await.writes[0],
+            json!({"payee": {"name": "New name"}})
+        );
+        assert_eq!(data.payees[0].name, "New name");
+        assert_eq!(data.transactions[0].payee_name.as_deref(), Some("New name"));
+        assert_eq!(
+            data.pending[0].before.payee_name.as_deref(),
+            Some("New name")
+        );
+        assert_eq!(data.undo[0].before.payee_name.as_deref(), Some("New name"));
+        assert_eq!(data.knowledge, knowledge);
+        assert_eq!(data.pending.len(), 1);
+        mock.lock().await.fail_after_write = true;
+        assert!(
+            api.rename_payee(&mut data, "synthetic-payee", "Rejected")
+                .await
+                .is_err()
+        );
+        assert_eq!(data.payees[0].name, "New name");
+        for name in [" ".to_owned(), "x".repeat(201)] {
+            assert!(
+                api.rename_payee(&mut data, "synthetic-payee", &name)
+                    .await
+                    .is_err()
+            );
+        }
+        assert!(
+            api.rename_payee(&mut data, "missing", "Name")
+                .await
+                .is_err()
+        );
+        data.payees[0].transfer_account_id = Some("account".into());
+        assert!(
+            api.rename_payee(&mut data, "synthetic-payee", "Name")
+                .await
+                .is_err()
+        );
+        assert_eq!(mock.lock().await.writes.len(), 2);
+        server.abort();
+    }
     async fn read(
         State(s): State<Arc<Mutex<Mock>>>,
         Query(query): Query<HashMap<String, String>>,
@@ -353,6 +458,10 @@ mod tests {
         }));
         let app = Router::new()
             .route("/plans/test/transactions", get(read).patch(write))
+            .route(
+                "/plans/test/payees/synthetic-payee",
+                axum::routing::patch(rename_write),
+            )
             .with_state(mock.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());

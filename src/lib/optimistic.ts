@@ -5,7 +5,14 @@ export type QueuedAction = { body: Record<string, unknown>; restore?: Transactio
 
 export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
   const result = { ...snapshot, queue: [...snapshot.queue], review_rows: [...(snapshot.review_rows ?? snapshot.queue)], undo_transactions: [...(snapshot.undo_transactions ?? [])] }
-  if (event.body.action === 'description') {
+  if (event.body.action === 'rename_payee') {
+    const name = String(event.body.name).trim()
+    result.payees = snapshot.payees.map(p => p.id === event.body.id ? { ...p, name } : p)
+    const update = (t: Transaction) => t.payee_id === event.body.id ? { ...t, payee_name: name } : t
+    result.queue = result.queue.map(update)
+    result.review_rows = result.review_rows.map(update)
+    result.undo_transactions = result.undo_transactions.map(update)
+  } else if (event.body.action === 'description') {
     const transaction = result.queue.find(t => t.id === event.body.id)
     const memo = String(event.body.description)
     if (!transaction || (transaction.memo ?? '') === memo) return result

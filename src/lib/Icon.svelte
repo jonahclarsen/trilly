@@ -1,6 +1,7 @@
 <script lang="ts">
-  export let name: 'transaction' | 'list' | 'business' | 'lock' | 'settings' | 'sync' | 'check' | 'skip' | 'undo' | 'close' | 'search' | 'keyboard' | 'chevron' | 'external'
+  export let name: 'rename' | 'transaction' | 'list' | 'business' | 'lock' | 'settings' | 'sync' | 'check' | 'skip' | 'undo' | 'close' | 'search' | 'keyboard' | 'chevron' | 'external'
   const paths = {
+    rename: 'm14 4 6 6M4 20l5-1L21 7l-5-5L4 14v6Z',
     transaction: 'M5 3h14v18H5V3Zm3 5h8M8 12h8M8 16h4',
     list: 'M3 4h18v16H3V4Zm0 5h18M3 14h18M9 4v16',
     lock: 'M7 10V7a5 5 0 0 1 10 0v3M6 10h12a1 1 0 0 1 1 1v9H5v-9a1 1 0 0 1 1-1Zm6 4v3',
