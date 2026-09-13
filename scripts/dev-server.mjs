@@ -1,5 +1,7 @@
 import { createServer } from 'vite'
 import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { purchaseHistoryEditor } from './purchase-history-editor.mjs'
 
 export async function startDevServer({ synthetic = false } = {}) {
   const ports = JSON.parse(await readFile(new URL('../port.json', import.meta.url), 'utf8'))
@@ -26,7 +28,7 @@ export async function startDevServer({ synthetic = false } = {}) {
           if (!allowed(req) || req.headers.origin !== origin) socket.destroy()
         })
       },
-    }],
+    }, ...(!synthetic ? [purchaseHistoryEditor(fileURLToPath(new URL('..', import.meta.url)), origin)] : [])],
     server: {
       host: '127.0.0.1', port, strictPort: true, cors: false,
       proxy: { '/api/': { target: `http://127.0.0.1:${backendPort}`, changeOrigin: false } },

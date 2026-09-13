@@ -7,6 +7,24 @@
   import Button from './lib/Button.svelte'
   import { purchaseHistoryLinks, paypalDescription } from './lib/purchase-history'
   import PurchaseHistory from './lib/PurchaseHistory.svelte'
+  import PurchaseHistoryEditor from './lib/PurchaseHistoryEditor.svelte'
+  import type { PurchaseHistoryRule } from './lib/types'
+  let devRules = $state<PurchaseHistoryRule[] | null>(null)
+  onMount(() => {
+    if (!import.meta.env.DEV) return
+    let active = true
+    let receivedUpdate = false
+    const update = (rules: PurchaseHistoryRule[]) => { receivedUpdate = true; if (active) devRules = rules }
+    import.meta.hot?.on('trilly:purchase-history', update)
+    void fetch('/__dev/purchase-history', { headers: { 'x-trilly-editor': '1' } })
+      .then(async response => {
+        if (response.ok) {
+          const result = await response.json()
+          if (active && !receivedUpdate) devRules = result.rules
+        }
+      }).catch(() => {})
+    return () => { active = false; import.meta.hot?.off('trilly:purchase-history', update) }
+  })
   import GooglePayee from './lib/GooglePayee.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
@@ -219,7 +237,7 @@
     return request
   }
   let error = $state('')
-  let modal = $state<'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'description' | null>(null)
+  let modal = $state<'rules' | 'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'description' | null>(null)
   let memoDraft = $state('')
   let memoId = $state('')
   let expenseId = $state('')
@@ -640,7 +658,7 @@
     const key = event.key.toLowerCase()
     const actions: Record<string, () => void> = {
       [merchantLinkKey.toLowerCase()]: () => {
-        const link = current && purchaseHistoryLinks(data?.purchase_history_rules, payeeName)[0]
+        const link = current && purchaseHistoryLinks(devRules ?? data?.purchase_history_rules, payeeName)[0]
         if (link) window.open(link.url, '_blank', 'noopener,noreferrer')
       },
       enter: () => void approve(),
@@ -826,7 +844,7 @@
               <p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>
             </div>
           {/if}
-          <PurchaseHistory rules={data.purchase_history_rules} payee={payeeName} />
+          <PurchaseHistory rules={devRules ?? data.purchase_history_rules} payee={payeeName} />
 
           {#if special(current)}
             <div class="special-transaction">
@@ -925,6 +943,12 @@
       </div>
     </section>
     <LogoSettings value={logo} onchange={(value) => logo = value} />
+    {#if import.meta.env.DEV && devRules !== null}
+      <section class="settings-section">
+        <h3>Development</h3>
+        <Button onclick={() => modal = 'rules'}>Edit purchase history links</Button>
+      </section>
+    {/if}
     {#if data}
       <section class="settings-section">
         <h3>YNAB</h3>
@@ -949,6 +973,8 @@
       {#if diagnosticsFallback}<label>Diagnostic report<textarea readonly rows="8" value={diagnosticsFallback} onfocus={(event) => event.currentTarget.select()}></textarea></label>{/if}
     </section>
   </Modal>
+{:else if modal === 'rules' && import.meta.env.DEV}
+  <PurchaseHistoryEditor onclose={() => modal = 'settings'} onsaved={(rules) => devRules = rules} />
 {:else if modal === 'description'}
   <Modal title="Description" subtitle={`${current?.date ?? ''} · ${payeeName}`} onclose={() => { modal = null; memoDraft = ''; memoId = '' }}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
