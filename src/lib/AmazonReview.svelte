@@ -3,7 +3,7 @@
   import Button from './Button.svelte'
   import AmazonPaymentDetails from './AmazonPaymentDetails.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, type AmazonStore } from './amazon'
+  import { amazonCandidates, paymentHasOrder, paymentMarketplace, marketplaceLabel, automaticItems, amazonDescription, itemCombinations, type AmazonStore } from './amazon'
   import type { Transaction } from './types'
   let { store, transaction, currency, targets, disabled, collecting = false, assignments = [], onchange }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void } = $props()
   const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments))
@@ -13,6 +13,7 @@
   let search = $state('')
   let manualOrder = $state('')
   const candidate = $derived(candidates.find(c => c.payment.id === choice) ?? (!touched ? candidates.find(c => c.confident) : undefined))
+  const paymentDetails = $derived(candidate ?? (candidates.length === 1 ? candidates[0] : undefined))
   const orders = $derived(manualOrder ? store.orders.filter(o => `${o.marketplace}:${o.id}` === manualOrder) : candidate?.orders ?? [])
   const items = $derived(orders.flatMap(o => o.items))
   const combinations = $derived(itemCombinations(items, transaction.amount))
@@ -36,17 +37,24 @@
 </script>
 
 <section class="amazon-review" aria-label="Amazon details">
-  <h2>Amazon details</h2>
   {#if !candidates.length}<p class="field-note">No payment match yet. Fetch details, or search collected orders below. Different currencies and partial payments need manual review.</p>{/if}
-  {#each candidates as c}
-    <button class="amazon-candidate" class:selected={candidate?.payment.id === c.payment.id} {disabled} onclick={() => choose(c.payment.id)}>
-      <strong>{c.payment.marketplace} · {c.payment.refund ? 'Refund' : 'Charge'} · {c.payment.date || 'Date unavailable'}</strong>
-      <span>{new Intl.NumberFormat(undefined, { style: 'currency', currency: c.payment.currency }).format(c.payment.amount / 1000)} {c.payment.currency} · {c.payment.payment_method}</span>
-      <small>{c.reason}</small>
-    </button>
-  {/each}
+  {#if candidates.length > 1}
+    {#each candidates as c}
+      <button class="amazon-candidate" class:selected={candidate?.payment.id === c.payment.id} {disabled} onclick={() => choose(c.payment.id)}>
+        <strong>{marketplaceLabel(c.payment.marketplace)} · {c.payment.refund ? 'Refund' : 'Charge'} · {c.payment.date || 'Date unavailable'}</strong>
+        <span>{new Intl.NumberFormat(undefined, { style: 'currency', currency: c.payment.currency }).format(c.payment.amount / 1000)} {c.payment.currency} · {c.payment.payment_method}</span>
+        <small>{c.reason}</small>
+      </button>
+    {/each}
+  {/if}
+  {#if paymentDetails}
+    <AmazonPaymentDetails payment={paymentDetails.payment} />
+    {#if !candidate}
+      <p class="field-note">{paymentDetails.reason}</p>
+      <Button {disabled} onclick={() => choose(paymentDetails!.payment.id)}>Use this payment</Button>
+    {/if}
+  {/if}
   {#if candidate}
-    <AmazonPaymentDetails payment={candidate.payment} />
     {#if candidate.orders.length < candidate.payment.order_ids.length}<p class="field-note">Order details are still missing. Collection can continue while you review other transactions.</p>{/if}
   {/if}
   {#if items.length > 1}
@@ -69,6 +77,6 @@
   {/if}
   <details class="amazon-search"><summary>Find another order</summary>
     <label>Order number or product<input type="search" bind:value={search} placeholder="Search collected orders" /></label>
-    {#each fallback as order}<Button {disabled} onclick={() => { touched = true; choice = ''; selected = []; manualOrder = `${order.marketplace}:${order.id}`; onchange('', order.marketplace, false) }}>{order.marketplace} · {order.date} · {order.items.map(i => i.title.toLowerCase()).join('; ')}</Button>{/each}
+    {#each fallback as order}<Button {disabled} onclick={() => { touched = true; choice = ''; selected = []; manualOrder = `${order.marketplace}:${order.id}`; onchange('', order.marketplace, false) }}>{marketplaceLabel(order.marketplace)} · {order.date} · {order.items.map(i => i.title.toLowerCase()).join('; ')}</Button>{/each}
   </details>
 </section>
