@@ -22,7 +22,10 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: 'no-store', credentials: 'omit',
     })
-    const result = await response.json()
+    let result
+    try { result = await response.json() }
+    catch { throw new ApiError(response.ok ? 'Invalid JSON response' : `Request failed (${response.status})`, response.status) }
+    if (!result || typeof result !== 'object') throw new ApiError('Invalid JSON response', response.status)
     if (!response.ok) throw new ApiError(result.error ?? 'Request failed', response.status)
     if (operation) recordDiagnostic(operation, result.sync_error ? 'error' : 'ok', result.sync_error ? new Error(String(result.sync_error)) : undefined, { http_status: response.status })
     return result

@@ -3,10 +3,12 @@
   // identifiers, page contents, transaction records, or credentials.
   const operations = new Set(['START', 'STOP', 'PAGE', 'ACK', 'RESUME', 'FOCUS', 'PING', 'PRIORITY', 'TASK', 'ALARM', 'TAB_REMOVED', 'DELIVERY', 'STORAGE', 'IMPORT', 'CLEAR', 'COMPLETE', 'BRIDGE', 'PAGE_ERROR', 'LOAD', 'SYNC']);
   const outcomes = new Set(['ok', 'error', 'paused', 'complete', 'started', 'partial']);
-  const codes = new Set(['unknown', 'type_error', 'reference_error', 'storage_quota', 'tab_missing', 'window_missing', 'connection_closed', 'extension_unavailable', 'invalid_records', 'network', 'authorization', 'timeout']);
+  const codes = new Set(['unknown', 'type_error', 'reference_error', 'storage_quota', 'tab_missing', 'window_missing', 'connection_closed', 'extension_unavailable', 'invalid_records', 'network', 'authorization', 'timeout', 'payload_too_large', 'invalid_response']);
   /** @param {any} error */
   function classify(error) {
     const message = String(error?.message ?? '').slice(0, 2000);
+    if (error?.status === 413) return 'payload_too_large';
+    if (message === 'Invalid JSON response') return 'invalid_response';
     if (/quota|MAX_WRITE|storage.*exceed/i.test(message)) return 'storage_quota';
     if (/no tab|tab.*(?:closed|not found)|invalid tab/i.test(message)) return 'tab_missing';
     if (/no window|window.*(?:closed|not found)|invalid window/i.test(message)) return 'window_missing';

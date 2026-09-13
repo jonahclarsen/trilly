@@ -35,18 +35,34 @@ async function status() {
 }
 async function cancel() {
   if (!job) return;
-  const tabs = Object.keys(job.tabs).map(Number); job = null; await save(); await chrome.alarms.clear('trilly-amazon');
+  const tabs = [...Object.keys(job.tabs).map(Number), ...(job.parkedTab ? [job.parkedTab] : [])]; job = null; await save(); await chrome.alarms.clear('trilly-amazon');
   await Promise.all(tabs.map(id => chrome.tabs.remove(id).catch(() => {})));
 }
 function urlFor(marketplace, id) { return `https://www.${marketplace}/gp/your-account/order-details?orderID=${id}`; }
 function priority(entry) {
   return entry.amounts?.some(amount => amount === job.priority) ? 0 : 1;
 }
-async function createTab(task, url) {
+// Keep the final owned tab blank while saves apply backpressure. Closing it
+// destroys the window, even when queued orders still need that window later.
+async function retireTab(id) {
+  delete job.tabs[id];
+  if (!Object.keys(job.tabs).length && !job.parkedTab) {
+    job.parkedTab = id;
+    await save();
+    await chrome.tabs.update(id, { url: 'about:blank' });
+  } else {
+    await save();
+    await chrome.tabs.remove(id).catch(() => {});
+  }
+}
+async function createTab(task, url, fromQueue = false) {
   if (!job || Object.keys(job.tabs).length >= TAB_LIMIT) return;
   // Create blank first, register ownership, THEN navigate to avoid a TASK race.
-  const tab = await chrome.tabs.create({ windowId: job.window, url: 'about:blank', active: false });
-  job.tabs[tab.id] = { ...task, started: Date.now() }; await save();
+  const tab = job.parkedTab ? { id: job.parkedTab } : await chrome.tabs.create({ windowId: job.window, url: 'about:blank', active: false });
+  delete job.parkedTab;
+  job.tabs[tab.id] = { ...task, started: Date.now() };
+  if (fromQueue) job.queue.shift();
+  await save();
   await chrome.tabs.update(tab.id, { url });
 }
 async function pump() {
@@ -54,8 +70,8 @@ async function pump() {
   if (Object.keys(job.pending).length < 12) {
     job.queue.sort((a, b) => priority(a) - priority(b));
     while (job.queue.length && Object.values(job.tabs).filter(t => t.kind === 'order').length < ORDER_LIMIT && Object.keys(job.tabs).length < TAB_LIMIT) {
-      const next = job.queue.shift();
-      await createTab({ kind: 'order', marketplace: next.marketplace, order: next.id }, urlFor(next.marketplace, next.id));
+      const next = job.queue[0];
+      await createTab({ kind: 'order', marketplace: next.marketplace, order: next.id }, urlFor(next.marketplace, next.id), true);
     }
     for (const [id, t] of Object.entries(job.tabs)) {
       if (t.next && !t.paused) {
@@ -129,11 +145,11 @@ async function page(message, sender) {
     }
     await packet({ payments: message.payments, orders: [] }); if (!job) return;
     if (message.hasNext && !allOlder && task.pages < 100) task.next = true;
-    else { if (task.pages >= 100) job.notice = 'Stopped after 100 payment pages. Older history may be incomplete.'; delete job.tabs[tabId]; await chrome.tabs.remove(tabId).catch(() => {}); }
+    else { if (task.pages >= 100) job.notice = 'Stopped after 100 payment pages. Older history may be incomplete.'; await retireTab(tabId); }
   } else {
     if (message.order?.id !== task.order || message.order.marketplace !== task.marketplace) throw new Error('Order page does not match requested order');
     await packet({ payments: [], orders: [message.order] }); if (!job) return;
-    job.completed++; delete job.tabs[tabId]; await chrome.tabs.remove(tabId).catch(() => {});
+    job.completed++; await retireTab(tabId);
   }
   await pump();
 }
@@ -166,10 +182,11 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         await diagnosticsLoaded;
         return { ok: true, diagnostics: diagnosticLog.snapshot() };
       }
-      if (['START', 'STOP', 'ACK', 'RESUME', 'FOCUS'].includes(message.type)) await recordDiagnostic(message.type, 'started');
-      if (message.type === 'START') { await start(message, sender); return { ok: true }; }
+      if (message.type === 'START') { await recordDiagnostic('START', 'started'); await start(message, sender); return { ok: true }; }
       if (message.type === 'STOP' && finished?.client === sender.tab.id && finished.payload.job === message.job) { finished = null; await chrome.storage.session.remove(RECEIPT); }
       if (!job || job.client !== sender.tab.id || job.id !== message.job) return {};
+      if (message.type === 'ACK' && !Object.hasOwn(job.pending, message.packet)) return { ok: true };
+      if (['STOP', 'ACK', 'RESUME', 'FOCUS'].includes(message.type)) await recordDiagnostic(message.type, 'started');
       if (message.type === 'STOP') { await cancel(); return { ok: true }; }
       if (message.type === 'ACK') { delete job.pending[message.packet]; await pump(); }
       if (message.type === 'PRIORITY') { job.priority = message.amount; await save(); }
@@ -199,7 +216,7 @@ chrome.tabs.onRemoved.addListener((id, info) => { void serial(async () => {
   if (finished?.client === id) { finished = null; await chrome.storage.session.remove(RECEIPT); }
   if (!job) return;
   if (job.client === id) { await cancel(); return; }
-  if (job.tabs[id] && info?.isWindowClosing) { await emit({ type: 'STATUS', running: false, pages: job.pages, orders: job.completed, queued: 0, active: 0, paused: [], message: 'Amazon window closed. Fetch again to retry missing details.' }); await cancel(); return; }
+  if (job.parkedTab === id || (job.tabs[id] && info?.isWindowClosing)) { await emit({ type: 'STATUS', running: false, pages: job.pages, orders: job.completed, queued: 0, active: 0, paused: [], message: 'Amazon window closed. Fetch again to retry missing details.' }); await cancel(); return; }
   if (job.tabs[id]) { delete job.tabs[id]; job.notice = 'A collection tab was closed. Some details may be missing; fetch again to retry.'; await pump(); }
 }).catch(error => recordDiagnostic('TAB_REMOVED', 'error', error)); });
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'trilly-amazon') void serial(async () => {

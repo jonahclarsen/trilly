@@ -51,6 +51,7 @@
   let amazonGeneration = 0
   let amazonImports = Promise.resolve()
   const amazonPackets = new Set<string>()
+  const amazonPendingPackets = new Set<string>()
   function stopAmazon() {
     if (amazonJob) amazonCommand('STOP', { job: amazonJob })
     amazonJob = ''; amazonStatus = { ...amazonStatus, running: false, paused: [] }
@@ -109,12 +110,15 @@
     if (message.type !== 'DATA' || typeof message.packet !== 'string' || !Array.isArray(message.orders) || !Array.isArray(message.payments)) return
     const packet = message.packet, job = amazonJob, generation = amazonGeneration, plan = data.plan_id
     if (amazonPackets.has(packet)) { amazonCommand('ACK', { job, packet }); return }
+    if (amazonPendingPackets.has(packet)) return
+    amazonPendingPackets.add(packet)
     amazonImports = amazonImports.then(async () => {
+      if (generation !== amazonGeneration || data?.plan_id !== plan) return
       if (amazonPackets.has(packet)) { amazonCommand('ACK', { job, packet }); return }
       if (await saveAmazon({ orders: message.orders, payments: message.payments }, plan, generation)) {
         amazonPackets.add(packet); amazonCommand('ACK', { job, packet })
       }
-    }).catch(e => { if (generation === amazonGeneration) { amazonMessage = 'Amazon details could not be saved. Fetch again to retry.'; stopAmazon(); handleError(e) } })
+    }).catch(e => { if (generation === amazonGeneration) { amazonMessage = 'Amazon details could not be saved. Fetch again to retry.'; stopAmazon(); amazonGeneration++; handleError(e) } }).finally(() => amazonPendingPackets.delete(packet))
   }
   async function pasteAmazon() {
     if (!data || amazonPasteBusy || !amazonHTML.trim()) return

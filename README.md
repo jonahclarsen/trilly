@@ -243,7 +243,9 @@ can also be selected and copied manually. **Amazon setup** also provides an HTML
 Collection reads payments only from Amazon.ca in a separate unfocused
 window and follows order links to Amazon.ca or Amazon.com using your sessions.
 Up to six order tabs work alongside one payment reader; pagination and
-order extraction overlap. Tabs close after extraction, results arrive as they
+order extraction overlap. Finished tabs close, with one blank tab kept open
+until queued orders and saves finish so the collection window remains available.
+Duplicate packet retries share one pending save. Results arrive as they
 are saved, and you can keep reviewing other transactions. **Stop** cancels the
 job. Sign-in, Amazon challenges, changed markup and timeouts pause the affected
 pages; use **Open page** and **Resume**. The collector only controls its own tabs.

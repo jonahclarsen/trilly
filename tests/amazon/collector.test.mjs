@@ -5,21 +5,27 @@ import fs from 'node:fs';
 import { webcrypto } from 'node:crypto';
 const directory = new URL('../../chromium-extension/', import.meta.url);
 function harness() {
-  let listener, nextTab = 10;
-  const tabs = new Map([[1, { id: 1, url: 'http://127.0.0.1:28753/' }], [2, { id: 2, url: 'https://www.amazon.ca/' }]]);
+  let listener, removed, nextTab = 10;
+  const windows = new Set([1]);
+  const tabs = new Map([[1, { id: 1, windowId: 1, url: 'http://127.0.0.1:28753/' }], [2, { id: 2, windowId: 1, url: 'https://www.amazon.ca/' }]]);
   const messages = [], saved = {};
   const chrome = {
     storage: { session: { get: async key => ({ [key]: saved[key] }), set: async value => Object.assign(saved, structuredClone(value)), remove: async key => { delete saved[key]; } } },
     runtime: { onMessage: { addListener: fn => listener = fn } },
     tabs: {
-      create: async fields => { const tab = { id: nextTab++, ...fields }; tabs.set(tab.id, tab); return tab; },
+      create: async fields => { if (fields.windowId && !windows.has(fields.windowId)) throw new Error('No window with id'); const tab = { id: nextTab++, ...fields }; tabs.set(tab.id, tab); return tab; },
       update: async (id, fields) => { Object.assign(tabs.get(id), fields); return tabs.get(id); },
-      remove: async id => { tabs.delete(id); },
+      remove: async id => {
+        const tab = tabs.get(id); tabs.delete(id);
+        const isWindowClosing = !!tab && ![...tabs.values()].some(t => t.windowId === tab.windowId);
+        if (isWindowClosing) windows.delete(tab.windowId);
+        removed?.(id, { isWindowClosing });
+      },
       reload: async () => {},
       sendMessage: async (id, message) => { messages.push({ id, ...structuredClone(message) }); return { ok: true }; },
-      onRemoved: { addListener: () => {} },
+      onRemoved: { addListener: fn => { removed = fn; } },
     },
-    windows: { create: async () => { const tab = await chrome.tabs.create({ url: 'about:blank' }); return { id: 100, tabs: [tab] }; }, update: async () => {} },
+    windows: { create: async () => { windows.add(100); const tab = await chrome.tabs.create({ windowId: 100, url: 'about:blank' }); return { id: 100, tabs: [tab] }; }, update: async () => {} },
     alarms: { create: async () => {}, clear: async () => {}, onAlarm: { addListener: () => {} } },
   };
   const context = vm.createContext({ chrome, URL, Date, structuredClone, crypto: webcrypto, AbortSignal, btoa, fetch: () => { throw new Error('No network in synthetic tests'); } });
@@ -28,7 +34,7 @@ function harness() {
   const send = (message, tab = 1, url) => new Promise(resolve => listener(message, { frameId: 0, tab: tabs.get(tab) || { id: tab }, url: url || tabs.get(tab)?.url }, resolve));
   const job = 'synthetic-collection-0001';
   const start = () => send({ type: 'START', job, oldest: '2026-09-01', cached: [] });
-  return { chrome, tabs, messages, saved, send, start, job };
+  return { chrome, tabs, windows, messages, saved, send, start, job };
 }
 const payment = (n, refund = false) => ({ id: `synthetic-payment-${n}`, marketplace: 'amazon.ca', date: '2026-09-02', amount: refund ? 10000 : -10000, currency: 'CAD', refund, payment_method: 'Visa ending in 0000', evidence: 'Synthetic payment', order_marketplaces: { [`000-0000000-${String(n).padStart(7, '0')}`]: 'amazon.ca' }, order_ids: [`000-0000000-${String(n).padStart(7, '0')}`] });
 test('only exact Trilly origin can start jobs; ordinary Amazon tabs cannot provide data', async () => {
@@ -169,4 +175,70 @@ test('a browser storage failure leaves in-memory diagnostics available', async (
   const report = await h.send({ type: 'DIAGNOSTICS' });
   assert.equal(report.diagnostics.at(-1).code, 'storage_quota');
   assert.doesNotMatch(JSON.stringify(report.diagnostics), /synthetic-private/);
+});
+
+
+test('save backpressure retains the window and resumes every queued order after ACK', async () => {
+  const h = harness(); await h.start();
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  await h.send({ type: 'PAGE', job: h.job, payments: Array.from({ length: 40 }, (_, n) => payment(n + 1)), hasNext: false }, reader.id);
+  // Let workers finish without acknowledging imports, just like a slow vault.
+  while (true) {
+    const worker = [...h.tabs.values()].find(t => t.url.includes('order-details'));
+    if (!worker) break;
+    const reply = await h.send({ type: 'PAGE', job: h.job, order: { id: new URL(worker.url).searchParams.get('orderID'), marketplace: 'amazon.ca', items: [] } }, worker.id);
+    assert.equal(reply.error, undefined);
+  }
+  assert.ok(h.saved.trillyAmazonJob.queue.length > 0);
+  assert.ok(Object.keys(h.saved.trillyAmazonJob.pending).length >= 12);
+  assert.equal(Object.keys(h.saved.trillyAmazonJob.tabs).length, 0);
+  const parked = h.saved.trillyAmazonJob.parkedTab;
+  assert.equal(h.tabs.get(parked).url, 'about:blank');
+  assert.ok(h.windows.has(100));
+  const seenOrders = new Set(h.messages.filter(m => m.payload?.type === 'DATA').flatMap(m => m.payload.orders.map(o => o.id)));
+  while (h.saved.trillyAmazonJob) {
+    for (const packet of Object.keys(h.saved.trillyAmazonJob.pending)) {
+      const reply = await h.send({ type: 'ACK', job: h.job, packet });
+      assert.equal(reply.error, undefined);
+    }
+    const workers = [...h.tabs.values()].filter(t => t.url.includes('order-details'));
+    for (const worker of workers) {
+      const id = new URL(worker.url).searchParams.get('orderID');
+      assert.ok(!seenOrders.has(id)); seenOrders.add(id);
+      await h.send({ type: 'PAGE', job: h.job, order: { id, marketplace: 'amazon.ca', items: [] } }, worker.id);
+    }
+  }
+  assert.equal(seenOrders.size, 40);
+  assert.equal(h.saved.trillyAmazonFinished.payload.complete, true);
+  assert.deepEqual([...h.tabs.keys()], [1, 2]);
+  assert.ok(!h.windows.has(100));
+});
+
+test('manually closing the parked tab cancels rather than reopening the window', async () => {
+  const h = harness(); await h.start();
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  await h.send({ type: 'PAGE', job: h.job, payments: [], hasNext: false }, reader.id);
+  await h.chrome.tabs.remove(h.saved.trillyAmazonJob.parkedTab);
+  await h.send({ type: 'PING', job: h.job });
+  assert.equal(h.saved.trillyAmazonJob, undefined);
+  assert.ok(!h.windows.has(100));
+  assert.ok(!h.messages.some(m => m.payload?.complete));
+});
+
+test('duplicate acknowledgements do not reschedule work or flood diagnostics', async () => {
+  const h = harness(); await h.start();
+  const before = JSON.stringify(h.saved.trillyAmazonDiagnostics);
+  for (let i = 0; i < 100; i++) await h.send({ type: 'ACK', job: h.job, packet: 'already-saved' });
+  assert.equal(JSON.stringify(h.saved.trillyAmazonDiagnostics), before);
+});
+
+test('failed tab creation does not discard the next queued order', async () => {
+  const h = harness(); await h.start();
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  h.chrome.tabs.create = async () => { throw new Error('No window with id'); };
+  const reply = await h.send({ type: 'PAGE', job: h.job, payments: [payment(1), payment(2)], hasNext: false }, reader.id);
+  assert.ok(reply.error);
+  // First order reused the parked reader; the failed second remains queued.
+  assert.equal(h.saved.trillyAmazonJob.queue.length, 1);
+  assert.equal(h.saved.trillyAmazonJob.queue[0].id, payment(2).order_ids[0]);
 });
