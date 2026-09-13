@@ -4,6 +4,7 @@
   import { reviewColumns, sortReviewRows, orderedReviewQueue, type ReviewSortColumn, type ReviewSortDirection } from './lib/review-sort'
   import { businessRows } from './lib/business'
   import Button from './lib/Button.svelte'
+  import { purchaseHistoryLinks, paypalDescription } from './lib/purchase-history'
   import PurchaseHistory from './lib/PurchaseHistory.svelte'
   import GooglePayee from './lib/GooglePayee.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
@@ -23,7 +24,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -292,7 +293,6 @@
   let reviewElement = $state<HTMLElement>()
   const current = $derived(reviewQueue.find(t => t.id === selectedId) ?? reviewQueue.find(t => !skipped.includes(t.id)))
   const amazonTargets = $derived((data?.amazon_targets ?? data?.queue ?? []).filter(isAmazon))
-  const displayedMemo = $derived(amazonDraft ?? current?.memo ?? '')
   const currentId = $derived(current?.id)
   const descriptionPending = $derived(!!current && !!data?.description_pending?.includes(current.id))
   const remaining = $derived(data?.queue.filter(t => !skipped.includes(t.id)).length ?? 0)
@@ -302,6 +302,10 @@
   const categoryName = $derived(data?.categories.find(c => c.id === category)?.name ?? current?.category_name ?? 'Choose category')
   const amazonPayeeName = $derived(amazonMarket ? amazonPayee(data?.payees ?? [], amazonMarket)?.name ?? amazonMarket : null)
   const payeeName = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
+  const paypalDraft = $derived(current && !descriptionFixed ? paypalDescription(
+    current.memo, payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name,
+  ) : null)
+  const displayedMemo = $derived(amazonDraft ?? paypalDraft ?? current?.memo ?? '')
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
@@ -508,7 +512,9 @@
       { payee, newPayee, category }, { payee: payeeFixed || !!amazonMarket, category: categoryFixed }, suggestion,
     )
     if (!special(current) && ((!selectedPayee && !amazonMarket && !selectedNewPayee) || !selectedCategory)) return
-    enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(amazonDraft !== null ? { memo: amazonDraft.toLowerCase() } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
+    const selectedName = selectedNewPayee ?? data.payees.find(p => p.id === selectedPayee)?.name
+    const reviewMemo = amazonDraft !== null ? amazonDraft.toLowerCase() : paypalDraft ?? (descriptionFixed ? null : paypalDescription(current.memo, selectedName))
+    enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(reviewMemo !== null ? { memo: reviewMemo } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
   }
   function undo() {
@@ -603,6 +609,10 @@
     }
     const key = event.key.toLowerCase()
     const actions: Record<string, () => void> = {
+      [merchantLinkKey.toLowerCase()]: () => {
+        const link = current && purchaseHistoryLinks(data?.purchase_history_rules, payeeName)[0]
+        if (link) window.open(link.url, '_blank', 'noopener,noreferrer')
+      },
       enter: () => void approve(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
@@ -778,6 +788,7 @@
           </div>
           {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
           {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} />{/key}{/if}
+          {#if paypalDraft !== null && amazonDraft === null}<p class="field-note">PayPal description will be saved when you approve.</p>{/if}
           {#if descriptionPending}<p class="field-note description-status" role="status">Description queued for sync. You can keep reviewing.</p>{/if}
 
           {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}

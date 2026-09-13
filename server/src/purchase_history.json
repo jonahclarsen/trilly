@@ -2,13 +2,38 @@
   {
     "id": "steam",
     "merchant": "Steam",
-    "payee_contains": ["steam purchase"],
-    "url": "https://store.steampowered.com/account/history/"
+    "payee_contains": [
+      "steam purchase"
+    ],
+    "url": "https://store.steampowered.com/account/history/",
+    "priority": 10
   },
   {
     "id": "long-mcquade",
     "merchant": "Long & McQuade",
-    "payee_contains": ["long & mcquade", "long and mcquade"],
-    "url": "https://www.long-mcquade.com/page/tracking/"
+    "payee_contains": [
+      "long & mcquade",
+      "long and mcquade"
+    ],
+    "url": "https://www.long-mcquade.com/page/tracking/",
+    "priority": 10
+  },
+  {
+    "id": "namecheap",
+    "merchant": "Namecheap",
+    "payee_contains": [
+      "namecheap"
+    ],
+    "url": "https://ap.www.namecheap.com/Profile/Billing/Orders",
+    "priority": 10
+  },
+  {
+    "id": "paypal",
+    "merchant": "PayPal",
+    "payee_contains": [
+      "paypal"
+    ],
+    "url": "https://www.paypal.com/myaccount/home",
+    "priority": 0
   }
 ]

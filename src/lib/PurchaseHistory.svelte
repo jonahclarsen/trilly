@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { merchantLinkKey } from './shortcuts'
   import Icon from './Icon.svelte'
   import { purchaseHistoryLinks } from './purchase-history'
   import type { PurchaseHistoryRule } from './types'
@@ -9,8 +10,8 @@
 
 {#if links.length}
   <div class="purchase-history">
-    {#each links as link (link.id)}
-      <a href={link.url} target="_blank" rel="noopener noreferrer">View {link.merchant} purchase history<Icon name="external" /></a>
+    {#each links as link, index (link.id)}
+      <a href={link.url} target="_blank" rel="noopener noreferrer" aria-keyshortcuts={index === 0 ? merchantLinkKey : undefined} title={`Open ${link.merchant} in a new tab${index === 0 ? ` (${merchantLinkKey})` : ''}`}>{link.merchant}<Icon name="external" /></a>
     {/each}
   </div>
 {/if}

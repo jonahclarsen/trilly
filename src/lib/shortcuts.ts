@@ -4,7 +4,10 @@ export function suggestionIndex(event: KeyboardEvent): number | undefined {
   return digit ? Number(digit) - 1 : undefined
 }
 
+export const merchantLinkKey = 'F'
+
 export const shortcuts = [
+  [merchantLinkKey, 'Open first merchant link in a new tab'],
   ['Alt+T', 'Transaction view'], ['Alt+V', 'List view'], ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
   ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'], ['Alt+L', 'Lock'],
   ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],

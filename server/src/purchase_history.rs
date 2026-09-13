@@ -7,6 +7,8 @@ pub struct Rule {
     merchant: String,
     payee_contains: Vec<String>,
     url: String,
+    #[serde(default)]
+    priority: i32,
 }
 
 // Backend-owned registry: add merchants or alternative phrases in the JSON file.
