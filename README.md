@@ -216,9 +216,9 @@ extension version against its bundled manifest and blocks collection if they dif
 (or the installed extension is too old to report a version). After updating the
 repository, reload **Trilly Amazon** in `chrome://extensions`, then reload Trilly.
 Paste `chrome://extensions` into Chrome’s address bar and press Enter; Chrome blocks
-websites from linking to this page. **Amazon setup** has a **Copy address** button and
-a selectable address if clipboard access is unavailable. **Amazon setup**
-also provides an HTML-paste fallback for payments and order-detail pages.
+websites from linking to this page. Click the inline address in the update notice or
+**Amazon setup** to copy it; a brief **Copied** overlay confirms success. The address
+can also be selected and copied manually. **Amazon setup** also provides an HTML-paste fallback for payments and order-detail pages.
 
 Collection reads payments only from Amazon.com in a separate unfocused
 window and follows order links to Amazon.ca or Amazon.com using your sessions.
