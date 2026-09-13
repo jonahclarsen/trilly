@@ -207,7 +207,10 @@ Undo restores the previous memo using a durable reverse edit.
 
 Import your bank CSVs into YNAB first. When unapproved Amazon transactions are
 present, **Fetch Amazon details** starts a batch for all accounts in the selected
-plan. Install the [Trilly Amazon extension](chromium-extension/README.md) through
+plan. Each fetch stops any previous collection, clears its saved Amazon records,
+thumbnails, payment bindings and completion tracking, then starts from scratch.
+The replacement scrape starts only after clearing is confirmed; existing orders
+are fetched again. Install the [Trilly Amazon extension](chromium-extension/README.md) through
 Chrome's **Load unpacked** control first, then reload Trilly. Trilly checks the
 extension version against its bundled manifest and blocks collection if they differ
 (or the installed extension is too old to report a version). After updating the
@@ -221,8 +224,8 @@ are saved, and you can keep reviewing other transactions. **Stop** cancels the
 job. Sign-in, Amazon challenges, changed markup and timeouts pause the affected
 pages; use **Open page** and **Resume**. The collector only controls its own tabs.
 It scans back to the oldest unapproved Amazon transaction plus a 14-day margin,
-with a 100-page limit per marketplace. Cached orders are reused for 24 hours;
-refunds trigger refreshes. Order tabs use the marketplace in each Amazon order
+with a 100-page limit per marketplace. Each fetch requests fresh order details,
+including refunds. Order tabs use the marketplace in each Amazon order
 link, which can differ from the payments page. Matching retains this destination
 alongside the original payment source and currency. Existing cached payments
 without link destinations use their original marketplace until fetched again.

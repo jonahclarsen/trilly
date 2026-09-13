@@ -22,8 +22,9 @@ The collector starts with the newest payments and stops after a page entirely
 older than the oldest unapproved Amazon transaction minus 14 days, the last
 page, or 100 pages per marketplace. Order links can point further into the past,
 including for refunds. A repeated page pauses instead of looping. Orders are
-deduplicated within a job; cached purchases refresh after 24 hours and refunds
-request a fresh order. Fetch again after interruptions to retry missing work.
+deduplicated within a job. Fetch Amazon details clears the previous saved cache
+and requests fresh orders, including refunds. Fetch again after interruptions
+to restart collection.
 
 Collection state and unacknowledged packets use memory-only
 `chrome.storage.session`, allowing the Manifest V3 worker to restart. The app

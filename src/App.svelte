@@ -50,14 +50,16 @@
     if (amazonJob) amazonCommand('STOP', { job: amazonJob })
     amazonJob = ''; amazonStatus = { ...amazonStatus, running: false, paused: [] }
   }
-  function startAmazon() {
-    if (!data || !amazonTargets.length) return
+  async function startAmazon() {
+    if (!data || !amazonTargets.length || amazonPasteBusy || busy || saving || syncing || saveFailed) return
     if (!amazonReady) { amazonSetup = true; amazonCommand('PING'); return }
-    stopAmazon(); amazonJob = crypto.randomUUID(); amazonMessage = ''
+    // Invalidate old packets and finish their writes before clearing the vault.
+    // Never start a replacement job unless that deletion has been confirmed.
+    if (!await clearAmazon() || !data || !amazonTargets.length) return
+    amazonJob = crypto.randomUUID(); amazonMessage = ''
     amazonJobTargets = amazonTargets.map(t => t.id)
     amazonStatus = { running: true, pages: 0, orders: 0, queued: 0, active: 0, message: 'Opening Amazon…', paused: [] }
-    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount,
-      cached: amazon.orders.map(o => ({ key: `${o.marketplace}:${o.id}`, at: o.fetched_at })) })
+    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount, cached: [] })
   }
   async function saveAmazon(records: AmazonStore, plan: string, generation: number) {
     if (generation !== amazonGeneration || data?.plan_id !== plan) return false
@@ -126,15 +128,21 @@
     } catch (e) { amazonMessage = e instanceof Error ? e.message : 'Could not read Amazon HTML.' }
     finally { amazonPasteBusy = false }
   }
-  async function clearAmazon() {
-    if (!data || amazonPasteBusy) return
+  async function clearAmazon(): Promise<boolean> {
+    if (!data || amazonPasteBusy) return false
     stopAmazon(); amazonGeneration++; amazonPasteBusy = true
     const plan = data.plan_id, generation = amazonGeneration
     try {
       await amazonImports
+      if (generation !== amazonGeneration || data?.plan_id !== plan) return false
       await api('amazon', { plan_id: plan, clear: true, payments: [], orders: [] })
-      if (generation === amazonGeneration) { if (data) data = { ...data, amazon_assignments: [] }; amazon = emptyAmazon(); amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonCollectedTargets = []; amazonMessage = 'Collected Amazon data cleared.' }
-    } catch (e) { handleError(e) }
+      if (generation !== amazonGeneration || data?.plan_id !== plan) return false
+      data = { ...data, amazon_assignments: [] }
+      amazon = emptyAmazon(); amazonDraft = null; amazonMarket = null; amazonPayment = undefined
+      amazonCollectedTargets = []; amazonPackets.clear(); amazonCompleting = ''; amazonJobTargets = []
+      amazonMessage = 'Collected Amazon data cleared.'
+      return true
+    } catch (e) { if (generation === amazonGeneration) handleError(e); return false }
     finally { amazonPasteBusy = false }
   }
   function applyAmazonDraft(memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) {
@@ -676,7 +684,7 @@
         <section class="amazon-toolbar" aria-label="Amazon collection">
           <div><strong>Amazon</strong><span>{amazonTargets.length} transactions across this plan</span></div>
           <div class="amazon-toolbar-actions">
-            {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || !amazonTargets.length} onclick={startAmazon}>Fetch Amazon details</Button>{/if}
+            {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || busy || saving > 0 || syncing || saveFailed || !amazonTargets.length} onclick={() => void startAmazon()}>Fetch Amazon details</Button>{/if}
             <Button icon="settings" onclick={() => amazonSetup = !amazonSetup}>Amazon setup</Button>
           </div>
           {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
