@@ -1,11 +1,12 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
   import Icon from './Icon.svelte'
+  import { pickerResults } from './picker-search'
   import type { Option } from './types'
-  let { title, options, onpick, onclose, oncreate }: { title: string; options: Option[]; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void } = $props()
+  let { title, options, rankCategories = false, onpick, onclose, oncreate }: { title: string; options: Option[]; rankCategories?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void } = $props()
   let query = $state('')
   let selected = $state(0)
-  let results = $derived(options.filter(o => `${o.name} ${o.detail ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 60))
+  let results = $derived(pickerResults(options, query.trim(), rankCategories))
   const newName = $derived(query.trim())
   const canCreate = $derived(!!oncreate && !!newName && [...newName].length <= 200 && !options.some(o => o.name.toLowerCase() === newName.toLowerCase()))
   const choiceCount = $derived(results.length + (canCreate ? 1 : 0))

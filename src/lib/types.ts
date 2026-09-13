@@ -1,5 +1,5 @@
 export type BusinessExpense = { plan_id: string; transaction_id: string; description: string; date: string; amount: number; account: string; note: string; archived: boolean }
-export type Option = { id: string; name: string; detail?: string }
+export type Option = { id: string; name: string; detail?: string; transactionCount?: number }
 export type Transaction = {
   id: string; account_id: string; date: string; amount: number; memo: string | null;
   approved: boolean; cleared: string; payee_id: string | null; payee_name: string | null;
@@ -18,6 +18,7 @@ export type Snapshot = {
   connected: boolean;
   plans: { id: string; name: string; currency_format: { iso_code: string } | null }[];
   plan_id: string; account_id: string; accounts: Option[];
+  category_transaction_counts?: Record<string, number>;
   categories: { id: string; name: string; category_group_name: string }[];
   payees: Option[]; queue: Transaction[]; pending: number; conflicts: number;
   undo_transactions?: Transaction[];
