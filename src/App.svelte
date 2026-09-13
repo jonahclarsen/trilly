@@ -232,7 +232,13 @@
   const expenseSaved = $derived(expenses.some(e => e.plan_id === data?.plan_id && e.transaction_id === currentId))
   function openExpense() {
     if (!current || busy || saveFailed || expenseSaved) return
-    expenseId = current.id; description = newPayee ?? data?.payees.find(p => p.id === payee)?.name ?? current.payee_name ?? ''; expenseNote = ''; modal = 'expense'
+    const expensePayee = newPayee ?? data?.payees.find(p => p.id === payee)?.name ?? current.payee_name ?? ''
+    const separator = displayedMemo.indexOf('. ')
+    const expenseSummary = (separator === -1 ? displayedMemo : displayedMemo.slice(0, separator)).trim()
+    expenseId = current.id
+    description = expenseSummary ? `${expensePayee} - ${expenseSummary}` : expensePayee
+    expenseNote = separator === -1 ? '' : displayedMemo.slice(separator + 2).trim()
+    modal = 'expense'
   }
   function openDescription() {
     if (!current || busy || saveFailed) return
@@ -956,7 +962,7 @@
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <form onsubmit={(event) => { event.preventDefault(); void saveExpense() }}>
       <label>Description<textarea data-modal-focus bind:value={description} required maxlength="10000" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
-      <label>Note (optional)<textarea bind:value={expenseNote} maxlength="10000" rows="2"></textarea></label>
+      <label>Note (optional)<textarea bind:value={expenseNote} maxlength="10000" rows="2" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
       <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed || !description.trim()}>Save expense</Button>
     </form>
   </Modal>

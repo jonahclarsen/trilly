@@ -353,8 +353,7 @@ await fresh authorization to run the isolated browser workflow. Local
 
 ## Business expenses
 
-Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee and starts fully selected, so
-typing replaces it; Enter saves, Shift+Enter adds a line, and Tab moves to the optional note.
+Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee followed by the first sentence of the transaction description, separated by ` - `. Any text after the first `. ` fills the optional note. The description starts fully selected, so typing replaces it; Enter saves from either field, Shift+Enter adds a line, and Tab moves to the optional note.
 Date, amount, and account are captured from the transaction. This does not approve
 or modify the YNAB transaction. The header's **Business** count opens the saved table.
 

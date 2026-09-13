@@ -551,15 +551,19 @@ test('physical number shortcuts ignore typing, dialogs, modifiers, composition a
 
 test('business expense keyboard entry, copy, reload, archive and undo', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-  const actions = await mockApp(page)
+  const state = structuredClone(synthetic)
+  state.queue[0].memo = 'Client lunch. Discussed renewal terms'
+  const actions = await mockApp(page, { state })
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
   await page.keyboard.press('b')
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Whole Foods - Client lunch')
+  await expect(page.getByLabel('Note (optional)')).toHaveValue('Discussed renewal terms')
   await expect(page.getByLabel('Description', { exact: true })).toBeFocused()
   await page.getByLabel('Description', { exact: true }).fill('Office supplies')
   await page.keyboard.press('Tab')
   await expect(page.getByLabel('Note (optional)')).toBeFocused()
   await page.getByLabel('Note (optional)').fill('Receipt filed')
-  await page.getByRole('button', { name: 'Save expense Enter', exact: true }).click()
+  await page.keyboard.press('Enter')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Business saved B' })).toBeDisabled()
   expect(actions.find(a => a.action === 'business_expense')).toEqual({ action: 'business_expense', id: 'one', description: 'Office supplies', note: 'Receipt filed' })
