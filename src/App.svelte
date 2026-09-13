@@ -28,7 +28,7 @@
   import GooglePayee from './lib/GooglePayee.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
-  import { amazonLinkSummary, amazonPayee, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { amazonLinkSummary, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
   import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
@@ -363,7 +363,7 @@
     const id = currentId
     untrack(() => {
       const t = current
-      amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMemoTouched = false; amazonPayeeTouched = false
+      amazonDraft = null; amazonMarket = t ? automaticAmazonMarketplace(t) : null; amazonPayment = undefined; amazonMemoTouched = false; amazonPayeeTouched = false
       payeeFixed = false; categoryFixed = false; descriptionFixed = false
       newPayee = null; payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
     })

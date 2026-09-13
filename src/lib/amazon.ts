@@ -15,10 +15,15 @@ export function amazonLinkSummary(targets: Transaction[], assignments: { transac
   if (!linked) return `${targets.length} ${targets.length === 1 ? 'transaction' : 'transactions'} to link`
   return `${linked} ${linked === 1 ? 'transaction' : 'transactions'} linked, ${targets.length - linked} unlinked`
 }
+const transactionPayeeNames = (t: Transaction) => [t.import_payee_name_original, t.import_payee_name, t.payee_name].filter(Boolean).join(' ').toLowerCase()
 export function isAmazon(t: Transaction) {
   if (t.transfer_account_id || t.debt_transaction_type) return false
-  const names = [t.import_payee_name_original, t.import_payee_name, t.payee_name].filter(Boolean).join(' ').toLowerCase()
+  const names = transactionPayeeNames(t)
   return !/amazon mbna card/.test(names) && /\b(?:amazon|amzn)|\bmktp\s*(?:ca|us)\b|kindle\s+svcs/.test(names)
+}
+export function automaticAmazonMarketplace(t: Transaction): Marketplace | null {
+  if (!isAmazon(t)) return null
+  return /kindle\s+svcs/.test(transactionPayeeNames(t)) ? 'amazon.ca' : null
 }
 export function mergeAmazon(store: AmazonStore, incoming: AmazonStore): AmazonStore {
   const payments = new Map(store.payments.map(p => [p.id, p]))

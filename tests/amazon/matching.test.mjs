@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { amazonLinkSummary, amazonPayee, amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
+import { amazonLinkSummary, amazonPayee, amazonCandidates, paymentHasOrder, paymentMarketplace, automaticAmazonMarketplace, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
 const t = { id: 'synthetic-bank', date: '2026-09-03', amount: -30000, payee_name: 'AMZN MKTP CA', account_id: 'synthetic-card', approved: false, transfer_account_id: null, debt_transaction_type: null };
 const item = { id: 'item-a', title: 'USB CABLE', quantity: 1, unit_price: 10000, image: '' };
 const item2 = { ...item, id: 'item-b', title: 'NOTEBOOK', unit_price: 20000 };
@@ -91,6 +91,7 @@ test('Kindle Svcs in current or imported payees receives the full Amazon matchin
   for (const field of ['payee_name', 'import_payee_name', 'import_payee_name_original']) {
     const kindle = { ...t, payee_name: 'Digital purchase', [field]: 'KINDLE SVCS synthetic charge' };
     assert.equal(isAmazon(kindle), true);
+    assert.equal(automaticAmazonMarketplace(kindle), 'amazon.ca');
     const candidate = amazonCandidates(store, kindle, 'CAD', [kindle])[0];
     assert.equal(candidate.confident, true);
     assert.equal(candidate.payment.id, payment.id);
@@ -98,4 +99,6 @@ test('Kindle Svcs in current or imported payees receives the full Amazon matchin
     assert.equal(isAmazon({ ...kindle, transfer_account_id: 'other' }), false);
   }
   assert.equal(isAmazon({ ...t, payee_name: 'Kindle accessory shop' }), false);
+  assert.equal(automaticAmazonMarketplace(t), null);
+  assert.equal(automaticAmazonMarketplace({ ...t, payee_name: 'Kindle Svcs', transfer_account_id: 'other' }), null);
 });
