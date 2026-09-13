@@ -18,9 +18,11 @@ live in one encrypted vault on your computer. No external categorization service
 </picture>
 </details>
 
-These screenshots predate the top-menu shortcuts, list view, and new-payee picker option. Screenshot regeneration is pending authorization to run the isolated browser workflow.
+These screenshots predate the top-menu shortcuts, list view, new-payee picker option, and purchase-history links. Screenshot regeneration is pending authorization to run the isolated browser workflow.
 
 Screenshots use synthetic data and the default Iridescent theme. The previews follow your light/dark preference.
+
+Matching payees show a purchase-history link beneath the transaction heading, opening in a new tab. Matching ignores case: “steam purchase” links to Steam; “long & mcquade” or “long and mcquade” links to Long & McQuade. The internal registry is `server/src/purchase_history.json`; add a unique ID, merchant label, HTTPS URL, and alternative `payee_contains` phrases to extend it. There is no settings UI for these rules. Links follow the selected payee immediately.
 
 Type a payee name in the Payee picker and select **Creating “name”** below the
 matches (or as the only option when there are none). **Save & approve** queues

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "steam",
+    "merchant": "Steam",
+    "payee_contains": ["steam purchase"],
+    "url": "https://store.steampowered.com/account/history/"
+  },
+  {
+    "id": "long-mcquade",
+    "merchant": "Long & McQuade",
+    "payee_contains": ["long & mcquade", "long and mcquade"],
+    "url": "https://www.long-mcquade.com/page/tracking/"
+  }
+]

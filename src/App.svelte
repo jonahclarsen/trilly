@@ -4,6 +4,7 @@
   import { reviewColumns, sortReviewRows, orderedReviewQueue, type ReviewSortColumn, type ReviewSortDirection } from './lib/review-sort'
   import { businessRows } from './lib/business'
   import Button from './lib/Button.svelte'
+  import PurchaseHistory from './lib/PurchaseHistory.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
   import { amazonPayee, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
@@ -751,6 +752,7 @@
           <div class="amount">{money(current.amount)}</div>
           <h1 class="payee-title">{payeeName}</h1>
           {#if current.import_payee_name_original || current.import_payee_name}<p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>{/if}
+          <PurchaseHistory rules={data.purchase_history_rules} payee={payeeName} />
 
           {#if special(current)}
             <div class="special-transaction">

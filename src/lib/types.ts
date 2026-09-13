@@ -9,7 +9,9 @@ export type Transaction = {
   subtransactions: { id: string; amount: number; category_id: string | null; memo: string | null; deleted: boolean }[];
 }
 export type Suggestion = { payee_id: string | null; category_id: string | null; payee: string; category: string; count: number; reason: string }
+export type PurchaseHistoryRule = { id: string; merchant: string; payee_contains: string[]; url: string }
 export type Snapshot = {
+  purchase_history_rules?: PurchaseHistoryRule[];
   review_rows?: Transaction[];
   amazon_cleared?: boolean;
   amazon_targets?: Transaction[];

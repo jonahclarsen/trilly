@@ -1,6 +1,7 @@
 mod amazon;
 mod keystore;
 mod model;
+mod purchase_history;
 mod suggest;
 mod vault;
 mod ynab;
@@ -182,6 +183,7 @@ fn snapshot(d: &Data) -> Value {
         "account_id": d.account_id, "accounts": d.accounts.iter().filter(|a| !a.deleted && !a.closed).collect::<Vec<_>>(),
         "category_transaction_counts": category_transaction_counts(d),
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
+        "purchase_history_rules": purchase_history::rules(),
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
         "description_pending": d.pending.iter().filter(|p| p.change.memo_only).map(|p| &p.change.id).collect::<Vec<_>>(),
         "amazon_assignments": d.amazon_assignments,
