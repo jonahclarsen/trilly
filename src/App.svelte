@@ -838,18 +838,6 @@
             {/if}
           {/if}
 
-          <div class="fields">
-            {#if !special(current)}
-              <button class="field-button" class:field-fixed={payeeFixed} disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
-              <button class="field-button" class:field-fixed={categoryFixed} disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
-            {/if}
-            <button class="field-button" class:field-fixed={descriptionFixed} disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
-          </div>
-          {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
-          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} />{/key}{/if}
-          {#if paypalDraft !== null && amazonDraft === null}<p class="field-note">PayPal description will be saved when you approve.</p>{/if}
-          {#if descriptionPending}<p class="field-note description-status" role="status">Description queued for sync. You can keep reviewing.</p>{/if}
-
           {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
             <section class="suggestions" aria-label="Suggestions">
               <div class="suggestion-heading"><h2>Suggestions</h2></div>
@@ -865,6 +853,18 @@
               {/each}
             </section>
           {/if}
+
+          <div class="fields">
+            {#if !special(current)}
+              <button class="field-button" class:field-fixed={payeeFixed} disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
+              <button class="field-button" class:field-fixed={categoryFixed} disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
+            {/if}
+            <button class="field-button" class:field-fixed={descriptionFixed} disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
+          </div>
+          {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
+          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} />{/key}{/if}
+          {#if paypalDraft !== null && amazonDraft === null}<p class="field-note">PayPal description will be saved when you approve.</p>{/if}
+          {#if descriptionPending}<p class="field-note description-status" role="status">Description queued for sync. You can keep reviewing.</p>{/if}
 
           <div class="review-actions">
             <Button icon="business" shortcut="B" disabled={busy || saveFailed || expenseSaved} onclick={openExpense}>{expenseSaved ? 'Business saved' : 'Business expense'}</Button>
