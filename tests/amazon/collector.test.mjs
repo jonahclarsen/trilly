@@ -145,3 +145,28 @@ test('a vanished worker job reconciles Stop without claiming successful collecti
   assert.equal(h.messages[0].payload.running, false);
   assert.equal(h.messages[0].payload.complete, false);
 });
+
+test('worker failures expose bounded safe diagnostics only to the Trilly origin', async () => {
+  const h = harness();
+  h.chrome.windows.create = async () => { throw new Error('No window with id: 123 synthetic-secret'); };
+  const reply = await h.start();
+  assert.ok(reply.error);
+  assert.equal(reply.diagnostics.at(-1).operation, 'START');
+  assert.equal(reply.diagnostics.at(-1).code, 'window_missing');
+  assert.doesNotMatch(JSON.stringify(reply.diagnostics), /synthetic-secret|oldest|client|order_ids/);
+  const report = await h.send({ type: 'DIAGNOSTICS' });
+  assert.equal(report.diagnostics.at(-1).code, 'window_missing');
+  assert.equal(h.saved.trillyAmazonDiagnostics.at(-1).code, 'window_missing');
+  const foreign = await h.send({ type: 'DIAGNOSTICS' }, 1, 'http://127.0.0.1:9999/');
+  assert.equal(foreign.diagnostics, undefined);
+});
+
+test('a browser storage failure leaves in-memory diagnostics available', async () => {
+  const h = harness();
+  h.chrome.storage.session.set = async () => { throw new Error('QUOTA_BYTES exceeded synthetic-private'); };
+  const reply = await h.start();
+  assert.ok(reply.error);
+  const report = await h.send({ type: 'DIAGNOSTICS' });
+  assert.equal(report.diagnostics.at(-1).code, 'storage_quota');
+  assert.doesNotMatch(JSON.stringify(report.diagnostics), /synthetic-private/);
+});

@@ -205,6 +205,24 @@ use and can be retried with Sync. A failed prerequisite sync pauses queued edits
 and offers Reload saved state. Description changes share approval undo history;
 Undo restores the previous memo using a durable reverse edit.
 
+## Diagnostics
+
+At the bottom of Settings, **Copy diagnostics** copies a report for troubleshooting.
+It contains extension versions, timestamps, operation names, allowlisted error
+categories, collection counts, HTTP status codes for Amazon vault and sync requests, and
+extension source file line numbers when available. It excludes raw exception
+messages and stacks, URLs, order/payment details, transaction IDs, credentials,
+and page contents. Nothing is uploaded automatically.
+
+App diagnostics use tab session storage; extension diagnostics use Chrome session
+storage so worker restarts do not lose the error. Each keeps at most 80 events;
+reports include only the last 24 hours. If storage fails, diagnostics remain in
+memory. Opening Settings refreshes the extension report; its retrieval timestamp
+and availability are included. Reload the updated Amazon extension before retrying
+collection. If clipboard access fails, Settings displays the report for manual
+selection and copying. Clipboard and browser behavior have not been exercised
+without fresh authorization.
+
 ## Amazon purchases and refunds
 
 Import your bank CSVs into YNAB first. When unapproved Amazon transactions are

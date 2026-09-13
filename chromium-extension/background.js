@@ -1,4 +1,13 @@
 importScripts('parser.js');
+importScripts('diagnostics.js');
+const DIAGNOSTICS = 'trillyAmazonDiagnostics';
+let diagnosticLog = TrillyDiagnostics.create();
+const diagnosticsLoaded = chrome.storage.session.get(DIAGNOSTICS).then(value => { diagnosticLog = TrillyDiagnostics.create(value[DIAGNOSTICS]); }).catch(() => {});
+async function recordDiagnostic(operation, outcome, error) {
+  await diagnosticsLoaded;
+  diagnosticLog.record(operation, outcome, error, { pages: job?.pages || 0, orders: job?.completed || 0, queued: job?.queue.length || 0, active: Object.keys(job?.tabs || {}).length, pending: Object.keys(job?.pending || {}).length, paused: Object.values(job?.tabs || {}).filter(t => t.paused).length });
+  try { await chrome.storage.session.set({ [DIAGNOSTICS]: diagnosticLog.snapshot() }); } catch { /* Keep the in-memory report if browser storage fails. */ }
+}
 const ORIGIN = 'http://127.0.0.1:28753';
 const KEY = 'trillyAmazonJob';
 const RECEIPT = 'trillyAmazonFinished';
@@ -15,7 +24,7 @@ function owned(sender) { return job && sender.frameId === 0 && job.tabs[String(s
 async function emit(payload) {
   if (!job) return;
   try { await chrome.tabs.sendMessage(job.client, { source: 'trilly-amazon-worker', payload: { ...payload, job: job.id } }); }
-  catch { await cancel(); }
+  catch (error) { await recordDiagnostic('DELIVERY', 'error', error); await cancel(); }
 }
 async function status() {
   if (!job) return;
@@ -61,6 +70,7 @@ async function pump() {
     // Retain only a tiny receipt so a missed terminal message can be replayed.
     finished = { client: job.client, payload: { type: 'STATUS', job: job.id, complete: !job.notice, running: false, pages: job.pages, orders: job.completed, queued: 0, active: 0, paused: [], message: job.notice || 'Amazon collection complete.' } };
     await chrome.storage.session.set({ [RECEIPT]: finished });
+    await recordDiagnostic('COMPLETE', job.notice ? 'partial' : 'complete');
     await emit(finished.payload);
     await cancel(); return;
   }
@@ -146,14 +156,17 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     loaded.then(() => owned(sender) && message.job === job.id ? thumbnail(message.url) : '').then(image => reply({ image })); return true;
   }
   serial(async () => {
+    if (client(sender) && message.type === 'DIAGNOSTICS') { await diagnosticsLoaded; return { diagnostics: diagnosticLog.snapshot() }; }
     await loaded;
     if (client(sender)) {
       if (message.type === 'PING') {
         if (job?.client === sender.tab.id) { await status(); for (const [id, records] of Object.entries(job?.pending || {})) await emit({ type: 'DATA', packet: id, ...records }); }
         else if (!job && finished?.client === sender.tab.id && (!message.job || message.job === finished.payload.job)) await chrome.tabs.sendMessage(sender.tab.id, { source: 'trilly-amazon-worker', payload: finished.payload }).catch(() => {});
         else if (!job && message.job) await chrome.tabs.sendMessage(sender.tab.id, { source: 'trilly-amazon-worker', payload: { type: 'STATUS', job: message.job, running: false, complete: false, pages: 0, orders: 0, queued: 0, active: 0, paused: [], message: 'Collection stopped. Fetch again to retry missing details.' } }).catch(() => {});
-        return { ok: true };
+        await diagnosticsLoaded;
+        return { ok: true, diagnostics: diagnosticLog.snapshot() };
       }
+      if (['START', 'STOP', 'ACK', 'RESUME', 'FOCUS'].includes(message.type)) await recordDiagnostic(message.type, 'started');
       if (message.type === 'START') { await start(message, sender); return { ok: true }; }
       if (message.type === 'STOP' && finished?.client === sender.tab.id && finished.payload.job === message.job) { finished = null; await chrome.storage.session.remove(RECEIPT); }
       if (!job || job.client !== sender.tab.id || job.id !== message.job) return {};
@@ -175,10 +188,10 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (!owned(sender)) return {};
     if (message.type === 'TASK') return { job: job.id, kind: job.tabs[sender.tab.id].kind };
     if (message.job !== job.id) return {};
-    if (message.type === 'PAGE') await page(message, sender);
-    if (message.type === 'PAGE_ERROR') { job.tabs[sender.tab.id].paused = String(message.reason).slice(0, 200); await save(); await status(); }
+    if (message.type === 'PAGE') { await page(message, sender); await recordDiagnostic('PAGE', 'ok'); }
+    if (message.type === 'PAGE_ERROR') { await recordDiagnostic('PAGE_ERROR', 'paused'); job.tabs[sender.tab.id].paused = String(message.reason).slice(0, 200); await save(); await status(); }
     return { ok: true };
-  }).then(reply).catch(async () => { reply({ error: 'Amazon collection could not continue. Stop and retry.' }); });
+  }).then(reply).catch(async error => { await recordDiagnostic(message?.type, 'error', error); reply({ error: 'Amazon collection could not continue. Stop and retry.', ...(client(sender) ? { diagnostics: diagnosticLog.snapshot() } : {}) }); });
   return true;
 });
 chrome.tabs.onRemoved.addListener((id, info) => { void serial(async () => {
@@ -188,10 +201,10 @@ chrome.tabs.onRemoved.addListener((id, info) => { void serial(async () => {
   if (job.client === id) { await cancel(); return; }
   if (job.tabs[id] && info?.isWindowClosing) { await emit({ type: 'STATUS', running: false, pages: job.pages, orders: job.completed, queued: 0, active: 0, paused: [], message: 'Amazon window closed. Fetch again to retry missing details.' }); await cancel(); return; }
   if (job.tabs[id]) { delete job.tabs[id]; job.notice = 'A collection tab was closed. Some details may be missing; fetch again to retry.'; await pump(); }
-}); });
+}).catch(error => recordDiagnostic('TAB_REMOVED', 'error', error)); });
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'trilly-amazon') void serial(async () => {
   await loaded; if (!job) return;
   for (const task of Object.values(job.tabs)) if (!task.paused && !task.next && Date.now() - task.started > 90000) task.paused = 'Amazon took too long to respond. Resume to retry.';
   for (const [id, records] of Object.entries(job.pending)) await emit({ type: 'DATA', packet: id, ...records });
   await pump();
-}); });
+}).catch(error => recordDiagnostic('ALARM', 'error', error)); });

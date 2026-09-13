@@ -6,8 +6,9 @@
   chrome.runtime.onMessage.addListener(message => { if (message?.source === 'trilly-amazon-worker') emit(message.payload); });
   window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.source !== 'trilly-amazon-app') return;
-    if (!['PING', 'START', 'STOP', 'ACK', 'PRIORITY', 'RESUME', 'FOCUS'].includes(event.data.type)) return;
+    if (!['PING', 'START', 'STOP', 'ACK', 'PRIORITY', 'RESUME', 'FOCUS', 'DIAGNOSTICS'].includes(event.data.type)) return;
     chrome.runtime.sendMessage(event.data).then(response => {
+      if (Array.isArray(response?.diagnostics)) emit({ type: 'DIAGNOSTICS', events: response.diagnostics });
       if (response?.error) emit({ type: 'ERROR', job: event.data.job, message: response.error });
       else if (event.data.type === 'PING') emit({ type: 'READY', version: chrome.runtime.getManifest().version });
     }).catch(() => emit({ type: 'ERROR', job: event.data.job, message: 'Reload Trilly after enabling the Amazon extension.' }));
