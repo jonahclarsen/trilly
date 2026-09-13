@@ -53,3 +53,7 @@ and server-rendered card tests. These do not launch or control a browser.
 
 When changing extension behavior, bump `manifest.json`’s version. Trilly imports
 that manifest as its required version, so there is no second version to maintain.
+
+The extension icons are generated from `public/favicon.svg`. After editing the
+favicon, run `pnpm icons` and commit the regenerated PNGs in
+`chromium-extension/icons`.

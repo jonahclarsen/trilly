@@ -11,6 +11,7 @@
     "check": "svelte-check --tsconfig tsconfig.json",
     "test": "cargo test --manifest-path server/Cargo.toml && playwright test",
     "test:browser": "playwright test",
+    "icons": "node scripts/generate-icons.mjs",
     "screenshots": "pnpm build && playwright test --config playwright.screenshots.config.ts",
     "install:app": "node scripts/start.mjs --release --install-only",
     "test:dev": "node --test scripts/runner-lock.test.mjs && playwright test --config playwright.dev.config.ts",
