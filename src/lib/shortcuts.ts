@@ -6,6 +6,7 @@ export function suggestionIndex(event: KeyboardEvent): number | undefined {
 
 export const merchantLinkKey = 'F'
 export const googlePayeeKey = 'G'
+export const amazonOrderKey = 'A'
 
 export const shortcuts = [
   [merchantLinkKey, 'Open first merchant link in a new tab'],
@@ -14,7 +15,8 @@ export const shortcuts = [
   ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],
   ['C', 'Choose category'], ['E', 'Choose payee'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo skip / approval / expense change'],
   [googlePayeeKey, 'Search payee on Google'],
-  ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['A', 'Choose account'], ['R', 'Sync'], [',', 'Settings'], ['L', 'Lock'], ['?', 'Help & shortcuts'],
+  [amazonOrderKey, 'Open Amazon order when available'],
+  ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['R', 'Sync'], [',', 'Settings'], ['L', 'Lock'], ['?', 'Help & shortcuts'],
 ] as const
 
 export const menuKeys = { transaction: 'T', list: 'V', sync: 'R', undo: 'U', business: 'B', help: 'H', settings: 'S', lock: 'L' } as const

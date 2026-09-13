@@ -97,3 +97,12 @@ export function itemCombinations(items: AmazonItem[], amount: number): string[][
 export function orderURL(value: string, marketplace: string) {
   try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password && !u.port && [marketplace, `www.${marketplace}`].includes(u.hostname) && ['amazon.ca', 'amazon.com'].includes(marketplace) ? u.href : '' } catch { return '' }
 }
+export function paymentOrderURL(payment: AmazonPayment) {
+  for (const id of payment.order_ids) {
+    if (!/^\d{3}-\d{7}-\d{7}$/.test(id)) continue
+    const marketplace = payment.order_marketplaces?.[id] ?? payment.marketplace
+    const link = orderURL(`https://www.${marketplace}/gp/your-account/order-details?orderID=${id}`, marketplace)
+    if (link) return link
+  }
+  return ''
+}

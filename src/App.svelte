@@ -26,6 +26,7 @@
     return () => { active = false; import.meta.hot?.off('trilly:purchase-history', update) }
   })
   import GooglePayee from './lib/GooglePayee.svelte'
+  import AmazonOrderLink from './lib/AmazonOrderLink.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
   import { amazonLinkSummary, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
@@ -43,7 +44,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey, googlePayeeKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey, googlePayeeKey, amazonOrderKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -63,6 +64,7 @@
   let amazonDraft = $state<string | null>(null)
   let amazonMarket = $state<string | null>(null)
   let amazonPayment = $state<string | undefined>()
+  let amazonOrderLink = $state('')
   let amazonMemoTouched = $state(false)
   let amazonPayeeTouched = $state(false)
   let amazonScope = ''
@@ -353,6 +355,7 @@
   const displayedMemo = $derived(amazonDraft ?? paypalDraft ?? current?.memo ?? '')
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
   let googlePayee = $state<{ open: () => void }>()
+  let amazonOrderAction = $state<{ open: () => void }>()
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -363,7 +366,7 @@
     const id = currentId
     untrack(() => {
       const t = current
-      amazonDraft = null; amazonMarket = t ? automaticAmazonMarketplace(t) : null; amazonPayment = undefined; amazonMemoTouched = false; amazonPayeeTouched = false
+      amazonDraft = null; amazonMarket = t ? automaticAmazonMarketplace(t) : null; amazonPayment = undefined; amazonOrderLink = ''; amazonMemoTouched = false; amazonPayeeTouched = false
       payeeFixed = false; categoryFixed = false; descriptionFixed = false
       newPayee = null; payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
     })
@@ -675,7 +678,7 @@
       enter: () => void approve(),
       [googlePayeeKey.toLowerCase()]: () => googlePayee?.open(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
-      a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
+      [amazonOrderKey.toLowerCase()]: () => { if (amazonOrderLink) amazonOrderAction?.open() }, r: () => void sync(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
     }
     // Native focused buttons retain Enter/Space activation.
@@ -840,7 +843,7 @@
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
-            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<GooglePayee bind:this={googlePayee} payee={searchPayee} /></div>
+            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={searchPayee} />{/if}</div>
           </div>
           <div class="amount">{money(current.amount)}</div>
           <div class="payee-detail">
@@ -875,7 +878,7 @@
             <button class="field-button" class:field-fixed={descriptionFixed} disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
           </div>
           {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
-          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} />{/key}{/if}
+          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} />{/key}{/if}
           {#if paypalDraft !== null && amazonDraft === null}<p class="field-note">PayPal description will be saved when you approve.</p>{/if}
           {#if descriptionPending}<p class="field-note description-status" role="status">Description queued for sync. You can keep reviewing.</p>{/if}
 
