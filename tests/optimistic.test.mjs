@@ -68,3 +68,15 @@ test('Amazon approval preserves the resolved payee spelling, including intention
   const approved = project(initial(), { body: { action: 'review', id: 'one', amazon_marketplace: 'amazon.ca' } })
   assert.equal(approved.review_rows[0].payee_name, 'amazon.ca')
 })
+
+
+test('approval and undo immediately update collection targets across accounts', () => {
+  const saved = { ...initial(), amazon_targets: [{ ...row }, { ...row, id: 'other', account_id: 'second' }] }
+  const approved = project(saved, { body: { action: 'review', id: 'one' } })
+  assert.deepEqual(approved.amazon_targets.map(t => t.id), ['other'])
+  assert.equal(saved.amazon_targets.length, 2)
+  const restored = project(approved, { body: { action: 'undo' }, restore: row })
+  assert.deepEqual(restored.amazon_targets.map(t => t.id).sort(), ['one', 'other'])
+  const memo = project(saved, description('kindle description'))
+  assert.equal(memo.amazon_targets.length, 2)
+});

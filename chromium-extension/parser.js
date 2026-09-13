@@ -47,7 +47,7 @@
     }
     return '';
   }
-  function orderId(value) { return String(value).match(/\b\d{3}-\d{7}-\d{7}\b/)?.[0] || ''; }
+  function orderId(value) { return String(value).match(/\b(?:\d{3}|D\d{2})-\d{7}-\d{7}\b/)?.[0] || ''; }
   function hash(value) {
     let h = 2166136261; for (const c of value) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
     return (h >>> 0).toString(16);

@@ -88,3 +88,14 @@ test('foreign, credentialed and non-HTTPS payment links cannot schedule orders',
     assert.deepEqual(p.payments(dom(html), url).payments[0].order_ids, []);
   }
 });
+
+
+test('digital order identifiers survive payment parsing and order extraction', () => {
+  const digital = 'D01-0000000-0000001';
+  const payment = p.payments(dom(paymentHTML('$10.00', '', digital)), 'https://www.amazon.ca/cpe/yourpayments/transactions').payments[0];
+  assert.deepEqual(payment.order_ids, [digital]);
+  assert.equal(payment.order_marketplaces[digital], 'amazon.ca');
+  const result = p.order(dom(orderHTML.replaceAll(id, digital)), url.replace(id, digital));
+  assert.equal(result.id, digital);
+  assert.equal(p.orderId('XYZ-0000000-0000001'), '');
+});

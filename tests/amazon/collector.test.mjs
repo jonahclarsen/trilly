@@ -33,7 +33,7 @@ function harness() {
   vm.runInContext(fs.readFileSync(new URL('background.js', directory), 'utf8'), context);
   const send = (message, tab = 1, url) => new Promise(resolve => listener(message, { frameId: 0, tab: tabs.get(tab) || { id: tab }, url: url || tabs.get(tab)?.url }, resolve));
   const job = 'synthetic-collection-0001';
-  const start = () => send({ type: 'START', job, oldest: '2026-09-01', cached: [] });
+  const start = (targets = [{ id: 'charge', date: '2026-09-01', amount: -10000 }, { id: 'refund', date: '2026-09-01', amount: 10000 }]) => send({ type: 'START', job, oldest: '2026-09-01', targets, cached: [] });
   return { chrome, tabs, windows, messages, saved, send, start, job };
 }
 const payment = (n, refund = false) => ({ id: `synthetic-payment-${n}`, marketplace: 'amazon.ca', date: '2026-09-02', amount: refund ? 10000 : -10000, currency: 'CAD', refund, payment_method: 'Visa ending in 0000', evidence: 'Synthetic payment', order_marketplaces: { [`000-0000000-${String(n).padStart(7, '0')}`]: 'amazon.ca' }, order_ids: [`000-0000000-${String(n).padStart(7, '0')}`] });
@@ -127,7 +127,7 @@ test('completion waits for every saved packet and replays a missed final status'
   const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
   const record = { ...payment(1), order_ids: [], order_marketplaces: {} };
   await h.send({ type: 'PAGE', job: h.job, payments: [record], hasNext: true }, reader.id);
-  await h.send({ type: 'PAGE', job: h.job, payments: [], hasNext: false }, reader.id);
+  await h.send({ type: 'PAGE', job: h.job, payments: [{ ...payment(2), order_ids: [], order_marketplaces: {} }], hasNext: false }, reader.id);
   const packets = h.messages.filter(m => m.payload?.type === 'DATA').map(m => m.payload.packet);
   assert.equal(packets.length, 2);
   await h.send({ type: 'ACK', job: h.job, packet: packets[0] });
@@ -217,7 +217,7 @@ test('save backpressure retains the window and resumes every queued order after 
 test('manually closing the parked tab cancels rather than reopening the window', async () => {
   const h = harness(); await h.start();
   const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
-  await h.send({ type: 'PAGE', job: h.job, payments: [], hasNext: false }, reader.id);
+  await h.send({ type: 'PAGE', job: h.job, payments: [{ ...payment(1), order_ids: [], order_marketplaces: {} }], hasNext: false }, reader.id);
   await h.chrome.tabs.remove(h.saved.trillyAmazonJob.parkedTab);
   await h.send({ type: 'PING', job: h.job });
   assert.equal(h.saved.trillyAmazonJob, undefined);
@@ -241,4 +241,73 @@ test('failed tab creation does not discard the next queued order', async () => {
   // First order reused the parked reader; the failed second remains queued.
   assert.equal(h.saved.trillyAmazonJob.queue.length, 1);
   assert.equal(h.saved.trillyAmazonJob.queue[0].id, payment(2).order_ids[0]);
+});
+
+
+test('three targets fetch only matching order links from a large payment page', async () => {
+  const h = harness();
+  await h.start([3, 17, 65].map(n => ({ id: `target-${n}`, date: '2026-09-03', amount: -n * 1000 })));
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  const payments = Array.from({ length: 100 }, (_, n) => ({ ...payment(n + 1), amount: -(n + 1) * 1000 }));
+  await h.send({ type: 'PAGE', job: h.job, payments, hasNext: false }, reader.id);
+  assert.equal([...h.tabs.values()].filter(t => t.url.includes('order-details')).length, 3);
+  const records = h.messages.filter(m => m.payload?.type === 'DATA').flatMap(m => m.payload.payments);
+  assert.deepEqual(records.map(p => p.amount), [-3000, -17000, -65000]);
+  assert.equal(h.saved.trillyAmazonJob.candidates.length, 3);
+});
+
+test('matching retains ambiguous charges and refunds but rejects wrong amounts, direction and dates', async () => {
+  const h = harness(); await h.start([{ id: 'charge', date: '2026-09-01', amount: -10000 }]);
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  const payments = [payment(1), { ...payment(2), date: '2026-09-15' }, { ...payment(3), date: '' },
+    { ...payment(4), currency: 'USD' }, { ...payment(5), date: '2026-09-16' }, payment(6, true), { ...payment(7), amount: -9999 }, { ...payment(8), refund: true }];
+  await h.send({ type: 'PAGE', job: h.job, payments, hasNext: true }, reader.id);
+  const records = h.messages.filter(m => m.payload?.type === 'DATA').flatMap(m => m.payload.payments);
+  assert.deepEqual(records.map(p => p.id), payments.slice(0, 4).map(p => p.id));
+  // Continue scanning: the first match must not suppress another plausible one.
+  await h.send({ type: 'PAGE', job: h.job, payments: [payment(9)], hasNext: false }, reader.id);
+  assert.equal(h.saved.trillyAmazonJob.candidates.length, 5);
+});
+
+test('target updates prune waiting orders and undo restores candidates already scanned', async () => {
+  const h = harness(); await h.start([{ id: 'first', date: '2026-09-01', amount: -10000 }, { id: 'second', date: '2026-09-01', amount: -20000 }]);
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  const payments = Array.from({ length: 20 }, (_, n) => ({ ...payment(n + 1), amount: n < 16 ? -10000 : -20000 }));
+  await h.send({ type: 'PAGE', job: h.job, payments, hasNext: false }, reader.id);
+  assert.equal(h.saved.trillyAmazonJob.queue.length, 14);
+  await h.send({ type: 'TARGETS', job: h.job, ids: ['second', 'new-unscanned-transaction'] });
+  assert.equal(h.saved.trillyAmazonJob.queue.length, 4);
+  assert.ok(h.saved.trillyAmazonJob.queue.every(o => o.targets.includes('second')));
+  await h.send({ type: 'TARGETS', job: h.job, ids: ['first', 'second'] });
+  assert.equal(h.saved.trillyAmazonJob.queue.length, 14);
+  assert.equal(h.saved.trillyAmazonJob.candidates.length, 20);
+});
+
+test('unrelated payment pages are scanned without importing them or opening orders', async () => {
+  const h = harness(); await h.start([{ id: 'charge', date: '2026-09-01', amount: -10000 }]);
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  await h.send({ type: 'PAGE', job: h.job, payments: [{ ...payment(1), amount: -50000 }], hasNext: true }, reader.id);
+  assert.equal(h.messages.filter(m => m.payload?.type === 'DATA').length, 0);
+  assert.ok(h.messages.some(m => m.type === 'NEXT'));
+  await h.send({ type: 'PAGE', job: h.job, payments: [{ ...payment(2), date: '2026-08-01' }], hasNext: true }, reader.id);
+  assert.equal(h.saved.trillyAmazonFinished.payload.complete, true);
+  assert.equal(h.messages.filter(m => m.payload?.type === 'DATA').length, 0);
+});
+
+test('missing or malformed targets cannot fall back to broad collection', async () => {
+  for (const targets of [undefined, [], [{ id: 'x', date: '2026-02-30', amount: -10000 }]]) {
+    const h = harness();
+    const reply = await h.send({ type: 'START', job: h.job, oldest: '2026-09-01', targets });
+    assert.ok(reply.error);
+    assert.equal(h.tabs.size, 2);
+  }
+});
+
+
+test('a matching digital payment schedules its D-prefixed order', async () => {
+  const h = harness(); await h.start();
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  const id = 'D01-0000000-0000001';
+  await h.send({ type: 'PAGE', job: h.job, payments: [{ ...payment(1), order_ids: [id], order_marketplaces: { [id]: 'amazon.ca' } }], hasNext: false }, reader.id);
+  assert.ok([...h.tabs.values()].some(t => t.url.includes(`orderID=${id}`)));
 });

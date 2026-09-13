@@ -65,8 +65,31 @@ async function createTab(task, url, fromQueue = false) {
   await save();
   await chrome.tabs.update(tab.id, { url });
 }
+function validateTargets(value) {
+  if (!Array.isArray(value) || !value.length || value.length > 10000) throw new Error('Invalid collection targets');
+  const ids = new Set();
+  return value.map(t => {
+    if (!t || typeof t.id !== 'string' || !t.id.length || t.id.length > 128 || ids.has(t.id) ||
+        !/^20\d{2}-\d{2}-\d{2}$/.test(t.date) || !Number.isFinite(Date.parse(t.date + 'T00:00:00Z')) || new Date(t.date + 'T00:00:00Z').toISOString().slice(0, 10) !== t.date ||
+        !Number.isSafeInteger(t.amount) || Math.abs(t.amount) > 1e12) throw new Error('Invalid collection target');
+    ids.add(t.id); return { id: t.id, date: t.date, amount: t.amount };
+  });
+}
+function matchingTargets(payment) {
+  // Same eligibility as amazonCandidates: preserve ambiguous equal-amount
+  // candidates (including unknown dates/currencies) for manual review.
+  return job.targets.filter(t => payment.amount === t.amount && payment.refund === (t.amount > 0) &&
+    (!payment.date || Math.abs(Date.parse(payment.date + 'T00:00:00Z') - Date.parse(t.date + 'T00:00:00Z')) <= 14 * 86400000)).map(t => t.id);
+}
+function refreshQueue() {
+  if (!job?.candidates) return;
+  const remaining = new Set(job.remaining);
+  const occupied = new Set([...job.completedKeys, ...Object.values(job.tabs).filter(t => t.kind === 'order').map(t => `${t.marketplace}:${t.order}`)]);
+  job.queue = job.candidates.filter(c => c.targets.some(id => remaining.has(id)) && !occupied.has(`${c.marketplace}:${c.id}`));
+}
 async function pump() {
   if (!job) return;
+  refreshQueue();
   if (Object.keys(job.pending).length < 12) {
     job.queue.sort((a, b) => priority(a) - priority(b));
     while (job.queue.length && Object.values(job.tabs).filter(t => t.kind === 'order').length < ORDER_LIMIT && Object.keys(job.tabs).length < TAB_LIMIT) {
@@ -102,12 +125,14 @@ async function packet(records) {
   await emit({ type: 'DATA', packet: id, ...records });
 }
 async function start(message, sender) {
+  const targets = validateTargets(message.targets);
   if (!/^[a-zA-Z0-9-]{16,80}$/.test(message.job) || !/^20\d{2}-\d{2}-\d{2}$/.test(message.oldest)) throw new Error('Invalid collection request');
   if (job) { if (job.client !== sender.tab.id) throw new Error('Collection is already running in another Trilly tab.'); await cancel(); }
   finished = null; await chrome.storage.session.remove(RECEIPT);
   const window = await chrome.windows.create({ url: 'about:blank', focused: false, type: 'normal' });
-  job = { id: message.job, client: sender.tab.id, window: window.id, oldest: message.oldest, priority: message.priority,
-    queue: [], seen: [], tabs: {}, pending: {}, pages: 0, completed: 0, notice: '',
+  job = { id: message.job, client: sender.tab.id, window: window.id, oldest: targets.map(t => t.date).sort()[0], priority: message.priority,
+    targets, remaining: targets.map(t => t.id), candidates: [], completedKeys: [],
+    queue: [], tabs: {}, pending: {}, pages: 0, completed: 0, notice: '',
     cached: Array.isArray(message.cached) ? message.cached.slice(0, 5000) : [] };
   // Read the shared account payment feed once; order links choose the storefront.
   const first = window.tabs[0].id;
@@ -128,28 +153,31 @@ async function page(message, sender) {
     task.signatures.push(signature); task.pages++; job.pages++;
     const cutoff = new Date(job.oldest + 'T00:00:00Z').getTime() - 14 * 86400000;
     const allOlder = message.payments.length > 0 && message.payments.every(p => p.date && new Date(p.date + 'T00:00:00Z').getTime() < cutoff);
-    for (const payment of message.payments) {
+    const relevant = message.payments.filter(p => matchingTargets(p).length);
+    for (const payment of relevant) {
       if (payment.date && new Date(payment.date + 'T00:00:00Z').getTime() < cutoff) continue;
       for (const id of payment.order_ids || []) {
-        if (!/^\d{3}-\d{7}-\d{7}$/.test(id)) continue;
+        if (!/^(?:\d{3}|D\d{2})-\d{7}-\d{7}$/.test(id)) continue;
         const marketplace = payment.order_marketplaces?.[id] || payment.marketplace;
         const key = `${marketplace}:${id}`;
-        if (job.seen.includes(key)) continue;
+        const targets = matchingTargets(payment);
+        const existing = job.candidates.find(c => `${c.marketplace}:${c.id}` === key);
+        if (existing) { existing.targets = [...new Set([...existing.targets, ...targets])]; continue; }
         const cached = job.cached.find(c => c.key === key);
         // Refunds always refresh the order. Other orders refresh after 24 hours.
         if (cached && !payment.refund && Date.now() - Date.parse(cached.at) < 86400000) continue;
-        if (job.seen.length >= 5000) { job.notice = 'Order limit reached. Some older details may be missing.'; continue; }
-        job.seen.push(key);
-        job.queue.push({ id, marketplace, amounts: message.payments.filter(p => p.order_ids.includes(id) && (p.order_marketplaces?.[id] || p.marketplace) === marketplace).map(p => p.amount) });
+        if (job.candidates.length >= 5000) { job.notice = 'Order limit reached. Some older details may be missing.'; continue; }
+        job.candidates.push({ id, marketplace, targets, amounts: message.payments.filter(p => p.order_ids.includes(id) && (p.order_marketplaces?.[id] || p.marketplace) === marketplace).map(p => p.amount) });
       }
     }
-    await packet({ payments: message.payments, orders: [] }); if (!job) return;
+    if (relevant.length) await packet({ payments: relevant, orders: [] });
+    if (!job) return;
     if (message.hasNext && !allOlder && task.pages < 100) task.next = true;
     else { if (task.pages >= 100) job.notice = 'Stopped after 100 payment pages. Older history may be incomplete.'; await retireTab(tabId); }
   } else {
     if (message.order?.id !== task.order || message.order.marketplace !== task.marketplace) throw new Error('Order page does not match requested order');
     await packet({ payments: [], orders: [message.order] }); if (!job) return;
-    job.completed++; await retireTab(tabId);
+    job.completed++; job.completedKeys.push(`${task.marketplace}:${task.order}`); await retireTab(tabId);
   }
   await pump();
 }
@@ -189,6 +217,11 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       if (['STOP', 'ACK', 'RESUME', 'FOCUS'].includes(message.type)) await recordDiagnostic(message.type, 'started');
       if (message.type === 'STOP') { await cancel(); return { ok: true }; }
       if (message.type === 'ACK') { delete job.pending[message.packet]; await pump(); }
+      if (message.type === 'TARGETS') {
+        if (!Array.isArray(message.ids) || message.ids.length > 10000 || message.ids.some(id => typeof id !== 'string' || id.length > 128)) throw new Error('Invalid collection targets');
+        job.remaining = job.targets.map(t => t.id).filter(id => message.ids.includes(id));
+        await pump();
+      }
       if (message.type === 'PRIORITY') { job.priority = message.amount; await save(); }
       if (message.type === 'FOCUS' && job.tabs[message.tab]) { await chrome.tabs.update(message.tab, { active: true }); await chrome.windows.update(job.window, { focused: true }); }
       if (message.type === 'RESUME') {

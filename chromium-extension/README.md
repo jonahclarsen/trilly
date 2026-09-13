@@ -59,3 +59,11 @@ that manifest as its required version, so there is no second version to maintain
 The extension icons are generated from `public/favicon.svg`. After editing the
 favicon, run `pnpm icons` and commit the regenerated PNGs in
 `chromium-extension/icons`.
+
+
+Trilly supplies only target transaction IDs, dates, and signed amounts. The worker
+scans payments but saves only candidate rows and opens only their related order
+pages (equal amount and refund direction, within 14 days; unknown dates remain
+ambiguous). Target updates remove queued work when reviews advance and can restore
+candidates after Undo. Already-running order tabs may finish. Digital D-prefixed
+order IDs are supported; unknown page layouts still pause rather than guessing.

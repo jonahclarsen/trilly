@@ -18,7 +18,7 @@ export function amazonLinkSummary(targets: Transaction[], assignments: { transac
 export function isAmazon(t: Transaction) {
   if (t.transfer_account_id || t.debt_transaction_type) return false
   const names = [t.import_payee_name_original, t.import_payee_name, t.payee_name].filter(Boolean).join(' ').toLowerCase()
-  return !/amazon mbna card/.test(names) && /\b(?:amazon|amzn)|\bmktp\s*(?:ca|us)\b/.test(names)
+  return !/amazon mbna card/.test(names) && /\b(?:amazon|amzn)|\bmktp\s*(?:ca|us)\b|kindle\s+svcs/.test(names)
 }
 export function mergeAmazon(store: AmazonStore, incoming: AmazonStore): AmazonStore {
   const payments = new Map(store.payments.map(p => [p.id, p]))
