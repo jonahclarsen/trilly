@@ -18,9 +18,15 @@ live in one encrypted vault on your computer. No external categorization service
 </picture>
 </details>
 
-These screenshots predate the top-menu shortcuts and list view. Screenshot regeneration is pending authorization to run the isolated browser workflow.
+These screenshots predate the top-menu shortcuts, list view, and new-payee picker option. Screenshot regeneration is pending authorization to run the isolated browser workflow.
 
 Screenshots use synthetic data and the default Iridescent theme. The previews follow your light/dark preference.
+
+Type a payee name in the Payee picker and select **Create “name”** below the
+matches (or as the only option when there are none). **Save & approve** queues
+creation and assignment together; YNAB creates the payee during sync. Existing
+names are reused. Closing the picker creates nothing. Undo restores the
+transaction, but a payee already created in YNAB remains in its payee list.
 
 ## Run
 

@@ -366,6 +366,8 @@ enum Action {
         amazon_marketplace: Option<String>,
         #[serde(default)]
         amazon_payment_id: Option<String>,
+        #[serde(default)]
+        payee_name: Option<String>,
         payee_id: Option<String>,
         category_id: Option<String>,
     },
@@ -375,6 +377,28 @@ enum Action {
         #[serde(default)]
         full: bool,
     },
+}
+
+fn resolve_payee_name(
+    payees: &[Payee],
+    payee_id: &mut Option<String>,
+    name: &str,
+) -> Result<Option<String>> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 200 {
+        return Err("Payee name must contain 1 to 200 characters".into());
+    }
+    *payee_id = payees
+        .iter()
+        .find(|p| {
+            !p.deleted && p.transfer_account_id.is_none() && p.name.eq_ignore_ascii_case(name)
+        })
+        .map(|p| p.id.clone());
+    Ok(if payee_id.is_none() {
+        Some(name.to_owned())
+    } else {
+        None
+    })
 }
 
 async fn action(
@@ -462,6 +486,7 @@ async fn action(
             amazon_marketplace,
             amazon_payment_id,
             mut payee_id,
+            payee_name,
             category_id,
         } => {
             if let Some(payment_id) = &amazon_payment_id {
@@ -478,26 +503,18 @@ async fn action(
                     );
                 }
             }
-            let payee_name = if let Some(market) = amazon_marketplace {
-                if !matches!(market.as_str(), "amazon.ca" | "amazon.com") {
-                    return Err("Invalid Amazon marketplace".into());
-                }
-                payee_id = next
-                    .payees
-                    .iter()
-                    .find(|p| {
-                        !p.deleted
-                            && p.transfer_account_id.is_none()
-                            && p.name.eq_ignore_ascii_case(&market)
-                    })
-                    .map(|p| p.id.clone());
-                if payee_id.is_none() {
-                    Some(market)
-                } else {
-                    None
-                }
-            } else {
-                None
+            if payee_name.is_some() && (amazon_marketplace.is_some() || payee_id.is_some()) {
+                return Err("Choose either an existing payee or a new payee name".into());
+            }
+            if amazon_marketplace
+                .as_ref()
+                .is_some_and(|market| !matches!(market.as_str(), "amazon.ca" | "amazon.com"))
+            {
+                return Err("Invalid Amazon marketplace".into());
+            }
+            let payee_name = match payee_name.or(amazon_marketplace) {
+                Some(name) => resolve_payee_name(&next.payees, &mut payee_id, &name)?,
+                None => None,
             };
             if memo
                 .as_ref()
@@ -1015,6 +1032,84 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn review_new_payee_validates_and_queues_creation_only_on_approval() {
+        for (name, existing, special, expected) in [
+            ("  Cedar Workshop  ".to_string(), false, false, true),
+            ("cedar workshop".to_string(), true, false, true),
+            ("   ".to_string(), false, false, false),
+            ("x".repeat(201), false, false, false),
+            ("Cedar Workshop".to_string(), false, true, false),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("synthetic.vault");
+            let mut vault =
+                vault::Vault::create_native(path.clone(), &keystore::SyntheticKeyStore).unwrap();
+            let mut data = Data::default();
+            data.account_id = "account".into();
+            data.transactions.push(Transaction {
+                id: "transaction".into(),
+                account_id: "account".into(),
+                category_id: Some("category".into()),
+                cleared: if special { "reconciled" } else { "uncleared" }.into(),
+                ..Default::default()
+            });
+            if existing {
+                data.payees.push(Payee {
+                    id: "existing".into(),
+                    name: "Cedar Workshop".into(),
+                    ..Default::default()
+                });
+            }
+            vault.commit(data).unwrap();
+            let app = Arc::new(Mutex::new(App {
+                path,
+                legacy_path: None,
+                keys: Arc::new(keystore::SyntheticKeyStore),
+                session: Some(Session {
+                    bearer: Zeroizing::new("synthetic-session".into()),
+                    vault,
+                    active: Instant::now(),
+                }),
+                ynab: ynab::Ynab::new(),
+                last_unlock: None,
+            }));
+            let mut headers = HeaderMap::new();
+            headers.insert("x-session", HeaderValue::from_static("synthetic-session"));
+            let body = serde_json::from_value(json!({
+                "action": "review", "id": "transaction", "payee_name": name,
+                "payee_id": null, "category_id": "category"
+            }))
+            .unwrap();
+            let result = action(State(app.clone()), headers, Json(body)).await;
+            assert_eq!(result.is_ok(), expected);
+            let mut locked = app.lock().await;
+            let data = &mut locked.session.as_mut().unwrap().vault.data;
+            assert!(!data.transactions[0].approved);
+            assert_eq!(data.pending.len(), usize::from(expected));
+            assert_eq!(data.payees.len(), usize::from(existing));
+            if expected {
+                let change = &data.pending[0].change;
+                assert!(change.approved);
+                assert_eq!(
+                    change.payee_name.as_deref(),
+                    if existing {
+                        None
+                    } else {
+                        Some("Cedar Workshop")
+                    }
+                );
+                assert_eq!(
+                    change.payee_id.as_deref(),
+                    if existing { Some("existing") } else { None }
+                );
+                undo(data).unwrap();
+                assert!(!data.pending[0].change.approved);
+                assert!(data.pending[0].change.payee_name.is_none());
+            }
+        }
+    }
+
     #[test]
     fn review_batches_survive_restart_sync_undo_and_reset_per_account() {
         let mut d = Data::default();

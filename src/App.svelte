@@ -183,7 +183,7 @@
   const expenseSaved = $derived(expenses.some(e => e.plan_id === data?.plan_id && e.transaction_id === currentId))
   function openExpense() {
     if (!current || busy || saving || saveFailed || expenseSaved) return
-    expenseId = current.id; description = data?.payees.find(p => p.id === payee)?.name ?? current.payee_name ?? ''; expenseNote = ''; modal = 'expense'
+    expenseId = current.id; description = newPayee ?? data?.payees.find(p => p.id === payee)?.name ?? current.payee_name ?? ''; expenseNote = ''; modal = 'expense'
   }
   function openDescription() {
     if (!current || busy || saving || saveFailed || descriptionPending) return
@@ -242,6 +242,7 @@
   let picks = $state<Suggestion[]>([])
   let picksStatus = $state<'loading' | 'ready' | 'error'>('ready')
   let payee = $state<string | null>(null)
+  let newPayee = $state<string | null>(null)
   let category = $state<string | null>(null)
   let edited = $state(false)
   let sessionEpoch = 0
@@ -258,7 +259,7 @@
   const currentPlan = $derived(data?.plans.find(p => p.id === data?.plan_id))
   const currency = $derived(currentPlan?.currency_format?.iso_code)
   const categoryName = $derived(data?.categories.find(c => c.id === category)?.name ?? current?.category_name ?? 'Choose category')
-  const payeeName = $derived(amazonMarket ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
+  const payeeName = $derived(newPayee ?? amazonMarket ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -270,7 +271,7 @@
     untrack(() => {
       const t = current
       amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMemoTouched = false; amazonPayeeTouched = false
-      payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
+      newPayee = null; payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
     })
   })
   $effect(() => {
@@ -341,7 +342,7 @@
     sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
-    picks = []; clearSkipped(); payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
+    picks = []; clearSkipped(); payee = null; newPayee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
     if (e instanceof ApiError && e.status === 401) forget()
@@ -389,7 +390,7 @@
       if (transaction) result.undo_transactions.push(transaction)
       result.review_rows = result.review_rows.map(t => t.id !== event.body.id ? t : {
         ...t, approved: true,
-        payee_name: typeof event.body.amazon_marketplace === 'string' ? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
+        payee_name: typeof event.body.payee_name === 'string' ? event.body.payee_name : typeof event.body.amazon_marketplace === 'string' ? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
         category_name: snapshot.categories.find(c => c.id === event.body.category_id)?.name ?? t.category_name,
         memo: typeof event.body.memo === 'string' ? event.body.memo : t.memo,
       })
@@ -473,10 +474,11 @@
   }
   function approve(suggestion?: Suggestion) {
     if (!current || busy || saveFailed || !data || descriptionPending) return
+    const selectedNewPayee = suggestion ? null : newPayee
     const selectedPayee = amazonMarket ? payee : suggestion ? suggestion.payee_id : payee
     const selectedCategory = suggestion ? suggestion.category_id : category
-    if (!special(current) && ((!selectedPayee && !amazonMarket) || !selectedCategory)) return
-    enqueue({ body: { action: 'review', id: current.id, payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(amazonDraft !== null ? { memo: amazonDraft.toLowerCase() } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
+    if (!special(current) && ((!selectedPayee && !amazonMarket && !selectedNewPayee) || !selectedCategory)) return
+    enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(amazonDraft !== null ? { memo: amazonDraft.toLowerCase() } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
   }
   function undo() {
@@ -519,7 +521,11 @@
   async function pick(id: string) {
     if (modal === 'account') { clearSkipped(); await act({ action: 'account', id }) }
     if (modal === 'category') { category = id; edited = true }
-    if (modal === 'payee') { payee = id; edited = true; amazonPayeeTouched = true; amazonMarket = null }
+    if (modal === 'payee') { newPayee = null; payee = id; edited = true; amazonPayeeTouched = true; amazonMarket = null }
+    modal = null; await tick(); reviewElement?.focus()
+  }
+  async function createPayee(name: string) {
+    newPayee = name; payee = null; edited = true; amazonPayeeTouched = true; amazonMarket = null
     modal = null; await tick(); reviewElement?.focus()
   }
   function openPicker(kind: 'category' | 'payee') { if (current && !special(current) && !busy) modal = kind }
@@ -759,7 +765,7 @@
           <div class="review-actions">
             <Button icon="business" shortcut="B" disabled={busy || !!saving || saveFailed || expenseSaved} onclick={openExpense}>{expenseSaved ? 'Business saved' : 'Business expense'}</Button>
             <Button icon="skip" shortcut="S" disabled={saveFailed || (busy && !syncing)} onclick={skip}>Skip</Button>
-            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || descriptionPending || (!special(current) && ((!payee && !amazonMarket) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
+            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || descriptionPending || (!special(current) && ((!payee && !amazonMarket && !newPayee) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
       {:else}
@@ -872,5 +878,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}
