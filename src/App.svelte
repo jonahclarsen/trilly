@@ -10,7 +10,7 @@
   import GooglePayee from './lib/GooglePayee.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
-  import { amazonPayee, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { amazonLinkSummary, amazonPayee, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
   import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
@@ -740,7 +740,7 @@
 
       {#if amazonTargets.some(t => !amazonCollectedTargets.includes(t.id)) || amazonStatus.running || amazonMessage || amazonVersionWarning}
         <section class="amazon-toolbar" aria-label="Amazon collection">
-          <div><strong>Amazon</strong><span>{amazonTargets.length} transactions across this plan</span></div>
+          <div><strong>Amazon</strong><span>{amazonLinkSummary(amazonTargets, data.amazon_assignments ?? [])}</span></div>
           <div class="amazon-toolbar-actions">
             {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || busy || saving > 0 || syncing || saveFailed || !amazonTargets.length} onclick={() => void startAmazon()}>Fetch Amazon details</Button>{/if}
             <Button icon="settings" onclick={() => amazonSetup = !amazonSetup}>Amazon setup</Button>
