@@ -778,8 +778,16 @@
             <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<GooglePayee bind:this={googlePayee} payee={searchPayee} /></div>
           </div>
           <div class="amount">{money(current.amount)}</div>
-          <h1 class="payee-title">{payeeName}</h1>
-          {#if current.import_payee_name_original || current.import_payee_name}<p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>{/if}
+          <div class="payee-detail">
+            <small>Current payee</small>
+            <h1 class="payee-title">{payeeName}</h1>
+          </div>
+          {#if current.import_payee_name_original || current.import_payee_name}
+            <div class="payee-detail">
+              <small>Original bank payee</small>
+              <p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>
+            </div>
+          {/if}
           <PurchaseHistory rules={data.purchase_history_rules} payee={payeeName} />
 
           {#if special(current)}
