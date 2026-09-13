@@ -4,10 +4,10 @@
   import Icon from './Icon.svelte'
   import { pickerResults } from './picker-search'
   import type { Option } from './types'
-  let { title, options, initialQuery = '', rankCategories = false, onpick, onclose, oncreate }: { title: string; options: Option[]; initialQuery?: string; rankCategories?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void } = $props()
+  let { title, options, initialQuery = '', rankCategories = false, matchPayees = false, onpick, onclose, oncreate }: { title: string; options: Option[]; initialQuery?: string; rankCategories?: boolean; matchPayees?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void } = $props()
   let query = $state(untrack(() => initialQuery))
   let selected = $state(0)
-  let results = $derived(pickerResults(options, query.trim(), rankCategories))
+  let results = $derived(pickerResults(options, query.trim(), rankCategories, matchPayees))
   const newName = $derived(query.trim())
   const canCreate = $derived(!!oncreate && !!newName && [...newName].length <= 200 && !options.some(o => o.name.toLowerCase() === newName.toLowerCase()))
   const choiceCount = $derived(results.length + (canCreate ? 1 : 0))

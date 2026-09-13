@@ -27,3 +27,21 @@ test('other pickers retain input order and group searches still match', () => {
   assert.deepEqual(pickerResults(options, 'every'), options)
   assert.deepEqual(pickerResults(options, 'missing', true), [])
 })
+
+test('payee searches retain the exact two-word store alongside full-query matches', () => {
+  const options = [option('Whole Foods'), option('Whole Foods 123'), option('Whole Foods 456'), option('Whole'), option('Other Whole Foods'), option('Whole Foods Market'), option('Unrelated', 0, 'Whole Foods')]
+  assert.deepEqual(names(pickerResults(options, 'whole foods 123', false, true)), ['Whole Foods', 'Whole Foods 123'])
+  assert.deepEqual(names(pickerResults(options, 'whole foods branch downtown', false, true)), ['Whole Foods'])
+  assert.deepEqual(names(pickerResults(options, 'whole food 123', false, true)), [])
+  assert.deepEqual(names(pickerResults(options, 'whole 123', false, true)), [])
+})
+
+test('two-word payee fallback ignores case and repeated whitespace', () => {
+  assert.deepEqual(names(pickerResults([option(' WHOLE  Foods ')], '  Whole   FOODS  123  ', false, true)), [' WHOLE  Foods '])
+})
+
+test('two-word fallback does not change account or category searches', () => {
+  const options = [option('Whole Foods'), option('Whole Foods 123')]
+  assert.deepEqual(names(pickerResults(options, 'whole foods 123')), ['Whole Foods 123'])
+  assert.deepEqual(names(pickerResults(options, 'whole foods 123', true)), ['Whole Foods 123'])
+})
