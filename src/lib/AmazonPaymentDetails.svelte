@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { orderURL, type AmazonPayment } from './amazon'
+  import { orderURL, marketplaceLabel, type AmazonPayment } from './amazon'
   let { payment }: { payment: AmazonPayment } = $props()
   function link(id: string) {
     if (!/^\d{3}-\d{7}-\d{7}$/.test(id)) return ''
@@ -14,7 +14,7 @@
     <div><dt>Date</dt><dd>{payment.date || 'Unavailable'}</dd></div>
     <div><dt>{payment.refund ? 'Refund' : 'Charge'}</dt><dd>{new Intl.NumberFormat(undefined, { style: 'currency', currency: payment.currency }).format(payment.amount / 1000)} {payment.currency}</dd></div>
     <div><dt>Payment method</dt><dd>{payment.payment_method || 'Unavailable'}</dd></div>
-    <div><dt>Payment source</dt><dd>{payment.marketplace}</dd></div>
+    <div><dt>Payment source</dt><dd>{marketplaceLabel(payment.marketplace)}</dd></div>
     {#each payment.order_ids as id}
       <div><dt>Order</dt><dd>{#if link(id)}<a href={link(id)} target="_blank" rel="noreferrer">{id}</a>{:else}{id}{/if}</dd></div>
     {/each}

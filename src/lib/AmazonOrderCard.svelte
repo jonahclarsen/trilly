@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from './Icon.svelte'
-  import { orderURL, type AmazonOrder, type AmazonPayment } from './amazon'
+  import { orderURL, marketplaceLabel, type AmazonOrder, type AmazonPayment } from './amazon'
   let { order, payments, selected = [], onchange, disabled = false }: { order: AmazonOrder; payments: AmazonPayment[]; selected?: string[]; onchange?: (ids: string[]) => void; disabled?: boolean } = $props()
   function money(value: number, currency: string) { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value / 1000) }
   function toggle(id: string) { onchange?.(selected.includes(id) ? selected.filter(i => i !== id) : [...selected, id]) }
@@ -8,7 +8,7 @@
 
 <article class="amazon-order" aria-label={`Amazon order ${order.id}`}>
   <div class="amazon-order-heading">
-    <div><strong>{order.marketplace}</strong><span>Order placed {order.date || 'date unavailable'}</span><small>Order {order.id}</small></div>
+    <div><strong>{marketplaceLabel(order.marketplace)}</strong><span>Order placed {order.date || 'date unavailable'}</span><small>Order {order.id}</small></div>
     <a href={orderURL(order.url, order.marketplace)} target="_blank" rel="noreferrer">Open order<Icon name="external" /></a>
   </div>
   {#if order.payment_method}<p class="amazon-method">{order.payment_method}</p>{/if}

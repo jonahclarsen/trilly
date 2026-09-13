@@ -784,11 +784,13 @@
           <div class="amount">{money(current.amount)}</div>
           <div class="payee-detail">
             <small>Current payee</small>
+            <span class="payee-separator" aria-hidden="true">-</span>
             <h1 class="payee-title">{payeeName}</h1>
           </div>
           {#if current.import_payee_name_original || current.import_payee_name}
             <div class="payee-detail">
               <small>Original bank payee</small>
+              <span class="payee-separator" aria-hidden="true">-</span>
               <p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>
             </div>
           {/if}

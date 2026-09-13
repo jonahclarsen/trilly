@@ -1,6 +1,7 @@
 import type { Transaction, Option } from './types'
 
 export type Marketplace = 'amazon.ca' | 'amazon.com'
+export function marketplaceLabel(marketplace: Marketplace) { return marketplace.replace(/^amazon/, 'Amazon') }
 export type AmazonPayment = { id: string; marketplace: Marketplace; date: string; amount: number; currency: string; refund: boolean; payment_method: string; order_ids: string[]; order_marketplaces?: Record<string, Marketplace>; evidence: string }
 export type AmazonItem = { id: string; title: string; quantity: number; unit_price: number | null; price_text: string; product_url: string; image: string; seller: string; status: string; details: string }
 export type AmazonOrder = { id: string; marketplace: Marketplace; url: string; date: string; currency: string; total: number | null; payment_method: string; items: AmazonItem[]; totals: { label: string; value: string }[]; fetched_at: string }
