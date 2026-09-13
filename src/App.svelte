@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte'
+  import { diagnosticsReport, diagnosticVersion, receiveDiagnostics, recordDiagnostic } from './lib/diagnostics'
   import extensionManifest from '../chromium-extension/manifest.json'
   import { reviewColumns, sortReviewRows, orderedReviewQueue, type ReviewSortColumn, type ReviewSortDirection } from './lib/review-sort'
   import { businessRows } from './lib/business'
@@ -24,7 +25,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey, googlePayeeKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -79,7 +80,9 @@
     })
   })
   function receiveAmazon(message: Record<string, any>) {
+    if (message.type === 'DIAGNOSTICS') { receiveDiagnostics(message.events); return }
     if (message.type === 'READY') {
+      diagnosticVersion(message.version)
       amazonReady = message.version === extensionManifest.version
       amazonVersionWarning = amazonReady ? '' : `(installed: ${typeof message.version === 'string' ? message.version.slice(0, 32) : 'unknown'}; required: ${extensionManifest.version})`
       if (!amazonReady && amazonJob) stopAmazon()
@@ -102,7 +105,7 @@
       }
       return
     }
-    if (message.type === 'ERROR') { amazonMessage = String(message.message); stopAmazon(); return }
+    if (message.type === 'ERROR') { recordDiagnostic('BRIDGE', 'error', new Error(String(message.message))); amazonMessage = String(message.message); stopAmazon(); return }
     if (message.type !== 'DATA' || typeof message.packet !== 'string' || !Array.isArray(message.orders) || !Array.isArray(message.payments)) return
     const packet = message.packet, job = amazonJob, generation = amazonGeneration, plan = data.plan_id
     if (amazonPackets.has(packet)) { amazonCommand('ACK', { job, packet }); return }
@@ -307,6 +310,7 @@
   ) : null)
   const displayedMemo = $derived(amazonDraft ?? paypalDraft ?? current?.memo ?? '')
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
+  let googlePayee = $state<{ open: () => void }>()
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -614,6 +618,7 @@
         if (link) window.open(link.url, '_blank', 'noopener,noreferrer')
       },
       enter: () => void approve(),
+      [googlePayeeKey.toLowerCase()]: () => googlePayee?.open(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
@@ -631,6 +636,14 @@
     if (Number.isNaN(date.getTime())) return ''
     const day = localDate(date) === localDate(new Date(currentTime)) ? 'today' : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
     return `Last synced at ${day}, ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date)}`
+  }
+  let diagnosticsMessage = $state('')
+  let diagnosticsFallback = $state('')
+  $effect(() => { if (modal === 'settings') { diagnosticsMessage = ''; diagnosticsFallback = ''; amazonCommand('DIAGNOSTICS') } })
+  async function copyDiagnostics() {
+    const report = diagnosticsReport(extensionManifest.version)
+    try { await navigator.clipboard.writeText(report); diagnosticsFallback = ''; diagnosticsMessage = 'Diagnostics copied.' }
+    catch { diagnosticsFallback = report; diagnosticsMessage = 'Copy unavailable. Select and copy the report below.' }
   }
   function closeSettings() { modal = null; token = ''; replacingToken = false }
   function focus(node: HTMLElement) { node.focus() }
@@ -762,7 +775,7 @@
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
-            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<GooglePayee payee={searchPayee} /></div>
+            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<GooglePayee bind:this={googlePayee} payee={searchPayee} /></div>
           </div>
           <div class="amount">{money(current.amount)}</div>
           <h1 class="payee-title">{payeeName}</h1>
@@ -882,6 +895,13 @@
         {/if}
       </section>
     {/if}
+    <section class="settings-section">
+      <h3>Diagnostics</h3>
+      <p class="field-note">Recent operation names, error codes and collection counts. No order details or credentials.</p>
+      <Button onclick={() => void copyDiagnostics()}>Copy diagnostics</Button>
+      {#if diagnosticsMessage}<p role="status">{diagnosticsMessage}</p>{/if}
+      {#if diagnosticsFallback}<label>Diagnostic report<textarea readonly rows="8" value={diagnosticsFallback} onfocus={(event) => event.currentTarget.select()}></textarea></label>{/if}
+    </section>
   </Modal>
 {:else if modal === 'description'}
   <Modal title="Description" subtitle={`${current?.date ?? ''} · ${payeeName}`} onclose={() => { modal = null; memoDraft = ''; memoId = '' }}>
