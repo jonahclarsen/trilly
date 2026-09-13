@@ -30,7 +30,7 @@
     {/each}
     {#if canCreate}
       <button id={`choice-${results.length}`} type="button" role="option" aria-selected={selected === results.length} class:selected={selected === results.length} onclick={() => oncreate?.(newName)} onpointermove={() => selected = results.length}>
-        <span>Create “{newName}”<small>Created when you save &amp; approve</small></span>
+        <strong>Creating “{newName}”</strong>
         {#if selected === results.length}<kbd>Enter</kbd>{/if}
       </button>
     {:else if !results.length}<p class="muted no-results">No matches</p>{/if}

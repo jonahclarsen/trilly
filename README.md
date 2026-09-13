@@ -22,7 +22,7 @@ These screenshots predate the top-menu shortcuts, list view, and new-payee picke
 
 Screenshots use synthetic data and the default Iridescent theme. The previews follow your light/dark preference.
 
-Type a payee name in the Payee picker and select **Create “name”** below the
+Type a payee name in the Payee picker and select **Creating “name”** below the
 matches (or as the only option when there are none). **Save & approve** queues
 creation and assignment together; YNAB creates the payee during sync. Existing
 names are reused. Closing the picker creates nothing. Undo restores the
