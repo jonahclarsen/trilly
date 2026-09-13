@@ -341,3 +341,7 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 .transaction-table .sort-header { padding: 7px; width: 100%; justify-content: flex-start; border-color: transparent; background: transparent; color: inherit; font-weight: inherit; }
 .transaction-table .table-amount .sort-header { justify-content: flex-end; }
 .transaction-table th[aria-sort='ascending'], .transaction-table th[aria-sort='descending'] { color: var(--accent-strong); }
+
+.field-button.field-fixed { background: color-mix(in srgb, var(--muted) 7%, var(--paper)); }
+.field-button.field-fixed strong { color: var(--muted); }
+.suggestion-copy .suggestion-unused { color: var(--muted); text-decoration: line-through; }
