@@ -68,11 +68,19 @@ impl Ynab {
         if data.plan_id.is_empty() || data.token.is_empty() {
             return Err("Connect YNAB and choose a plan first".into());
         }
-        let index = data
-            .payees
-            .iter()
-            .position(|p| p.id == id && !p.deleted && p.transfer_account_id.is_none())
-            .ok_or("Choose an existing non-transfer payee")?;
+        rename_payee_index(&data.payees, id, name)?;
+        // Check current YNAB names too: another client may have added or renamed a payee.
+        let response = self
+            .request(
+                &data.token,
+                Method::GET,
+                &format!("/plans/{}/payees", data.plan_id),
+                None,
+            )
+            .await
+            .map_err(|_| "Could not check current YNAB payees. Rename was not sent. Try again.")?;
+        let mut payees: Vec<Payee> = parse(&response["payees"])?;
+        let index = rename_payee_index(&payees, id, name)?;
         let response = self.request(&data.token, Method::PATCH,
             &format!("/plans/{}/payees/{id}", data.plan_id),
             Some(json!({"payee": {"name": name}}))).await
@@ -90,7 +98,8 @@ impl Ynab {
         for pending in data.pending.iter_mut().chain(data.undo.iter_mut()) {
             update(&mut pending.before);
         }
-        data.payees[index] = payee;
+        payees[index] = payee;
+        data.payees = payees;
         // Do not advance the transaction delta cursor using payee server_knowledge.
         Ok(())
     }
@@ -271,6 +280,20 @@ impl Ynab {
     }
 }
 
+fn rename_payee_index(payees: &[Payee], id: &str, name: &str) -> Result<usize, String> {
+    let index = payees
+        .iter()
+        .position(|p| p.id == id && !p.deleted && p.transfer_account_id.is_none())
+        .ok_or("Choose an existing non-transfer payee")?;
+    if payees
+        .iter()
+        .any(|p| p.id != id && !p.deleted && p.name.trim().to_lowercase() == name.to_lowercase())
+    {
+        return Err("A payee with that name already exists.".into());
+    }
+    Ok(index)
+}
+
 fn parse<T: serde::de::DeserializeOwned>(value: &Value) -> Result<T, String> {
     serde_json::from_value(value.clone()).map_err(|_| "Unexpected YNAB response".into())
 }
@@ -290,9 +313,79 @@ mod tests {
     #[derive(Default)]
     struct Mock {
         transactions: Vec<Transaction>,
+        payees: Vec<Payee>,
+        fail_payee_read: bool,
         writes: Vec<Value>,
         fail_after_write: bool,
         queries: Vec<HashMap<String, String>>,
+    }
+    #[tokio::test]
+    async fn rename_rejects_duplicate_names_in_cache_and_current_ynab_before_writing() {
+        let (api, mock, mut data, server) = setup().await;
+        let original = Payee {
+            id: "synthetic-payee".into(),
+            name: "Original".into(),
+            deleted: false,
+            transfer_account_id: None,
+        };
+        let other = Payee {
+            id: "other".into(),
+            name: "  Café Shop  ".into(),
+            deleted: false,
+            transfer_account_id: None,
+        };
+        data.payees = vec![original.clone(), other.clone()];
+        assert_eq!(
+            api.rename_payee(&mut data, &original.id, " CAFÉ SHOP ")
+                .await
+                .unwrap_err(),
+            "A payee with that name already exists."
+        );
+        // A name added in YNAB since the last sync must also block the write.
+        data.payees = vec![original.clone()];
+        mock.lock().await.payees = vec![original.clone(), other.clone()];
+        assert_eq!(
+            api.rename_payee(&mut data, &original.id, "café shop")
+                .await
+                .unwrap_err(),
+            "A payee with that name already exists."
+        );
+        assert!(mock.lock().await.writes.is_empty());
+        assert_eq!(data.payees[0].name, "Original");
+        mock.lock().await.fail_payee_read = true;
+        assert_eq!(
+            api.rename_payee(&mut data, &original.id, "Unused name")
+                .await
+                .unwrap_err(),
+            "Could not check current YNAB payees. Rename was not sent. Try again."
+        );
+        assert!(mock.lock().await.writes.is_empty());
+        assert_eq!(data.payees[0].name, "Original");
+        mock.lock().await.fail_payee_read = false;
+        // Matching the same ID permits capitalization changes; deleted names are reusable.
+        assert_eq!(
+            rename_payee_index(&[original.clone()], &original.id, "ORIGINAL").unwrap(),
+            0
+        );
+        let mut deleted = other;
+        deleted.deleted = true;
+        mock.lock().await.payees = vec![original.clone(), deleted];
+        api.rename_payee(&mut data, &original.id, "Café Shop")
+            .await
+            .unwrap();
+        assert_eq!(mock.lock().await.writes.len(), 1);
+        assert_eq!(data.payees[0].name, "Café Shop");
+        server.abort();
+    }
+    async fn read_payees(State(s): State<Arc<Mutex<Mock>>>) -> (StatusCode, Json<Value>) {
+        let mock = s.lock().await;
+        if mock.fail_payee_read {
+            return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({})));
+        }
+        (
+            StatusCode::OK,
+            Json(json!({"data": {"payees": mock.payees}})),
+        )
     }
     async fn rename_write(
         State(s): State<Arc<Mutex<Mock>>>,
@@ -319,6 +412,7 @@ mod tests {
             deleted: false,
             transfer_account_id: None,
         });
+        mock.lock().await.payees = data.payees.clone();
         data.undo.push(data.pending[0].clone());
         let knowledge = data.knowledge;
         api.rename_payee(&mut data, "synthetic-payee", "  New name  ")
@@ -458,6 +552,7 @@ mod tests {
         }));
         let app = Router::new()
             .route("/plans/test/transactions", get(read).patch(write))
+            .route("/plans/test/payees", get(read_payees))
             .route(
                 "/plans/test/payees/synthetic-payee",
                 axum::routing::patch(rename_write),

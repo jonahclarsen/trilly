@@ -44,6 +44,9 @@
     if (!editing || renameFailed || renaming || !onrename) return
     const name = draft.trim()
     if (!name || [...name].length > 200) { renameError = 'Use 1 to 200 characters.'; return }
+    if (options.some(option => option.id !== editing!.id && option.name.trim().toLowerCase() === name.toLowerCase())) {
+      renameError = 'A payee with that name already exists.'; return
+    }
     if (name === editing.name) { editing = null; renameError = ''; return }
     renaming = true; renameError = ''; renameStatus = ''
     try {

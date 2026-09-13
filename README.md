@@ -32,6 +32,10 @@ changes the shared payee, including its existing transactions, independently of 
 throughout Trilly only after confirmation. If the request fails, the editor
 keeps your draft and shows the error; press **Enter** to retry. An interrupted
 request may have reached YNAB; sync to check its current name if needed.
+Names already used by another active payee are rejected inline, ignoring case
+and surrounding whitespace. Trilly also checks the latest YNAB payees before
+sending a rename. A concurrent change in another client between that check and
+the rename can still race with the request.
 
 Type a payee name in the Payee picker and select **Creating “name”** below the
 matches (or as the only option when there are none). **Save & approve** queues
