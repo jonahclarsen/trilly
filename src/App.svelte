@@ -192,11 +192,14 @@
   let now = $state(Date.now())
   const IDLE_TIMEOUT_MS = 6 * 60 * 60 * 1000
   let ready = $state(false)
+  // Keep startup covered until the first review is ready; later navigation stays immediate.
+  let workspaceReady = $state(false)
   let unlockMode = $state<'macos' | 'migration' | 'unsupported'>('macos')
   let data = $state<Snapshot | null>(null)
   let legacyPassphrase = $state('')
   let token = $state('')
   let busy = $state(false)
+  const startupLoading = $derived(!workspaceReady && unlockMode === 'macos' && (!ready || busy || !!data))
   let syncing = $state(false)
   // Replay pending edits over each server response so older responses cannot erase newer edits.
   let saving = $state(0)
@@ -332,6 +335,7 @@
   })
   $effect(() => {
     const snapshot = data
+    const initialSyncing = syncing
     const ordered = reviewQueue
     const id = currentId
     suggestionVersion
@@ -345,13 +349,15 @@
         matches(id).then(result => {
           if (!cancelled && sessionEpoch === epoch && currentId === id) {
             picks = result; picksStatus = 'ready'
+            if (!initialSyncing) workspaceReady = true
           }
         }).catch(e => {
           if (!cancelled && sessionEpoch === epoch && currentId === id) {
             picksStatus = 'error'; handleError(e)
+            if (!initialSyncing && data) workspaceReady = true
           }
         })
-      }
+      } else if (snapshot && !initialSyncing) workspaceReady = true
     })
     return () => { cancelled = true }
   })
@@ -366,14 +372,15 @@
       if (!mounted) return
       unlockMode = result.mode; ready = true
       if (hasSession()) {
+        busy = true
         void api<Snapshot>('state').then(snapshot => {
           if (!mounted) return
           data = snapshot
           if (!snapshot.connected) modal = 'settings'
           if (snapshot.pending) scheduleSync()
-        }).catch(error => { if (mounted) handleError(error) })
+        }).catch(error => { if (mounted) handleError(error) }).finally(() => { if (mounted) busy = false })
       } else if (unlockMode === 'macos' && shouldAutoUnlock()) void unlock()
-    }).catch(error => { if (mounted) handleError(error) })
+    }).catch(error => { if (mounted) { ready = true; handleError(error) } })
     const media = matchMedia('(prefers-color-scheme: dark)')
     const update = () => {
       now = Date.now(); systemDark = media.matches
@@ -395,7 +402,7 @@
 
   function forget() {
     stopAmazon(); amazonGeneration++; amazonScope = ''; amazon = emptyAmazon(); amazonHTML = ''; amazonOrderURL = ''; amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = ''; amazonPackets.clear(); amazonSetup = false
-    sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
+    sessionEpoch++; setSession(''); data = null; workspaceReady = false; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
     picks = []; clearSkipped(); payee = null; newPayee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
@@ -575,7 +582,7 @@
   function openPicker(kind: 'category' | 'payee') { if (current && !special(current) && !busy) modal = kind }
   function keydown(event: KeyboardEvent) {
     lastActivity = Date.now()
-    if (event.repeat || event.isComposing) return
+    if (event.repeat || event.isComposing || startupLoading) return
     const typing = (event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')
     if (data && (!modal || modal === 'business') && !typing && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
       event.preventDefault(); undo(); return
@@ -658,29 +665,39 @@
 <div class="app-shell">
   <header>
     <Wordmark value={logo} />
-    <nav aria-label="App controls">
-      {#if data}
-        <div class="view-switch" role="group" aria-label="Transaction views">
-          <Button icon="transaction" label="Transaction" altKey={menuKeys.transaction} pressed={view === 'transaction'} onclick={showTransactionView}>Transaction</Button>
-          <Button icon="list" label="List" altKey={menuKeys.list} pressed={view === 'list'} onclick={() => view = 'list'}>List</Button>
-        </div>
-        <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
-        <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
-        <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!canUndoSkip && !data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
-        <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business</Button>
-        <span class="nav-divider"></span>
-        <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>
-      {/if}
-      <Button icon="settings" label="Settings" altKey={menuKeys.settings} onclick={() => modal = 'settings'}>Settings</Button>
-      {#if data}<Button icon="lock" label="Lock" altKey={menuKeys.lock} onclick={() => void lock()}>Lock</Button>{/if}
-    </nav>
+    {#if !startupLoading}
+      <nav aria-label="App controls">
+        {#if data}
+          <div class="view-switch" role="group" aria-label="Transaction views">
+            <Button icon="transaction" label="Transaction" altKey={menuKeys.transaction} pressed={view === 'transaction'} onclick={showTransactionView}>Transaction</Button>
+            <Button icon="list" label="List" altKey={menuKeys.list} pressed={view === 'list'} onclick={() => view = 'list'}>List</Button>
+          </div>
+          <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
+          <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
+          <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!canUndoSkip && !data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
+          <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business</Button>
+          <span class="nav-divider"></span>
+          <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>
+        {/if}
+        <Button icon="settings" label="Settings" altKey={menuKeys.settings} onclick={() => modal = 'settings'}>Settings</Button>
+        {#if data}<Button icon="lock" label="Lock" altKey={menuKeys.lock} onclick={() => void lock()}>Lock</Button>{/if}
+      </nav>
+    {/if}
   </header>
 
   {#if error}<div class="error" role="alert"><span>{error}</span><Button icon="close" label="Dismiss error" onclick={() => error = ''} /></div>{/if}
 
   {#if saveFailed && data}<div class="error" role="status"><span>Review paused until saved state is checked.</span><Button disabled={busy} onclick={() => void recover()}>Reload saved state</Button></div>{/if}
 
-  {#if !data}
+  {#if startupLoading}
+    <main class="unlock-page" aria-busy="true">
+      <div class="unlock-card" role="status" aria-live="polite">
+        <div class="lock-mark"><Icon name="lock" /></div>
+        <h1>Loading…</h1>
+        <p class="muted">{!data ? 'Opening your Keychain vault…' : syncing ? 'Syncing transactions…' : 'Finding matches in approved history…'}</p>
+      </div>
+    </main>
+  {:else if !data}
     <main class="unlock-page">
       <div class="unlock-card">
         <div class="lock-mark"><Icon name="lock" /></div>
@@ -784,11 +801,13 @@
           <div class="amount">{money(current.amount)}</div>
           <div class="payee-detail">
             <small>Current payee</small>
+            <span class="payee-separator" aria-hidden="true">-</span>
             <h1 class="payee-title">{payeeName}</h1>
           </div>
           {#if current.import_payee_name_original || current.import_payee_name}
             <div class="payee-detail">
               <small>Original bank payee</small>
+              <span class="payee-separator" aria-hidden="true">-</span>
               <p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>
             </div>
           {/if}
@@ -955,5 +974,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? (id, name) => enqueue({ body: { action: 'rename_payee', id, name } }) : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} matchPayees={modal === 'payee'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? (id, name) => enqueue({ body: { action: 'rename_payee', id, name } }) : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}
