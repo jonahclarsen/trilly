@@ -5,7 +5,7 @@
   import { businessRows } from './lib/business'
   import Button from './lib/Button.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
-  import { emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { amazonPayee, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
   import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
@@ -122,7 +122,7 @@
     }
     if (!amazonPayeeTouched && !special(current)) {
       amazonMarket = marketplace
-      const found = data?.payees.find(p => p.name.toLowerCase() === marketplace)
+      const found = amazonPayee(data?.payees ?? [], marketplace)
       payee = found?.id ?? current.payee_id
     }
   }
@@ -265,7 +265,8 @@
   const currentPlan = $derived(data?.plans.find(p => p.id === data?.plan_id))
   const currency = $derived(currentPlan?.currency_format?.iso_code)
   const categoryName = $derived(data?.categories.find(c => c.id === category)?.name ?? current?.category_name ?? 'Choose category')
-  const payeeName = $derived(newPayee ?? amazonMarket ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
+  const amazonPayeeName = $derived(amazonMarket ? amazonPayee(data?.payees ?? [], amazonMarket)?.name ?? amazonMarket : null)
+  const payeeName = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -749,7 +750,7 @@
               {/if}
               {#each picks as suggestion, i}
                 <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
-                  <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong class:suggestion-unused={categoryFixed} aria-label={categoryFixed ? `${suggestion.category} — not applied; category fixed` : undefined}>{suggestion.category}</strong><span class:suggestion-unused={payeeFixed} aria-label={payeeFixed ? `${suggestion.payee} — not applied; payee fixed` : undefined}>{amazonMarket ?? suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
+                  <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong class:suggestion-unused={categoryFixed} aria-label={categoryFixed ? `${suggestion.category} — not applied; category fixed` : undefined}>{suggestion.category}</strong><span class:suggestion-unused={payeeFixed} aria-label={payeeFixed ? `${suggestion.payee} — not applied; payee fixed` : undefined}>{amazonMarket ? payeeName : suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
                 </button>
               {/each}
             </section>
@@ -871,5 +872,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonMarket ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}

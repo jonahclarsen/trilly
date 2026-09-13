@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
+import { amazonPayee, amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
 const t = { id: 'synthetic-bank', date: '2026-09-03', amount: -30000, payee_name: 'AMZN MKTP CA', account_id: 'synthetic-card', approved: false, transfer_account_id: null, debt_transaction_type: null };
 const item = { id: 'item-a', title: 'USB CABLE', quantity: 1, unit_price: 10000, image: '' };
 const item2 = { ...item, id: 'item-b', title: 'NOTEBOOK', unit_price: 20000 };
@@ -65,4 +65,11 @@ test('cross-storefront payment matches only its linked order and suggests the de
   assert.equal(paymentMarketplace(cross), 'amazon.ca');
   assert.equal(paymentMarketplace(payment), 'amazon.ca');
   assert.equal(paymentMarketplace({ ...cross, order_ids: ['order', 'other'] }), null);
+});
+
+test('marketplace resolves an existing payee without changing its name', () => {
+  const payee = { id: 'synthetic-payee', name: 'Amazon.ca' };
+  assert.equal(amazonPayee([payee], 'amazon.ca'), payee);
+  assert.equal(amazonPayee([payee], 'amazon.com'), undefined);
+  assert.equal(amazonPayee([payee], null), undefined);
 });

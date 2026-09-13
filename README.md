@@ -214,19 +214,25 @@ extension version against its bundled manifest and blocks collection if they dif
 repository, reload **Trilly Amazon** in chrome://extensions, then reload Trilly. **Amazon setup**
 also provides an HTML-paste fallback for payments and order-detail pages.
 
-Collection uses your Amazon.ca and Amazon.com sessions in a separate unfocused
-window. Up to six order tabs work alongside two payment readers; pagination and
+Collection reads payments only from Amazon.com in a separate unfocused
+window and follows order links to Amazon.ca or Amazon.com using your sessions.
+Up to six order tabs work alongside one payment reader; pagination and
 order extraction overlap. Tabs close after extraction, results arrive as they
 are saved, and you can keep reviewing other transactions. **Stop** cancels the
 job. Sign-in, Amazon challenges, changed markup and timeouts pause the affected
 pages; use **Open page** and **Resume**. The collector only controls its own tabs.
 It scans back to the oldest unapproved Amazon transaction plus a 14-day margin,
-with a 100-page limit per marketplace. Cached orders are reused for 24 hours;
+with a 100-page payment limit. Cached orders are reused for 24 hours;
 refunds trigger refreshes. Order tabs use the marketplace in each Amazon order
 link, which can differ from the payments page. Matching retains this destination
 alongside the original payment source and currency. Existing cached payments
 without link destinations use their original marketplace until fetched again.
-Restart collection to retry missing work.
+Restart collection to retry missing work. Earlier versions scanned both payment
+pages and could save the same payment under two source-specific IDs. Those
+cached records are retained: to replace them, use **Clear collected Amazon data**
+and fetch again (this also clears local payment bindings, without changing YNAB).
+Selecting a marketplace reuses the existing payee's name and capitalization;
+only a missing payee falls back to the domain as its new name.
 
 Trilly displays an order card with lowercase product titles, optional thumbnails,
 quantities, unit prices, sellers, shipment and return information, payment method,

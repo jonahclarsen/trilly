@@ -77,11 +77,10 @@ async function start(message, sender) {
   job = { id: message.job, client: sender.tab.id, window: window.id, oldest: message.oldest, priority: message.priority,
     queue: [], seen: [], tabs: {}, pending: {}, pages: 0, completed: 0, notice: '',
     cached: Array.isArray(message.cached) ? message.cached.slice(0, 5000) : [] };
-  // Reuse the new window's blank tab for the first payments reader.
+  // Read the shared account payment feed once; order links choose the storefront.
   const first = window.tabs[0].id;
-  job.tabs[first] = { kind: 'payments', marketplace: 'amazon.ca', started: Date.now(), signatures: [], pages: 0 }; await save();
-  await chrome.tabs.update(first, { url: 'https://www.amazon.ca/cpe/yourpayments/transactions' });
-  await createTab({ kind: 'payments', marketplace: 'amazon.com', signatures: [], pages: 0 }, 'https://www.amazon.com/cpe/yourpayments/transactions');
+  job.tabs[first] = { kind: 'payments', marketplace: 'amazon.com', started: Date.now(), signatures: [], pages: 0 }; await save();
+  await chrome.tabs.update(first, { url: 'https://www.amazon.com/cpe/yourpayments/transactions' });
   await chrome.alarms.create('trilly-amazon', { periodInMinutes: 0.5 }); await status();
 }
 async function page(message, sender) {
@@ -114,7 +113,7 @@ async function page(message, sender) {
     }
     await packet({ payments: message.payments, orders: [] }); if (!job) return;
     if (message.hasNext && !allOlder && task.pages < 100) task.next = true;
-    else { if (task.pages >= 100) job.notice = 'Stopped after 100 pages per marketplace. Older history may be incomplete.'; delete job.tabs[tabId]; await chrome.tabs.remove(tabId).catch(() => {}); }
+    else { if (task.pages >= 100) job.notice = 'Stopped after 100 payment pages. Older history may be incomplete.'; delete job.tabs[tabId]; await chrome.tabs.remove(tabId).catch(() => {}); }
   } else {
     if (message.order?.id !== task.order || message.order.marketplace !== task.marketplace) throw new Error('Order page does not match requested order');
     await packet({ payments: [], orders: [message.order] }); if (!job) return;

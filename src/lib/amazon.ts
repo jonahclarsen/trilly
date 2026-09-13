@@ -1,4 +1,4 @@
-import type { Transaction } from './types'
+import type { Transaction, Option } from './types'
 
 export type Marketplace = 'amazon.ca' | 'amazon.com'
 export type AmazonPayment = { id: string; marketplace: Marketplace; date: string; amount: number; currency: string; refund: boolean; payment_method: string; order_ids: string[]; order_marketplaces?: Record<string, Marketplace>; evidence: string }
@@ -31,6 +31,9 @@ export function mergeAmazon(store: AmazonStore, incoming: AmazonStore): AmazonSt
 const distance = (a: string, b: string) => a && b ? Math.abs(Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400000 : Infinity
 export function paymentHasOrder(payment: AmazonPayment, order: AmazonOrder) {
   return payment.order_ids.includes(order.id) && (payment.order_marketplaces?.[order.id] ?? payment.marketplace) === order.marketplace
+}
+export function amazonPayee(payees: Option[], marketplace: string | null) {
+  return payees.find(p => p.name.toLowerCase() === marketplace)
 }
 export function paymentMarketplace(payment: AmazonPayment): Marketplace | null {
   const markets = new Set(payment.order_ids.map(id => payment.order_marketplaces?.[id] ?? payment.marketplace))

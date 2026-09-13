@@ -10,9 +10,9 @@ missing or different versions show an update warning and block collection.
 Start collection with **Fetch Amazon details** in Trilly. The extension does
 not collect data simply because it is installed or an Amazon tab is open.
 
-The button scans Amazon.ca and Amazon.com payments in a separate, unfocused
-window. Six order workers run alongside two payments readers (hard limit:
-twelve owned tabs). Payments pagination overlaps order extraction. Tabs close
+The button scans only Amazon.com payments in a separate, unfocused window.
+Order links choose Amazon.ca or Amazon.com. Six order workers run alongside
+one payment reader (hard limit: twelve owned tabs). Payments pagination overlaps order extraction. Tabs close
 as their extracted records are handed off; only tabs created by this collector
 are controlled or closed. **Stop** cancels collection. Login, Amazon challenges,
 unrecognized pages, and timeouts pause affected tabs; use **Open page**, handle
@@ -20,7 +20,7 @@ the page yourself, then **Resume**. No credentials or cookies are exported.
 
 The collector starts with the newest payments and stops after a page entirely
 older than the oldest unapproved Amazon transaction minus 14 days, the last
-page, or 100 pages per marketplace. Order links can point further into the past,
+page, or 100 payment pages. Order links can point further into the past,
 including for refunds. A repeated page pauses instead of looping. Orders are
 deduplicated within a job; cached purchases refresh after 24 hours and refunds
 request a fresh order. Fetch again after interruptions to retry missing work.

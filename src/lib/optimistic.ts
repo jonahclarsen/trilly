@@ -1,3 +1,4 @@
+import { amazonPayee } from './amazon.ts'
 import type { Snapshot, Transaction } from './types.ts'
 
 export type QueuedAction = { body: Record<string, unknown>; restore?: Transaction }
@@ -33,7 +34,7 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     if (transaction) result.undo_transactions.push(transaction)
     result.review_rows = result.review_rows.map(t => t.id !== event.body.id ? t : {
       ...t, approved: true,
-      payee_name: typeof event.body.payee_name === 'string' ? event.body.payee_name : typeof event.body.amazon_marketplace === 'string' ? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
+      payee_name: typeof event.body.payee_name === 'string' ? event.body.payee_name : typeof event.body.amazon_marketplace === 'string' ? amazonPayee(snapshot.payees, event.body.amazon_marketplace)?.name ?? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
       category_name: snapshot.categories.find(c => c.id === event.body.category_id)?.name ?? t.category_name,
       memo: typeof event.body.memo === 'string' ? event.body.memo : t.memo,
     })

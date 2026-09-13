@@ -57,3 +57,14 @@ test('new payee approval shows the draft name immediately and undo restores the 
   const undone = project(approved, { body: { action: 'undo' }, restore: approved.undo_transactions.at(-1) })
   assert.deepEqual(undone.queue, saved.queue)
 })
+
+test('Amazon approval preserves the resolved payee spelling, including intentionally lowercase names', () => {
+  for (const name of ['Amazon.ca', 'amazon.ca', 'AMAZON.CA']) {
+    const saved = initial()
+    saved.payees = [{ id: 'amazon', name }, { id: 'other', name: 'Other' }]
+    const approved = project(saved, { body: { action: 'review', id: 'one', amazon_marketplace: 'amazon.ca', payee_id: 'other' } })
+    assert.equal(approved.review_rows[0].payee_name, name)
+  }
+  const approved = project(initial(), { body: { action: 'review', id: 'one', amazon_marketplace: 'amazon.ca' } })
+  assert.equal(approved.review_rows[0].payee_name, 'amazon.ca')
+})
