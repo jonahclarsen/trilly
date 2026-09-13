@@ -33,6 +33,15 @@
   let amazonStatus = $state<AmazonStatus>({ running: false, pages: 0, orders: 0, queued: 0, active: 0, message: '', paused: [] })
   let amazonMessage = $state('')
   let amazonSetup = $state(false)
+  let extensionAddressMessage = $state('')
+  async function copyExtensionAddress() {
+    try {
+      await navigator.clipboard.writeText('chrome://extensions')
+      extensionAddressMessage = 'Copied. Paste into Chrome’s address bar and press Enter.'
+    } catch {
+      extensionAddressMessage = 'Select the address above and copy it, then paste it into Chrome’s address bar and press Enter.'
+    }
+  }
   let amazonHTML = $state('')
   let amazonOrderURL = $state('')
   let amazonPasteMarket = $state('amazon.ca')
@@ -50,14 +59,16 @@
     if (amazonJob) amazonCommand('STOP', { job: amazonJob })
     amazonJob = ''; amazonStatus = { ...amazonStatus, running: false, paused: [] }
   }
-  function startAmazon() {
-    if (!data || !amazonTargets.length) return
+  async function startAmazon() {
+    if (!data || !amazonTargets.length || amazonPasteBusy || busy || saving || syncing || saveFailed) return
     if (!amazonReady) { amazonSetup = true; amazonCommand('PING'); return }
-    stopAmazon(); amazonJob = crypto.randomUUID(); amazonMessage = ''
+    // Invalidate old packets and finish their writes before clearing the vault.
+    // Never start a replacement job unless that deletion has been confirmed.
+    if (!await clearAmazon() || !data || !amazonTargets.length) return
+    amazonJob = crypto.randomUUID(); amazonMessage = ''
     amazonJobTargets = amazonTargets.map(t => t.id)
     amazonStatus = { running: true, pages: 0, orders: 0, queued: 0, active: 0, message: 'Opening Amazon…', paused: [] }
-    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount,
-      cached: amazon.orders.map(o => ({ key: `${o.marketplace}:${o.id}`, at: o.fetched_at })) })
+    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount, cached: [] })
   }
   async function saveAmazon(records: AmazonStore, plan: string, generation: number) {
     if (generation !== amazonGeneration || data?.plan_id !== plan) return false
@@ -126,15 +137,21 @@
     } catch (e) { amazonMessage = e instanceof Error ? e.message : 'Could not read Amazon HTML.' }
     finally { amazonPasteBusy = false }
   }
-  async function clearAmazon() {
-    if (!data || amazonPasteBusy) return
+  async function clearAmazon(): Promise<boolean> {
+    if (!data || amazonPasteBusy) return false
     stopAmazon(); amazonGeneration++; amazonPasteBusy = true
     const plan = data.plan_id, generation = amazonGeneration
     try {
       await amazonImports
+      if (generation !== amazonGeneration || data?.plan_id !== plan) return false
       await api('amazon', { plan_id: plan, clear: true, payments: [], orders: [] })
-      if (generation === amazonGeneration) { if (data) data = { ...data, amazon_assignments: [] }; amazon = emptyAmazon(); amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonCollectedTargets = []; amazonMessage = 'Collected Amazon data cleared.' }
-    } catch (e) { handleError(e) }
+      if (generation !== amazonGeneration || data?.plan_id !== plan) return false
+      data = { ...data, amazon_assignments: [] }
+      amazon = emptyAmazon(); amazonDraft = null; amazonMarket = null; amazonPayment = undefined
+      amazonCollectedTargets = []; amazonPackets.clear(); amazonCompleting = ''; amazonJobTargets = []
+      amazonMessage = 'Collected Amazon data cleared.'
+      return true
+    } catch (e) { if (generation === amazonGeneration) handleError(e); return false }
     finally { amazonPasteBusy = false }
   }
   function applyAmazonDraft(memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) {
@@ -677,20 +694,24 @@
         <section class="amazon-toolbar" aria-label="Amazon collection">
           <div><strong>Amazon</strong><span>{amazonTargets.length} transactions across this plan</span></div>
           <div class="amazon-toolbar-actions">
-            {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || !amazonTargets.length} onclick={startAmazon}>Fetch Amazon details</Button>{/if}
+            {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || busy || saving > 0 || syncing || saveFailed || !amazonTargets.length} onclick={() => void startAmazon()}>Fetch Amazon details</Button>{/if}
             <Button icon="settings" onclick={() => amazonSetup = !amazonSetup}>Amazon setup</Button>
           </div>
           {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
           {#each amazonStatus.paused as pause}<div class="amazon-paused"><span>{pause.marketplace}: {pause.reason}</span><Button onclick={() => amazonCommand('FOCUS', { job: amazonJob, tab: pause.tab })}>Open page</Button><Button onclick={() => amazonCommand('RESUME', { job: amazonJob })}>Resume</Button></div>{/each}
-          {#if amazonVersionWarning && !amazonSetup}<p role="alert"><strong><a href="chrome://extensions" target="_blank" rel="noreferrer">Amazon extension update required</a> {amazonVersionWarning}</strong></p>{/if}
+          {#if amazonVersionWarning && !amazonSetup}<p role="alert"><strong>Amazon extension update required. {amazonVersionWarning}</strong></p>{/if}
           {#if amazonMessage}<p role="status">{amazonMessage}</p>{/if}
         </section>
       {/if}
       {#if amazonSetup}
         <section class="amazon-setup" aria-label="Amazon setup">
           <h2>Amazon setup</h2>
-          {#if amazonVersionWarning}<p role="alert"><strong><a href="chrome://extensions" target="_blank" rel="noreferrer">Amazon extension update required</a> {amazonVersionWarning}</strong></p>{/if}
-          <p>In Chrome, open <a href="chrome://extensions" target="_blank" rel="noreferrer">chrome://extensions</a>, enable Developer mode, and load the chromium-extension folder from the Trilly repository. Reload Trilly, then choose Fetch Amazon details. Sign in to Amazon when prompted in its own window.</p>
+          {#if amazonVersionWarning}<p role="alert"><strong>Amazon extension update required. {amazonVersionWarning}</strong></p>{/if}
+          <p>Paste this address into Chrome’s address bar and press Enter. Chrome blocks websites from opening this page through a link.</p>
+          <label>Extensions address<input readonly value="chrome://extensions" spellcheck="false" onfocus={(event) => event.currentTarget.select()} onclick={(event) => event.currentTarget.select()} /></label>
+          <Button onclick={() => void copyExtensionAddress()}>Copy address</Button>
+          {#if extensionAddressMessage}<p role="status">{extensionAddressMessage}</p>{/if}
+          <p>Enable Developer mode and choose Load unpacked to load the chromium-extension folder from the Trilly repository. If already installed, reload Trilly Amazon. Reload Trilly, then choose Fetch Amazon details. Sign in to Amazon when prompted in its own window.</p>
           <p class="field-note">{amazonReady ? 'Extension connected.' : 'Extension not connected.'}</p>
           <details><summary>Paste Amazon HTML instead</summary><label>Marketplace<select bind:value={amazonPasteMarket}><option value="amazon.ca">amazon.ca</option><option value="amazon.com">amazon.com</option></select></label><label>Order URL (optional, for order fragments)<input type="url" bind:value={amazonOrderURL} placeholder="https://www.amazon.ca/…" /></label><label>Payments page or order details<textarea bind:value={amazonHTML} rows="5" placeholder="Paste copied HTML"></textarea></label><Button disabled={amazonPasteBusy || !amazonHTML.trim()} onclick={() => void pasteAmazon()}>Import HTML</Button></details>
           <Button disabled={amazonPasteBusy || (!amazon.orders.length && !amazon.payments.length)} onclick={() => void clearAmazon()}>Clear collected Amazon data</Button>

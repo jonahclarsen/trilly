@@ -1,7 +1,8 @@
 # Trilly Amazon
 
 Load this folder as an unpacked extension in Chrome (or a Chromium browser).
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
+Paste `chrome://extensions` into Chrome’s address bar and press Enter (Chrome blocks
+website links to this page), enable Developer mode, choose **Load unpacked**,
 select this folder, and reload Trilly at `http://127.0.0.1:28753`.
 After repository updates, reload **Trilly Amazon** in chrome://extensions and
 reload Trilly. The app requires the version in its bundled extension manifest;
@@ -22,8 +23,9 @@ The collector starts with the newest payments and stops after a page entirely
 older than the oldest unapproved Amazon transaction minus 14 days, the last
 page, or 100 payment pages. Order links can point further into the past,
 including for refunds. A repeated page pauses instead of looping. Orders are
-deduplicated within a job; cached purchases refresh after 24 hours and refunds
-request a fresh order. Fetch again after interruptions to retry missing work.
+deduplicated within a job. Fetch Amazon details clears the previous saved cache
+and requests fresh orders, including refunds. Fetch again after interruptions
+to restart collection.
 
 Collection state and unacknowledged packets use memory-only
 `chrome.storage.session`, allowing the Manifest V3 worker to restart. The app
