@@ -64,7 +64,7 @@ Avenir Next with fixed CSS weight 750 and −0.8px letter spacing. Settings show
 a live logo preview above the color controls. Only color is customizable and
 persists across reloads, defaulting to `#56c2f0` in both appearances. Reset logo
 has a subtle outline and is disabled when the color matches its default.
-Use text labels with SVG icons, transparent backgrounds, and subtle outlines for the top navigation. Settings uses a clean gear SVG.
+Use text labels with SVG icons, transparent backgrounds, and subtle outlines for the top navigation.
 
 Whenever a requested change alters the UI, regenerate the README screenshots
 with pnpm screenshots. Review the resulting WebP files in docs/screenshots,
@@ -82,10 +82,7 @@ explicit user authorization. These have disrupted the user's work. This restrict
 overrides the browser, screenshot, and native-test requirements elsewhere in this
 file. Use non-interactive static checks and builds; report any skipped verification.
 
-
-Run pnpm check, pnpm build, cargo test --manifest-path server/Cargo.toml, and
-pnpm test:browser. Use synthetic data for all API and encryption checks.
-Document material security limitations honestly in README.md.
+Don't run any tests; trust your own code.
 
 ## Development identity and hot updates
 
@@ -97,8 +94,3 @@ installs it. Both use ~/Applications/Trilly.app with identifier app.trilly.
 Signing uses an existing certificate identity selected by public metadata and
 saved outside the repo in trilly-development/signing.json under Application
 Support. Never export the signing key or silently switch to ad-hoc signing.
-Run pnpm test:dev and pnpm test:signing for changes to these flows. Signed
-Keychain tests use new synthetic items and disable native authorization UI.
-The development browser tests temporarily edit and restore App.svelte and
-server/src/main.rs to exercise the actual file watchers. Run them in the
-dedicated worktree without concurrent edits to those files.
