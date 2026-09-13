@@ -1,7 +1,8 @@
 # Trilly Amazon
 
 Load this folder as an unpacked extension in Chrome (or a Chromium browser).
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
+Paste `chrome://extensions` into Chrome’s address bar and press Enter (Chrome blocks
+website links to this page), enable Developer mode, choose **Load unpacked**,
 select this folder, and reload Trilly at `http://127.0.0.1:28753`.
 After repository updates, reload **Trilly Amazon** in chrome://extensions and
 reload Trilly. The app requires the version in its bundled extension manifest;

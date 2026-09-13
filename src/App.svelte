@@ -33,6 +33,15 @@
   let amazonStatus = $state<AmazonStatus>({ running: false, pages: 0, orders: 0, queued: 0, active: 0, message: '', paused: [] })
   let amazonMessage = $state('')
   let amazonSetup = $state(false)
+  let extensionAddressMessage = $state('')
+  async function copyExtensionAddress() {
+    try {
+      await navigator.clipboard.writeText('chrome://extensions')
+      extensionAddressMessage = 'Copied. Paste into Chrome’s address bar and press Enter.'
+    } catch {
+      extensionAddressMessage = 'Select the address above and copy it, then paste it into Chrome’s address bar and press Enter.'
+    }
+  }
   let amazonHTML = $state('')
   let amazonOrderURL = $state('')
   let amazonPasteMarket = $state('amazon.ca')
@@ -681,15 +690,19 @@
           </div>
           {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
           {#each amazonStatus.paused as pause}<div class="amazon-paused"><span>{pause.marketplace}: {pause.reason}</span><Button onclick={() => amazonCommand('FOCUS', { job: amazonJob, tab: pause.tab })}>Open page</Button><Button onclick={() => amazonCommand('RESUME', { job: amazonJob })}>Resume</Button></div>{/each}
-          {#if amazonVersionWarning && !amazonSetup}<p role="alert"><strong><a href="chrome://extensions" target="_blank" rel="noreferrer">Amazon extension update required</a> {amazonVersionWarning}</strong></p>{/if}
+          {#if amazonVersionWarning && !amazonSetup}<p role="alert"><strong>Amazon extension update required. {amazonVersionWarning}</strong></p>{/if}
           {#if amazonMessage}<p role="status">{amazonMessage}</p>{/if}
         </section>
       {/if}
       {#if amazonSetup}
         <section class="amazon-setup" aria-label="Amazon setup">
           <h2>Amazon setup</h2>
-          {#if amazonVersionWarning}<p role="alert"><strong><a href="chrome://extensions" target="_blank" rel="noreferrer">Amazon extension update required</a> {amazonVersionWarning}</strong></p>{/if}
-          <p>In Chrome, open <a href="chrome://extensions" target="_blank" rel="noreferrer">chrome://extensions</a>, enable Developer mode, and load the chromium-extension folder from the Trilly repository. Reload Trilly, then choose Fetch Amazon details. Sign in to Amazon when prompted in its own window.</p>
+          {#if amazonVersionWarning}<p role="alert"><strong>Amazon extension update required. {amazonVersionWarning}</strong></p>{/if}
+          <p>Paste this address into Chrome’s address bar and press Enter. Chrome blocks websites from opening this page through a link.</p>
+          <label>Extensions address<input readonly value="chrome://extensions" spellcheck="false" onfocus={(event) => event.currentTarget.select()} onclick={(event) => event.currentTarget.select()} /></label>
+          <Button onclick={() => void copyExtensionAddress()}>Copy address</Button>
+          {#if extensionAddressMessage}<p role="status">{extensionAddressMessage}</p>{/if}
+          <p>Enable Developer mode and choose Load unpacked to load the chromium-extension folder from the Trilly repository. If already installed, reload Trilly Amazon. Reload Trilly, then choose Fetch Amazon details. Sign in to Amazon when prompted in its own window.</p>
           <p class="field-note">{amazonReady ? 'Extension connected.' : 'Extension not connected.'}</p>
           <details><summary>Paste Amazon HTML instead</summary><label>Marketplace<select bind:value={amazonPasteMarket}><option value="amazon.ca">amazon.ca</option><option value="amazon.com">amazon.com</option></select></label><label>Order URL (optional, for order fragments)<input type="url" bind:value={amazonOrderURL} placeholder="https://www.amazon.ca/…" /></label><label>Payments page or order details<textarea bind:value={amazonHTML} rows="5" placeholder="Paste copied HTML"></textarea></label><Button disabled={amazonPasteBusy || !amazonHTML.trim()} onclick={() => void pasteAmazon()}>Import HTML</Button></details>
           <Button disabled={amazonPasteBusy || (!amazon.orders.length && !amazon.payments.length)} onclick={() => void clearAmazon()}>Clear collected Amazon data</Button>

@@ -211,7 +211,10 @@ plan. Install the [Trilly Amazon extension](chromium-extension/README.md) throug
 Chrome's **Load unpacked** control first, then reload Trilly. Trilly checks the
 extension version against its bundled manifest and blocks collection if they differ
 (or the installed extension is too old to report a version). After updating the
-repository, reload **Trilly Amazon** in chrome://extensions, then reload Trilly. **Amazon setup**
+repository, reload **Trilly Amazon** in `chrome://extensions`, then reload Trilly.
+Paste `chrome://extensions` into Chrome’s address bar and press Enter; Chrome blocks
+websites from linking to this page. **Amazon setup** has a **Copy address** button and
+a selectable address if clipboard access is unavailable. **Amazon setup**
 also provides an HTML-paste fallback for payments and order-detail pages.
 
 Collection uses your Amazon.ca and Amazon.com sessions in a separate unfocused
