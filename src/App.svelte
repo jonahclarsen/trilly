@@ -13,6 +13,7 @@
   import Picker from './lib/Picker.svelte'
   import LogoSettings from './lib/LogoSettings.svelte'
   import Wordmark from './lib/Wordmark.svelte'
+  import { project, type QueuedAction } from './lib/optimistic'
   import { readLogo, saveLogo } from './lib/logo'
   import { api, ApiError, setSession, hasSession, shouldAutoUnlock } from './lib/api'
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
@@ -152,7 +153,7 @@
   let token = $state('')
   let busy = $state(false)
   let syncing = $state(false)
-  type QueuedAction = { body: Record<string, unknown>; restore?: Transaction }
+  // Replay pending edits over each server response so older responses cannot erase newer edits.
   let saving = $state(0)
   let saveFailed = $state(false)
   let confirmed: Snapshot | null = null
@@ -182,27 +183,26 @@
   const activeExpenses = $derived(expenses.filter(e => !e.archived))
   const expenseSaved = $derived(expenses.some(e => e.plan_id === data?.plan_id && e.transaction_id === currentId))
   function openExpense() {
-    if (!current || busy || saving || saveFailed || expenseSaved) return
+    if (!current || busy || saveFailed || expenseSaved) return
     expenseId = current.id; description = data?.payees.find(p => p.id === payee)?.name ?? current.payee_name ?? ''; expenseNote = ''; modal = 'expense'
   }
   function openDescription() {
-    if (!current || busy || saving || saveFailed || descriptionPending) return
+    if (!current || busy || saveFailed) return
     memoId = current.id; memoDraft = displayedMemo; modal = 'description'
   }
   async function saveDescription() {
+    if (!data || busy || saveFailed || !memoId) return
     const amazonEdit = !!current && current.id === memoId && isAmazon(current)
     if (amazonEdit) memoDraft = memoDraft.toLowerCase()
-    if (await act({ action: 'description', id: memoId, description: memoDraft })) {
-      reviewHistory = [...reviewHistory, { type: 'edit' }]
-      if (amazonEdit) { amazonDraft = null; amazonMemoTouched = true }
-      modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
-      void sync(false)
-    }
+    enqueue({ body: { action: 'description', id: memoId, description: memoDraft } })
+    reviewHistory = [...activeReviewHistory, { type: 'edit' }]
+    if (amazonEdit) { amazonDraft = null; amazonMemoTouched = true }
+    modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
   }
   async function saveExpense() {
-    if (await act({ action: 'business_expense', id: expenseId, description, note: expenseNote })) {
-      modal = null; description = ''; expenseNote = ''; expenseId = ''; await tick(); reviewElement?.focus()
-    }
+    if (!data || busy || saveFailed || !expenseId || !description.trim() || expenseSaved) return
+    enqueue({ body: { action: 'business_expense', id: expenseId, description, note: expenseNote } })
+    modal = null; description = ''; expenseNote = ''; expenseId = ''; await tick(); reviewElement?.focus()
   }
   async function copyExpenses() {
     try { await navigator.clipboard.writeText(businessRows(activeExpenses)); businessMessage = 'Copied. Paste into your sheet.' }
@@ -381,32 +381,6 @@
     clearTimeout(syncTimer)
     syncTimer = setTimeout(() => { if (busy) scheduleSync(500); else void sync(false) }, delay)
   }
-  function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
-    const result = { ...snapshot, queue: [...snapshot.queue], review_rows: [...(snapshot.review_rows ?? snapshot.queue)], undo_transactions: [...(snapshot.undo_transactions ?? [])] }
-    if (event.body.action === 'review') {
-      if (typeof event.body.amazon_payment_id === 'string') result.amazon_assignments = [...(result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.body.id), { payment_id: event.body.amazon_payment_id, transaction_id: String(event.body.id) }]
-      const transaction = result.queue.find(t => t.id === event.body.id)
-      if (transaction) result.undo_transactions.push(transaction)
-      result.review_rows = result.review_rows.map(t => t.id !== event.body.id ? t : {
-        ...t, approved: true,
-        payee_name: typeof event.body.amazon_marketplace === 'string' ? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
-        category_name: snapshot.categories.find(c => c.id === event.body.category_id)?.name ?? t.category_name,
-        memo: typeof event.body.memo === 'string' ? event.body.memo : t.memo,
-      })
-      result.queue = result.queue.filter(t => t.id !== event.body.id)
-      result.pending++; result.can_undo = true
-    } else if (event.body.action === 'undo') {
-      if (event.restore) result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.restore!.id)
-      result.undo_transactions.pop()
-      if (event.restore && event.restore.account_id === result.account_id) {
-        result.review_rows = [event.restore, ...result.review_rows.filter(t => t.id !== event.restore!.id)]
-        result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
-      }
-      result.pending = Math.max(0, result.pending - 1)
-      result.can_undo = result.undo_transactions.length > 0
-    }
-    return result
-  }
   function enqueue(event: QueuedAction) {
     if (!data || saveFailed) return
     if (!events.length) confirmed = data
@@ -419,12 +393,24 @@
     if (draining) return
     draining = true
     let changed = false
+    let descriptionChanged = false
     const epoch = sessionEpoch
     try {
       while (events.length) {
         const event = events[0]!
         syncing = event.body.action === 'sync'
         changed ||= !syncing
+        descriptionChanged ||= event.body.action === 'description'
+        // The backend requires memo-only edits to sync before another edit of that row.
+        // Wait here, while the UI continues to project all queued actions immediately.
+        if ((event.body.action === 'review' || event.body.action === 'description') &&
+            confirmed?.description_pending?.includes(String(event.body.id))) {
+          const synced = await api<Snapshot>('action', { action: 'sync', full: false })
+          if (epoch !== sessionEpoch) return
+          confirmed = synced
+          if (synced.sync_error) throw new Error(synced.sync_error)
+          data = events.reduce(project, synced)
+        }
         let result = await api<Snapshot>('action', event.body)
         if (epoch !== sessionEpoch) return
         // Undo writes a durable reverse edit. Keep its optimistic transaction
@@ -442,7 +428,7 @@
           suggestionCache.clear(); suggestionVersion++
         }
       }
-      if (changed) scheduleSync()
+      if (changed) scheduleSync(descriptionChanged ? 0 : 3000)
     } catch (e) {
       if (epoch !== sessionEpoch) return
       events = []; saving = 0; saveFailed = true
@@ -472,7 +458,7 @@
     enqueue({ body: { action: 'sync', full } })
   }
   function approve(suggestion?: Suggestion) {
-    if (!current || busy || saveFailed || !data || descriptionPending) return
+    if (!current || busy || saveFailed || !data) return
     const selectedPayee = amazonMarket ? payee : suggestion ? suggestion.payee_id : payee
     const selectedCategory = suggestion ? suggestion.category_id : category
     if (!special(current) && ((!selectedPayee && !amazonMarket) || !selectedCategory)) return
@@ -734,11 +720,11 @@
               <button class="field-button" disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
               <button class="field-button" disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
             {/if}
-            <button class="field-button" disabled={busy || !!saving || saveFailed || descriptionPending} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
+            <button class="field-button" disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
           </div>
           {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
-          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed || descriptionPending} onchange={applyAmazonDraft} />{/key}{/if}
-          {#if descriptionPending}<p class="field-note description-status" role="status">Description saved locally. Sync before approving.</p>{/if}
+          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} />{/key}{/if}
+          {#if descriptionPending}<p class="field-note description-status" role="status">Description queued for sync. You can keep reviewing.</p>{/if}
 
           {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
             <section class="suggestions" aria-label="Suggestions">
@@ -749,7 +735,7 @@
                 <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
               {/if}
               {#each picks as suggestion, i}
-                <button class="suggestion" disabled={busy || saveFailed || descriptionPending} onclick={() => void approve(suggestion)}>
+                <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
                   <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{amazonMarket ?? suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
                 </button>
               {/each}
@@ -757,9 +743,9 @@
           {/if}
 
           <div class="review-actions">
-            <Button icon="business" shortcut="B" disabled={busy || !!saving || saveFailed || expenseSaved} onclick={openExpense}>{expenseSaved ? 'Business saved' : 'Business expense'}</Button>
+            <Button icon="business" shortcut="B" disabled={busy || saveFailed || expenseSaved} onclick={openExpense}>{expenseSaved ? 'Business saved' : 'Business expense'}</Button>
             <Button icon="skip" shortcut="S" disabled={saveFailed || (busy && !syncing)} onclick={skip}>Skip</Button>
-            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || descriptionPending || (!special(current) && ((!payee && !amazonMarket) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
+            <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && ((!payee && !amazonMarket) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
       {:else}
@@ -837,7 +823,7 @@
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <form onsubmit={(event) => { event.preventDefault(); void saveDescription() }}>
       <label>Description<textarea data-modal-focus bind:value={memoDraft} maxlength="500" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void saveDescription() } }}></textarea></label>
-      <Button type="submit" primary shortcut="Enter" disabled={busy || !!saving || saveFailed}>Save description</Button>
+      <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed}>Save description</Button>
     </form>
   </Modal>
 {:else if modal === 'expense'}
@@ -846,7 +832,7 @@
     <form onsubmit={(event) => { event.preventDefault(); void saveExpense() }}>
       <label>Description<textarea data-modal-focus bind:value={description} required maxlength="10000" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
       <label>Note (optional)<textarea bind:value={expenseNote} maxlength="10000" rows="2"></textarea></label>
-      <Button type="submit" primary shortcut="Enter" disabled={busy || !!saving || saveFailed || !description.trim()}>Save expense</Button>
+      <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed || !description.trim()}>Save expense</Button>
     </form>
   </Modal>
 {:else if modal === 'business'}

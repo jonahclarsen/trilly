@@ -47,6 +47,12 @@ Do not change the real item's owner ACL to make tests or unlocks pass.
 
 ## UI
 
+Make local edits and navigation respond immediately. Project predictable changes
+in the UI and persist them through the ordered background save queue; keep server
+dependencies inside the queue instead of blocking interaction. Replay pending
+edits over responses, and provide explicit recovery when a save cannot be confirmed.
+Wait for server results only when the UI needs information it does not yet have.
+
 Reuse components; keep labels short and functional. Icons in buttons must be
 SVGs. Keep shortcut handling and its reference together. Themes come from
 Balance; Iridescent is the default, with system light/dark appearance and an
