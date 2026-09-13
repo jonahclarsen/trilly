@@ -26,11 +26,12 @@ Matching payees show a purchase-history link beneath the transaction heading, op
 
 Right-click an existing payee in the Payee picker and choose **Rename** to edit
 its name in place. **Enter** or leaving the field saves directly to YNAB;
-**Esc** cancels. Renaming changes the shared payee, including its existing
-transactions, independently of transaction approval and Undo. Names update
-immediately in Trilly while the ordered save queue sends the rename. If the
-save cannot be confirmed, use **Reload saved state**, sync, and retry if needed.
-Renames waiting in the browser are not durable across a reload.
+**Esc** cancels before saving. The field shows **Saving to YNAB…** and the
+picker waits until YNAB confirms, then shows **Renamed in YNAB**. Renaming
+changes the shared payee, including its existing transactions, independently of transaction approval and Undo. Names update
+throughout Trilly only after confirmation. If the request fails, the editor
+keeps your draft and shows the error; press **Enter** to retry. An interrupted
+request may have reached YNAB; sync to check its current name if needed.
 
 Type a payee name in the Payee picker and select **Creating “name”** below the
 matches (or as the only option when there are none). **Save & approve** queues

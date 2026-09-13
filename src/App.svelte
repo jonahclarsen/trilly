@@ -441,6 +441,15 @@
     } catch (e) { if (epoch === sessionEpoch) handleError(e); return false }
     finally { if (epoch === sessionEpoch) busy = false }
   }
+  async function renamePayee(id: string, name: string): Promise<string> {
+    if (busy || saving || syncing) throw new Error('Other changes are still saving. Try again in a moment.')
+    if (saveFailed || !data) throw new Error('Reload saved state before renaming.')
+    if (!await act({ action: 'rename_payee', id, name })) {
+      throw new Error(error || 'Rename could not be confirmed. Try again.')
+    }
+    suggestionCache.clear(); suggestionVersion++
+    return data.payees.find(p => p.id === id)?.name ?? name
+  }
   function scheduleSync(delay = 3000) {
     clearTimeout(syncTimer)
     syncTimer = setTimeout(() => { if (busy) scheduleSync(500); else void sync(false) }, delay)
@@ -488,7 +497,7 @@
         confirmed = result; events.shift(); saving = events.length
         data = events.reduce(project, result)
         if (result.sync_error) error = result.sync_error
-        if (event.body.action === 'sync' || event.body.action === 'rename_payee') {
+        if (event.body.action === 'sync') {
           suggestionCache.clear(); suggestionVersion++
         }
       }
@@ -974,5 +983,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} matchPayees={modal === 'payee'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? (id, name) => enqueue({ body: { action: 'rename_payee', id, name } }) : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} matchPayees={modal === 'payee'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? renamePayee : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}

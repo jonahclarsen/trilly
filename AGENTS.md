@@ -52,6 +52,9 @@ in the UI and persist them through the ordered background save queue; keep serve
 dependencies inside the queue instead of blocking interaction. Replay pending
 edits over responses, and provide explicit recovery when a save cannot be confirmed.
 Wait for server results only when the UI needs information it does not yet have.
+Payee renaming is an explicit exception: keep the inline editor in a saving state
+and update displayed names only after YNAB confirms, then show success. Retain
+the draft and show an inline error on failure so the user can retry.
 
 Reuse components; keep labels short and functional. Icons in buttons must be
 SVGs. Keep shortcut handling and its reference together. Themes come from
