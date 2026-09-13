@@ -409,6 +409,10 @@ the local server. Browser traffic stays on HTTP loopback; YNAB traffic uses
 HTTPS. There are no external categorization services, third-party remote scripts,
 telemetry, or transaction/token logs.
 
+The Google “G” button beside the transaction date opens a payee search in a new
+tab. Clicking it sends the selected payee name to Google; no search is sent
+until you click it.
+
 **An unlocked app still handles plaintext.** A sufficiently privileged agent,
 debugger, extension, or modified app could access it. Keychain storage does
 not isolate a running app from every process on your Mac. JavaScript and

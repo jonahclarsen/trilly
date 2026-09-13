@@ -5,6 +5,7 @@
   import { businessRows } from './lib/business'
   import Button from './lib/Button.svelte'
   import PurchaseHistory from './lib/PurchaseHistory.svelte'
+  import GooglePayee from './lib/GooglePayee.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
   import { amazonPayee, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
@@ -301,6 +302,7 @@
   const categoryName = $derived(data?.categories.find(c => c.id === category)?.name ?? current?.category_name ?? 'Choose category')
   const amazonPayeeName = $derived(amazonMarket ? amazonPayee(data?.payees ?? [], amazonMarket)?.name ?? amazonMarket : null)
   const payeeName = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
+  const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -748,7 +750,10 @@
         </section>
       {:else if current}
         <article class="transaction" aria-label="Transaction to review">
-          <div class="transaction-top"><time datetime={current.date}>{dateLabel(current.date)}</time>{#if !currency}<span>Currency unavailable</span>{/if}</div>
+          <div class="transaction-top">
+            <time datetime={current.date}>{dateLabel(current.date)}</time>
+            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<GooglePayee payee={searchPayee} /></div>
+          </div>
           <div class="amount">{money(current.amount)}</div>
           <h1 class="payee-title">{payeeName}</h1>
           {#if current.import_payee_name_original || current.import_payee_name}<p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>{/if}

@@ -116,7 +116,8 @@ nav button { background: transparent; border-color: var(--line); padding: 6px 8p
 nav button svg { width: 16px; height: 16px; }
 nav button kbd { margin-left: 3px; border: 0; padding: 0; min-width: auto; font-size: 11px; }
 .sync-state { display: inline-flex; align-items: center; min-height: 38px; line-height: 20px; color: var(--muted); font-size: 11px; margin-right: 10px; }
-.transaction-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 15px; }
+.transaction-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 15px; }
+.transaction-top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .amount { font-weight: 550; font-variant-numeric: tabular-nums; margin: 20px 0 10px; font-size: clamp(32px, 6vw, 41px); letter-spacing: -1.5px; }
 .bank-description { font-family: var(--font-mono); color: var(--muted); font-size: 13px; margin-top: 9px; line-height: 1.7; overflow-wrap: anywhere; }
 
