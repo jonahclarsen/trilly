@@ -6,6 +6,7 @@ export function titleCase(name: string): string {
   let index = 0
   return lower.replace(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu, word => {
     const position = index++
+    if (word === 'bc') return 'BC'
     return position > 0 && position < words.length - 1 && minorWords.has(word)
       ? word
       : word.replace(/\p{L}/u, letter => letter.toUpperCase())
