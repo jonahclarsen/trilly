@@ -65,7 +65,8 @@
     amazonJob = crypto.randomUUID(); amazonMessage = ''
     amazonJobTargets = amazonTargets.map(t => t.id)
     amazonStatus = { running: true, pages: 0, orders: 0, queued: 0, active: 0, message: 'Opening Amazon…', paused: [] }
-    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount, cached: [] })
+    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount, cached: [],
+      targets: amazonTargets.map(({ id, date, amount }) => ({ id, date, amount })) })
   }
   async function saveAmazon(records: AmazonStore, plan: string, generation: number) {
     if (generation !== amazonGeneration || data?.plan_id !== plan) return false
@@ -181,6 +182,7 @@
     })
   })
   $effect(() => { const amount = current?.amount; if (amazonJob) amazonCommand('PRIORITY', { job: amazonJob, amount }) })
+  $effect(() => { if (amazonJob) amazonCommand('TARGETS', { job: amazonJob, ids: amazonTargets.map(t => t.id) }) })
 
   const preferences = readPreferences()
   let theme = $state<ThemeId>(preferences.theme)

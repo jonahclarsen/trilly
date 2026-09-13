@@ -187,7 +187,7 @@ fn snapshot(d: &Data) -> Value {
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
         "description_pending": d.pending.iter().filter(|p| p.change.memo_only).map(|p| &p.change.id).collect::<Vec<_>>(),
         "amazon_assignments": d.amazon_assignments,
-        "amazon_targets": d.transactions.iter().filter(|t| !t.deleted && !t.approved && t.transfer_account_id.is_none()).collect::<Vec<_>>(),
+        "amazon_targets": d.transactions.iter().filter(|t| !t.deleted && !t.approved && t.transfer_account_id.is_none() && !d.pending.iter().any(|p| p.change.id == t.id && !p.change.memo_only && p.change.approved && !p.conflict)).collect::<Vec<_>>(),
         "review_rows": review_rows, "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "business_expenses": d.business_expenses,
@@ -1564,6 +1564,41 @@ mod tests {
             vault::Vault::open_native(reopened.path.clone(), &keystore::SyntheticKeyStore).unwrap();
         assert!(durable.data.amazon.orders.is_empty());
         assert!(durable.data.amazon_collected_targets.is_empty());
+    }
+
+    #[test]
+    fn collection_targets_exclude_queued_approvals_but_keep_conflicts_and_memo_edits() {
+        let mut data = Data::default();
+        let before = Transaction {
+            id: "synthetic-target".into(),
+            account_id: "other-account".into(),
+            ..Default::default()
+        };
+        data.transactions.push(before.clone());
+        let mut change = Change::from(&before);
+        change.approved = true;
+        data.pending.push(Pending {
+            before,
+            change,
+            conflict: false,
+        });
+        assert!(
+            snapshot(&data)["amazon_targets"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        data.pending[0].conflict = true;
+        assert_eq!(
+            snapshot(&data)["amazon_targets"].as_array().unwrap().len(),
+            1
+        );
+        data.pending[0].conflict = false;
+        data.pending[0].change.memo_only = true;
+        assert_eq!(
+            snapshot(&data)["amazon_targets"].as_array().unwrap().len(),
+            1
+        );
     }
 
     #[test]

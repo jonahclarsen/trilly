@@ -89,7 +89,9 @@ fn date(value: &str) -> bool {
 fn order_id(value: &str) -> bool {
     value.len() == 19
         && value.bytes().enumerate().all(|(i, c)| {
-            if i == 3 || i == 11 {
+            if i == 0 && c == b'D' {
+                true
+            } else if i == 3 || i == 11 {
                 c == b'-'
             } else {
                 c.is_ascii_digit()
@@ -254,6 +256,22 @@ mod tests {
             ..Default::default()
         }
     }
+    #[test]
+    fn digital_order_ids_survive_import_without_allowing_arbitrary_identifiers() {
+        let mut payment = payment();
+        payment.order_ids = vec!["D01-0000000-0000001".into()];
+        let mut store = Store::default();
+        store
+            .merge(Store {
+                payments: vec![payment],
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(store.payments[0].order_ids[0], "D01-0000000-0000001");
+        assert!(!order_id("XYZ-0000000-0000001"));
+        assert!(!order_id("D01-0000000-0000001<script>"));
+    }
+
     #[test]
     fn imports_are_idempotent_and_preserve_refund_direction() {
         let mut store = Store::default();

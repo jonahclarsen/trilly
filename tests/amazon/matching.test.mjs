@@ -85,3 +85,17 @@ test('marketplace resolves an existing payee without changing its name', () => {
   assert.equal(amazonPayee([payee], 'amazon.com'), undefined);
   assert.equal(amazonPayee([payee], null), undefined);
 });
+
+
+test('Kindle Svcs in current or imported payees receives the full Amazon matching flow', () => {
+  for (const field of ['payee_name', 'import_payee_name', 'import_payee_name_original']) {
+    const kindle = { ...t, payee_name: 'Digital purchase', [field]: 'KINDLE SVCS synthetic charge' };
+    assert.equal(isAmazon(kindle), true);
+    const candidate = amazonCandidates(store, kindle, 'CAD', [kindle])[0];
+    assert.equal(candidate.confident, true);
+    assert.equal(candidate.payment.id, payment.id);
+    assert.deepEqual(automaticItems(candidate), [item, item2]);
+    assert.equal(isAmazon({ ...kindle, transfer_account_id: 'other' }), false);
+  }
+  assert.equal(isAmazon({ ...t, payee_name: 'Kindle accessory shop' }), false);
+});

@@ -253,6 +253,19 @@ websites from linking to this page. Click the inline address in the update notic
 **Amazon setup** to copy it; a brief **Copied** overlay confirms success. The address
 can also be selected and copied manually. **Amazon setup** also provides an HTML-paste fallback for payments and order-detail pages.
 
+Payees containing **Kindle Svcs** (including the original imported payee) use
+this same matching flow. Digital `D`-prefixed order IDs are accepted alongside
+standard order IDs. Unrecognized digital-page layouts still pause for review.
+
+Only payments with the same signed amount and a date within 14 days of a target
+transaction lead to order-detail collection. Missing dates and differing or unknown
+currencies remain ambiguous candidates for manual review. All plausible matches
+are retained, rather than choosing the first payment. Unrelated payment rows are
+scanned for pagination but are not saved. Approvals remove waiting order work;
+Undo restores already-scanned candidates. Orders already loading may finish.
+The target set is limited to transactions present when Fetch was pressed; newly
+imported transactions remain eligible for the next fetch.
+
 Collection reads payments only from Amazon.ca in a separate unfocused
 window and follows order links to Amazon.ca or Amazon.com using your sessions.
 Up to six order tabs work alongside one payment reader; pagination and

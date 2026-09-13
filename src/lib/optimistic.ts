@@ -29,6 +29,7 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     }]
     result.can_undo_business = true; result.can_undo_archive = false
   } else if (event.body.action === 'review') {
+    if (result.amazon_targets) result.amazon_targets = result.amazon_targets.filter(t => t.id !== event.body.id)
     if (typeof event.body.amazon_payment_id === 'string') result.amazon_assignments = [...(result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.body.id), { payment_id: event.body.amazon_payment_id, transaction_id: String(event.body.id) }]
     const transaction = result.queue.find(t => t.id === event.body.id)
     if (transaction) result.undo_transactions.push(transaction)
@@ -41,6 +42,7 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     result.queue = result.queue.filter(t => t.id !== event.body.id)
     result.pending++; result.can_undo = true
   } else if (event.body.action === 'undo') {
+    if (event.restore && result.amazon_targets && !event.restore.approved && !event.restore.transfer_account_id) result.amazon_targets = [event.restore, ...result.amazon_targets.filter(t => t.id !== event.restore!.id)]
     if (event.restore) result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.restore!.id)
     result.undo_transactions.pop()
     if (event.restore) result.description_pending = (result.description_pending ?? []).filter(id => id !== event.restore!.id)
