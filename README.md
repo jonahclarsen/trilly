@@ -227,7 +227,10 @@ Trilly displays an order card with lowercase product titles, optional thumbnails
 quantities, unit prices, sellers, shipment and return information, payment method,
 order date and number, item subtotal, shipping, tax, discounts and other summary
 rows supplied by Amazon. Related collected charges and refunds appear below the
-card. **Open order** opens the original Amazon order; product links are available
+card. **Payment details from Amazon** stays visible with separate rows for the
+date, amount, payment method, payment source, and linked order numbers. Order
+links are available even before their details finish collecting.
+**Open order** opens the original Amazon order; product links are available
 on titles. Cards are rebuilt from structured fields. Raw Amazon HTML, scripts,
 addresses and account credentials are not stored or rendered.
 
