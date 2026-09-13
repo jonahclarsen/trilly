@@ -38,14 +38,9 @@
     {#if canCreate}
       <button id={`choice-${results.length}`} type="button" role="option" aria-selected={selected === results.length} class:selected={selected === results.length} onclick={() => oncreate?.(newName)} onpointermove={() => selected = results.length}>
         <strong>Create “{newName}”</strong>
-        {#if selected === results.length}<kbd>Enter</kbd>{:else}<kbd class="tab-shortcut" aria-label="Tab" title="Tab"><Icon name="tab" /></kbd>{/if}
+        {#if selected === results.length}<kbd>Enter</kbd>{:else}<kbd>Tab</kbd>{/if}
       </button>
     {:else if !results.length}<p class="muted no-results">No matches</p>{/if}
     {#if oncreate && [...newName].length > 200}<p class="muted no-results">Payee names must be 200 characters or fewer.</p>{/if}
   </div>
 </Modal>
-
-<style>
-  .tab-shortcut { display: inline-flex; align-items: center; justify-content: center; }
-  .tab-shortcut :global(svg) { width: 12px; height: 12px; }
-</style>
