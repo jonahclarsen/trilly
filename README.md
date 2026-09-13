@@ -277,11 +277,26 @@ multi-item purchase shows item subtotals to help prepare a category split in
 YNAB. Trilly does not create or edit splits; the YNAB API does not support updating
 subtransactions on an existing split. No estimated tax rates are invented.
 
-Collected records and thumbnails live in the encrypted vault. Older optional
+Each collected batch is saved to the encrypted vault before acknowledgement;
+collection completes only after all batches are saved. Records survive app and
+browser restarts and are merged by identity rather than appended as duplicates.
+After a complete scrape, the collection card hides until another Amazon transaction
+appears that was not covered by that scrape. Only covered transaction IDs are
+retained alongside the cache. Interrupted or limited scrapes remain retryable.
+After a successful sync confirms that every transaction across the selected plan
+is reviewed and no pending writes or conflicts remain, Trilly automatically
+deletes collected Amazon records, thumbnails and payment bindings. Late collection
+packets cannot refill an already finished review. Undo still restores transaction
+fields, but Amazon details must be fetched again after cleanup. Deletion replaces
+the current vault; it cannot erase older filesystem snapshots or backups.
+
+Older optional
 thumbnails are dropped above a 16 MB image budget; textual evidence remains. **Clear collected
 Amazon data** removes this cache and payment bindings; it does not change YNAB
 transactions. The extension uses memory-only session storage for its job and
-unacknowledged textual records, with bounded thumbnail transfers. The bridge is
+unacknowledged textual records, with bounded thumbnail transfers. A small completion
+receipt lets Trilly recover a missed final status; it is removed after Trilly saves
+completion or its tab closes. The bridge is
 restricted to Trilly's exact loopback origin and uses the app's existing
 authenticated API. It never receives the YNAB token or vault credential. Lock,
 plan changes and closing Trilly cancel collection. Reload stops the old job;

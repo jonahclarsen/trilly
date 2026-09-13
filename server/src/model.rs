@@ -196,6 +196,8 @@ pub struct Data {
     #[serde(default)]
     pub amazon_assignments: Vec<crate::amazon::Assignment>,
     #[serde(default)]
+    pub amazon_collected_targets: Vec<String>,
+    #[serde(default)]
     pub business_undo: Vec<BusinessUndo>,
     #[serde(default)]
     pub business_expenses: Vec<BusinessExpense>,

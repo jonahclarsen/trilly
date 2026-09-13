@@ -114,3 +114,33 @@ test('a US reader alone opens a Canadian link on ca and rejects unsupported dest
     }
   }
 });
+
+
+test('completion waits for every saved packet and replays a missed final status', async () => {
+  const h = harness(); await h.start();
+  for (const reader of [...h.tabs.values()].filter(t => t.url.includes('/cpe/'))) {
+    await h.send({ type: 'PAGE', job: h.job, payments: [], hasNext: false }, reader.id);
+  }
+  const packets = h.messages.filter(m => m.payload?.type === 'DATA').map(m => m.payload.packet);
+  assert.equal(packets.length, 2);
+  await h.send({ type: 'ACK', job: h.job, packet: packets[0] });
+  assert.ok(h.saved.trillyAmazonJob);
+  assert.ok(!h.messages.some(m => m.payload?.complete));
+  await h.send({ type: 'ACK', job: h.job, packet: packets[1] });
+  assert.equal(h.saved.trillyAmazonJob, undefined);
+  assert.equal(h.saved.trillyAmazonFinished.payload.complete, true);
+  h.messages.length = 0; // Simulate a final status that the app missed.
+  await h.send({ type: 'PING', job: h.job });
+  assert.equal(h.messages[0].payload.running, false);
+  assert.equal(h.messages[0].payload.complete, true);
+  assert.equal(h.messages[0].payload.job, h.job);
+  await h.send({ type: 'STOP', job: h.job });
+  assert.equal(h.saved.trillyAmazonFinished, undefined);
+});
+
+test('a vanished worker job reconciles Stop without claiming successful collection', async () => {
+  const h = harness();
+  await h.send({ type: 'PING', job: h.job });
+  assert.equal(h.messages[0].payload.running, false);
+  assert.equal(h.messages[0].payload.complete, false);
+});
