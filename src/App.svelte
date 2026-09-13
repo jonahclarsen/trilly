@@ -293,6 +293,15 @@
     selectedId = null
   }
   function showTransactionView() { selectedId = null; view = 'transaction' }
+  async function showListView() {
+    if (view === 'list') return
+    view = 'list'
+    await tick()
+    if (view !== 'list') return
+    const row = reviewElement?.querySelector<HTMLElement>('[data-current-review]')
+    // The browser clamps this position when the list cannot scroll far enough.
+    window.scrollTo({ top: row ? Math.max(0, window.scrollY + row.getBoundingClientRect().top - window.innerHeight / 4) : 0, behavior: 'instant' })
+  }
   async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
   let picks = $state<Suggestion[]>([])
   let picksStatus = $state<'loading' | 'ready' | 'error'>('ready')
@@ -607,7 +616,7 @@
         [menuKeys.settings]: () => modal = 'settings',
         ...(data ? {
           [menuKeys.transaction]: showTransactionView,
-          [menuKeys.list]: () => view = 'list',
+          [menuKeys.list]: () => void showListView(),
           [menuKeys.sync]: () => { if (!busy && !saving && !saveFailed && data?.plan_id) void sync() },
           [menuKeys.undo]: undo,
           [menuKeys.business]: () => { businessMessage = ''; showArchived = false; modal = 'business' },
@@ -685,7 +694,7 @@
         {#if data}
           <div class="view-switch" role="group" aria-label="Transaction views">
             <Button icon="transaction" label="Transaction" altKey={menuKeys.transaction} pressed={view === 'transaction'} onclick={showTransactionView}>Transaction</Button>
-            <Button icon="list" label="List" altKey={menuKeys.list} pressed={view === 'list'} onclick={() => view = 'list'}>List</Button>
+            <Button icon="list" label="List" altKey={menuKeys.list} pressed={view === 'list'} onclick={() => void showListView()}>List</Button>
           </div>
           <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
           <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
@@ -741,7 +750,7 @@
           <span class="eyebrow">{currentPlan?.name ?? 'Review'}</span>
           <button class="account-button" disabled={busy || !!saving || saveFailed || !data.accounts.length} onclick={() => modal = 'account'} title="Choose account (A)">{currentAccount?.name ?? 'Choose account'}<Icon name="chevron" /></button>
         </div>
-        {#if data.plan_id}<span class="count">{remaining} to review</span>{/if}
+        {#if data.plan_id && view === 'transaction'}<span class="count">{remaining} to review</span>{/if}
       </div>
 
       {#if amazonTargets.some(t => !amazonCollectedTargets.includes(t.id)) || amazonStatus.running || amazonMessage || amazonVersionWarning}
@@ -776,7 +785,7 @@
         <section class="empty-state"><h1>{data.connected ? 'Choose your plan' : 'Connect YNAB'}</h1><Button primary onclick={() => modal = 'settings'}>{data.connected ? 'Choose plan' : 'Connect'}</Button></section>
       {:else if view === 'list'}
         <section aria-label="Transaction list">
-          <p class="field-note list-note">Current review batch · {reviewRows.filter(t => t.approved).length} reviewed.</p>
+          <p class="field-note list-note">Current review batch · {remaining} to review · {reviewRows.filter(t => t.approved).length} reviewed</p>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll the table horizontally.) -->
           <div class="transaction-table" tabindex="0" role="region" aria-label="Review batch table">
             <table>
@@ -794,7 +803,7 @@
               </tr></thead>
               <tbody>
                 {#each reviewRows as transaction (transaction.id)}
-                  <tr class:reviewed={transaction.approved}>
+                  <tr class:reviewed={transaction.approved} data-current-review={transaction.id === currentId ? '' : undefined}>
                     <td><time datetime={transaction.date}>{dateLabel(transaction.date)}</time></td>
                     <td>{transaction.payee_name ?? transaction.import_payee_name ?? 'Unknown payee'}</td>
                     <td>{transaction.category_name ?? 'Uncategorized'}</td>
@@ -880,10 +889,9 @@
           {#if data.queue.length}<Button primary onclick={clearSkipped}>Review skipped</Button>{/if}
         </section>
       {/if}
-      <footer>
-        <span>{data.history_count ? `${data.history_count.toLocaleString()} past transactions` : ''}</span>
-        {#if skipped.length && current}<button class="text-button" onclick={clearSkipped}>{skipped.length} skipped</button>{/if}
-      </footer>
+      {#if skipped.length && current}
+        <footer><button class="text-button" onclick={clearSkipped}>{skipped.length} skipped</button></footer>
+      {/if}
     </main>
   {/if}
 </div>
@@ -941,13 +949,14 @@
         {/if}
       </section>
     {/if}
-    <section class="settings-section">
+    <section class="settings-section diagnostics-settings">
       <h3>Diagnostics</h3>
       <p class="field-note">Recent operation names, error codes and collection counts. No order details or credentials.</p>
       <Button onclick={() => void copyDiagnostics()}>Copy diagnostics</Button>
       {#if diagnosticsMessage}<p role="status">{diagnosticsMessage}</p>{/if}
       {#if diagnosticsFallback}<label>Diagnostic report<textarea readonly rows="8" value={diagnosticsFallback} onfocus={(event) => event.currentTarget.select()}></textarea></label>{/if}
     </section>
+    {#if data?.history_count}<p class="field-note settings-history">{data.history_count.toLocaleString()} past transactions</p>{/if}
   </Modal>
 {:else if modal === 'description'}
   <Modal title="Description" subtitle={`${current?.date ?? ''} · ${payeeName}`} onclose={() => { modal = null; memoDraft = ''; memoId = '' }}>

@@ -220,12 +220,13 @@ Undo restores the previous memo using a durable reverse edit.
 
 ## Diagnostics
 
-At the bottom of Settings, **Copy diagnostics** copies a report for troubleshooting.
+Near the bottom of Settings, **Copy diagnostics** copies a report for troubleshooting.
 It contains extension versions, timestamps, operation names, allowlisted error
 categories, collection counts, HTTP status codes for Amazon vault and sync requests, and
 extension source file line numbers when available. It excludes raw exception
 messages and stacks, URLs, order/payment details, transaction IDs, credentials,
-and page contents. Nothing is uploaded automatically.
+and page contents. Nothing is uploaded automatically. The past-transaction count
+appears below Diagnostics, at the very bottom of Settings.
 
 App diagnostics use tab session storage; extension diagnostics use Chrome session
 storage so worker restarts do not lose the error. Each keeps at most 80 events;
@@ -551,6 +552,9 @@ List shows every transaction in the selected account's current review batch
 with date, payee, category, description, amount, and review status. Click any
 column heading to sort ascending; click again for descending. Transaction view
 follows that same order, starting with the topmost unreviewed, unskipped row.
+Switching to List scrolls the current transaction a quarter of the way down the
+window, or as close as the page's scroll limits allow. Above the table, the batch
+heading shows the counts to review and reviewed.
 Sorting defaults to date ascending and lasts for the browser session. Choose
 **Review** on a row to open it in Transaction view. Approved rows stay gray,
 including after sync and restart. Once the batch is complete, newly arriving
