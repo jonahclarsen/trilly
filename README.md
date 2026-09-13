@@ -101,7 +101,7 @@ clients; run `pnpm start` when you do not need hot updates.
 | S | Skip for this session |
 | B | Save a business expense |
 | D | Add or edit the transaction description (YNAB memo) |
-| U | Undo the last approval |
+| ⌘Z / Ctrl+Z / U | Undo the latest skip or review change |
 | A | Choose account |
 | R | Refresh metadata and sync |
 | , | Settings |
@@ -112,8 +112,13 @@ Approvals are saved locally before advancing. After three seconds without a new
 approval, the app syncs the batch to YNAB. “Pending” means encrypted on disk but
 not yet confirmed by YNAB. Closing or locking keeps those changes; unlocking
 retries them. Network or rate-limit errors leave them pending for manual retry.
-Undo persists a reverse operation so it also works if a previous response was
-lost. Undo history keeps the most recent 100 approvals for the selected plan.
+Undo retraces skips and review changes in order. Undoing a skip returns to that
+transaction without reversing an earlier approval; repeated Undo restores skips
+one at a time. Skip history lasts for the current session and resets when you
+review all skipped items or switch accounts or plans.
+
+Undoing a saved change persists a reverse operation so it also works if a
+previous response was lost. Undo history keeps the most recent 100 approvals for the selected plan.
 
 Each sync checks for changes made in YNAB before writing. Conflicts remain
 pending until you discard the conflicting local edits and review again. YNAB
@@ -283,9 +288,10 @@ token replacement in the encrypted vault. The queue combines saved expenses acro
 plans; amounts are not currency-converted. **Archive all** clears the current queue
 without deleting records. **Undo expense** / **Undo archive**, U, or Command-Z / Ctrl-Z reverses business
 expense additions, removals, and archives, newest first, including after restart.
-The most recent 100 business changes are retained. Outside text fields, general
-Undo reverses business changes before undoing approvals. Use the rightmost SVG
-close button to remove an individual row; Undo restores it. The save button shows
+The most recent 100 business changes are retained. Outside text fields, Undo
+reverses business changes in the business dialog. In review, it restores the
+latest skip first; otherwise business changes take priority over approvals.
+Use the rightmost SVG close button to remove an individual row; Undo restores it. The save button shows
 its Enter shortcut. **Show archived** displays older rows.
 Saved transactions cannot be added twice, including archived transactions. Removing
 a row or undoing its addition allows that transaction to be added again.

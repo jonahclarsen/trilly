@@ -192,6 +192,7 @@
     const amazonEdit = !!current && current.id === memoId && isAmazon(current)
     if (amazonEdit) memoDraft = memoDraft.toLowerCase()
     if (await act({ action: 'description', id: memoId, description: memoDraft })) {
+      reviewHistory = [...reviewHistory, { type: 'edit' }]
       if (amazonEdit) { amazonDraft = null; amazonMemoTouched = true }
       modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
       void sync(false)
@@ -221,6 +222,13 @@
   const reviewRows = $derived(data?.review_rows ?? data?.queue ?? [])
   async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
   let skipped = $state<string[]>([])
+  // Local skips share ordering with persisted edits, but never change backend data.
+  let reviewHistory = $state<({ type: 'skip'; id: string } | { type: 'edit' })[]>([])
+  const activeReviewHistory = $derived(reviewHistory.filter(event => event.type === 'edit' ||
+    (skipped.includes(event.id) && data?.queue.some(t => t.id === event.id))))
+  const canUndoSkip = $derived(activeReviewHistory.at(-1)?.type === 'skip')
+  function clearSkipped() { skipped = []; reviewHistory = []; selectedId = null }
+
   let picks = $state<Suggestion[]>([])
   let picksStatus = $state<'loading' | 'ready' | 'error'>('ready')
   let payee = $state<string | null>(null)
@@ -322,7 +330,7 @@
     sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
-    picks = []; skipped = []; selectedId = null; payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
+    picks = []; clearSkipped(); payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
     if (e instanceof ApiError && e.status === 401) forget()
@@ -391,6 +399,7 @@
   function enqueue(event: QueuedAction) {
     if (!data || saveFailed) return
     if (!events.length) confirmed = data
+    if (event.body.action === 'review') reviewHistory = [...activeReviewHistory, { type: 'edit' }]
     events.push(event); saving = events.length
     data = project(data, event)
     void drain()
@@ -440,7 +449,7 @@
     try {
       const result = await api<Snapshot>('state')
       if (epoch !== sessionEpoch) return
-      data = result; confirmed = result; saveFailed = false; error = ''; skipped = []
+      data = result; confirmed = result; saveFailed = false; error = ''; clearSkipped()
       suggestionCache.clear(); suggestionVersion++
       if (result.pending) scheduleSync()
     } catch (e) { if (epoch === sessionEpoch) handleError(e) }
@@ -460,14 +469,29 @@
     reviewElement?.focus()
   }
   function undo() {
-    if (data?.can_undo_business || data?.can_undo_archive) { void undoBusiness(); return }
-    if (modal === 'business') return
-    if (!data?.can_undo || busy || saveFailed) return
-    enqueue({ body: { action: 'undo' }, restore: data.undo_transactions?.at(-1) })
-    skipped = []; reviewElement?.focus()
+    if (!data || busy || saveFailed) return
+    if (modal !== 'business' && canUndoSkip) {
+      const previous = activeReviewHistory.at(-1)!
+      if (previous.type === 'skip') {
+        reviewHistory = activeReviewHistory.slice(0, -1)
+        skipped = skipped.filter(id => id !== previous.id)
+        selectedId = previous.id; reviewElement?.focus()
+      }
+      return
+    }
+    if (data.can_undo_business || data.can_undo_archive) { void undoBusiness(); return }
+    if (modal === 'business' || !data.can_undo) return
+    const restore = data.undo_transactions?.at(-1)
+    reviewHistory = activeReviewHistory.slice(0, -1)
+    enqueue({ body: { action: 'undo' }, restore })
+    selectedId = restore?.id ?? null; reviewElement?.focus()
   }
   function skip() {
-    if (current && (!busy || syncing)) { const id = current.id; selectedId = null; skipped = [...skipped, id]; reviewElement?.focus() }
+    if (current && !saveFailed && (!busy || syncing)) {
+      const id = current.id
+      reviewHistory = [...activeReviewHistory, { type: 'skip', id }]
+      selectedId = null; skipped = [...skipped, id]; reviewElement?.focus()
+    }
   }
   async function lock() {
     const request = api('action', { action: 'lock' })
@@ -482,7 +506,7 @@
     return []
   }
   async function pick(id: string) {
-    if (modal === 'account') { skipped = []; await act({ action: 'account', id }) }
+    if (modal === 'account') { clearSkipped(); await act({ action: 'account', id }) }
     if (modal === 'category') { category = id; edited = true }
     if (modal === 'payee') { payee = id; edited = true; amazonPayeeTouched = true; amazonMarket = null }
     modal = null; await tick(); reviewElement?.focus()
@@ -568,7 +592,7 @@
         </div>
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
         <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
-        <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
+        <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!canUndoSkip && !data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
         <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business {activeExpenses.length}</Button>
         <span class="nav-divider"></span>
         <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>
@@ -712,7 +736,7 @@
 
           <div class="review-actions">
             <Button icon="business" shortcut="B" disabled={busy || !!saving || saveFailed || expenseSaved} onclick={openExpense}>{expenseSaved ? 'Business saved' : 'Business expense'}</Button>
-            <Button icon="skip" shortcut="S" disabled={busy && !syncing} onclick={skip}>Skip</Button>
+            <Button icon="skip" shortcut="S" disabled={saveFailed || (busy && !syncing)} onclick={skip}>Skip</Button>
             <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || descriptionPending || (!special(current) && ((!payee && !amazonMarket) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
@@ -721,12 +745,12 @@
           <div class="complete-mark"><Icon name="check" /></div>
           <h1>{data.queue.length ? 'All remaining skipped' : data.pending ? 'Review complete' : 'All caught up'}</h1>
           {#if data.pending}<p class="muted">{data.pending} {data.pending === 1 ? 'change' : 'changes'} waiting to sync</p><Button primary icon="sync" disabled={busy} onclick={() => void sync()}>Sync now</Button>{/if}
-          {#if data.queue.length}<Button primary onclick={() => skipped = []}>Review skipped</Button>{/if}
+          {#if data.queue.length}<Button primary onclick={clearSkipped}>Review skipped</Button>{/if}
         </section>
       {/if}
       <footer>
         <span>{data.history_count ? `${data.history_count.toLocaleString()} past transactions` : ''}</span>
-        {#if skipped.length && current}<button class="text-button" onclick={() => skipped = []}>{skipped.length} skipped</button>{/if}
+        {#if skipped.length && current}<button class="text-button" onclick={clearSkipped}>{skipped.length} skipped</button>{/if}
       </footer>
     </main>
   {/if}
@@ -781,7 +805,7 @@
           <Button onclick={() => replacingToken = true}>Replace access token</Button>
         {/if}
         {#if data.connected}
-          <label class="setting-row">Plan<select value={data.plan_id} disabled={busy || !!saving || saveFailed || !!data.pending} onchange={async (event) => { skipped = []; if (await act({ action: 'plan', id: event.currentTarget.value })) closeSettings() }}><option value="" disabled>Choose plan</option>{#each data.plans as plan}<option value={plan.id}>{plan.name}</option>{/each}</select></label>
+          <label class="setting-row">Plan<select value={data.plan_id} disabled={busy || !!saving || saveFailed || !!data.pending} onchange={async (event) => { clearSkipped(); if (await act({ action: 'plan', id: event.currentTarget.value })) closeSettings() }}><option value="" disabled>Choose plan</option>{#each data.plans as plan}<option value={plan.id}>{plan.name}</option>{/each}</select></label>
         {/if}
       </section>
     {/if}
