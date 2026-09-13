@@ -30,7 +30,7 @@ function harness() {
   const start = () => send({ type: 'START', job, oldest: '2026-09-01', cached: [] });
   return { chrome, tabs, messages, saved, send, start, job };
 }
-const payment = (n, refund = false) => ({ id: `synthetic-payment-${n}`, marketplace: 'amazon.com', date: '2026-09-02', amount: refund ? 10000 : -10000, currency: 'CAD', refund, payment_method: 'Visa ending in 0000', evidence: 'Synthetic payment', order_marketplaces: { [`000-0000000-${String(n).padStart(7, '0')}`]: 'amazon.ca' }, order_ids: [`000-0000000-${String(n).padStart(7, '0')}`] });
+const payment = (n, refund = false) => ({ id: `synthetic-payment-${n}`, marketplace: 'amazon.ca', date: '2026-09-02', amount: refund ? 10000 : -10000, currency: 'CAD', refund, payment_method: 'Visa ending in 0000', evidence: 'Synthetic payment', order_marketplaces: { [`000-0000000-${String(n).padStart(7, '0')}`]: 'amazon.ca' }, order_ids: [`000-0000000-${String(n).padStart(7, '0')}`] });
 test('only exact Trilly origin can start jobs; ordinary Amazon tabs cannot provide data', async () => {
   const h = harness();
   await h.send({ type: 'START', job: h.job, oldest: '2026-09-01' }, 1, 'http://127.0.0.1:9999/');
@@ -44,7 +44,7 @@ test('only exact Trilly origin can start jobs; ordinary Amazon tabs cannot provi
 });
 test('payment pagination overlaps bounded order workers and preserves refund direction', async () => {
   const h = harness(); await h.start();
-  const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.com/cpe')).id;
+  const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.ca/cpe')).id;
   await h.send({ type: 'PAGE', job: h.job, payments: Array.from({ length: 20 }, (_, n) => payment(n + 1, n === 0)), hasNext: true }, reader);
   assert.equal([...h.tabs.values()].filter(t => t.url.includes('order-details')).length, 6);
   assert.equal(h.tabs.size, 9); // 2 pre-existing + 1 reader + 6 order workers
@@ -61,16 +61,16 @@ test('payment pagination overlaps bounded order workers and preserves refund dir
 });
 test('cancellation closes only owned tabs, rejects stale results and releases session memory', async () => {
   const h = harness(); await h.start();
-  const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.com/cpe')).id;
+  const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.ca/cpe')).id;
   await h.send({ type: 'STOP', job: h.job });
   assert.deepEqual([...h.tabs.keys()], [1, 2]);
   assert.equal(h.saved.trillyAmazonJob, undefined);
-  await h.send({ type: 'PAGE', job: h.job, payments: [payment(1)] }, reader, 'https://www.amazon.com/cpe/yourpayments/transactions');
+  await h.send({ type: 'PAGE', job: h.job, payments: [payment(1)] }, reader, 'https://www.amazon.ca/cpe/yourpayments/transactions');
   assert.equal(h.tabs.size, 2);
 });
 test('unacknowledged packets survive worker state saves and repeated pages pause instead of looping', async () => {
   const h = harness(); await h.start();
-  const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.com/cpe')).id;
+  const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.ca/cpe')).id;
   const message = { type: 'PAGE', job: h.job, payments: [payment(1)], hasNext: true };
   await h.send(message, reader);
   assert.equal(Object.keys(h.saved.trillyAmazonJob.pending).length, 1);
@@ -81,11 +81,11 @@ test('unacknowledged packets survive worker state saves and repeated pages pause
   assert.equal(Object.keys(h.saved.trillyAmazonJob.pending).length, 0);
 });
 
-test('one US payment reader follows Canadian orders and deduplicates order work', async () => {
+test('one Canadian payment reader follows Canadian orders and deduplicates order work', async () => {
   const h = harness(); await h.start();
   const readers = [...h.tabs.values()].filter(t => t.url.includes('/cpe/'));
   assert.equal(readers.length, 1);
-  assert.equal(new URL(readers[0].url).hostname, 'www.amazon.com');
+  assert.equal(new URL(readers[0].url).hostname, 'www.amazon.ca');
   const charge = payment(1);
   const refund = { ...payment(1, true), id: 'synthetic-refund' };
   await h.send({ type: 'PAGE', job: h.job, payments: [charge, refund], hasNext: false }, readers[0].id);
@@ -98,16 +98,16 @@ test('one US payment reader follows Canadian orders and deduplicates order work'
   await h.send({ type: 'PAGE', job: h.job, order: { id: charge.order_ids[0], marketplace: 'amazon.ca', items: [] } }, workers[0].id);
   assert.equal(h.saved.trillyAmazonJob.completed, 1);
 });
-test('a US reader alone opens a Canadian link on ca and rejects unsupported destinations', async () => {
-  for (const destination of ['amazon.ca', 'evil.test']) {
+test('a Canadian reader opens a US order link on com and rejects unsupported destinations', async () => {
+  for (const destination of ['amazon.com', 'evil.test']) {
     const h = harness(); await h.start();
-    const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.com/cpe'));
-    const record = { ...payment(1), marketplace: 'amazon.com', order_marketplaces: { [payment(1).order_ids[0]]: destination } };
+    const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.ca/cpe'));
+    const record = { ...payment(1), marketplace: 'amazon.ca', order_marketplaces: { [payment(1).order_ids[0]]: destination } };
     const reply = await h.send({ type: 'PAGE', job: h.job, payments: [record], hasNext: false }, reader.id);
     const workers = [...h.tabs.values()].filter(t => t.url.includes('order-details'));
-    if (destination === 'amazon.ca') {
+    if (destination === 'amazon.com') {
       assert.equal(workers.length, 1);
-      assert.equal(new URL(workers[0].url).hostname, 'www.amazon.ca');
+      assert.equal(new URL(workers[0].url).hostname, 'www.amazon.com');
     } else {
       assert.ok(reply.error);
       assert.equal(workers.length, 0);

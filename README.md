@@ -220,7 +220,7 @@ websites from linking to this page. **Amazon setup** has a **Copy address** butt
 a selectable address if clipboard access is unavailable. **Amazon setup**
 also provides an HTML-paste fallback for payments and order-detail pages.
 
-Collection reads payments only from Amazon.com in a separate unfocused
+Collection reads payments only from Amazon.ca in a separate unfocused
 window and follows order links to Amazon.ca or Amazon.com using your sessions.
 Up to six order tabs work alongside one payment reader; pagination and
 order extraction overlap. Tabs close after extraction, results arrive as they
