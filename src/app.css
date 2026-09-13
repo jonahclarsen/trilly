@@ -335,3 +335,8 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 .transaction-table .reviewed { color: var(--muted); background: color-mix(in srgb, var(--muted) 6%, transparent); }
 .transaction-table td button { padding: 5px 8px; font-size: 12px; white-space: nowrap; background: transparent; }
 .transaction-table .table-empty { padding: 40px 20px; text-align: center; color: var(--muted); }
+
+.transaction-table th { padding: 7px 9px; }
+.transaction-table .sort-header { padding: 7px; width: 100%; justify-content: flex-start; border-color: transparent; background: transparent; color: inherit; font-weight: inherit; }
+.transaction-table .table-amount .sort-header { justify-content: flex-end; }
+.transaction-table th[aria-sort='ascending'], .transaction-table th[aria-sort='descending'] { color: var(--accent-strong); }

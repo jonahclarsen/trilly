@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte'
   import extensionManifest from '../chromium-extension/manifest.json'
+  import { reviewColumns, sortReviewRows, orderedReviewQueue, type ReviewSortColumn, type ReviewSortDirection } from './lib/review-sort'
   import { businessRows } from './lib/business'
   import Button from './lib/Button.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
@@ -219,8 +220,6 @@
   }
   let view = $state<'transaction' | 'list'>('transaction')
   let selectedId = $state<string | null>(null)
-  const reviewRows = $derived(data?.review_rows ?? data?.queue ?? [])
-  async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
   let skipped = $state<string[]>([])
   // Local skips share ordering with persisted edits, but never change backend data.
   let reviewHistory = $state<({ type: 'skip'; id: string } | { type: 'edit' })[]>([])
@@ -229,6 +228,17 @@
   const canUndoSkip = $derived(activeReviewHistory.at(-1)?.type === 'skip')
   function clearSkipped() { skipped = []; reviewHistory = []; selectedId = null }
 
+  let sortColumn = $state<ReviewSortColumn>('date')
+  let sortDirection = $state<ReviewSortDirection>('ascending')
+  const reviewRows = $derived(sortReviewRows(data?.review_rows ?? data?.queue ?? [], sortColumn, sortDirection, skipped))
+  const reviewQueue = $derived(orderedReviewQueue(reviewRows, data?.queue ?? []))
+  function sortBy(column: ReviewSortColumn) {
+    sortDirection = column === sortColumn && sortDirection === 'ascending' ? 'descending' : 'ascending'
+    sortColumn = column
+    selectedId = null
+  }
+  function showTransactionView() { selectedId = null; view = 'transaction' }
+  async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
   let picks = $state<Suggestion[]>([])
   let picksStatus = $state<'loading' | 'ready' | 'error'>('ready')
   let payee = $state<string | null>(null)
@@ -238,7 +248,7 @@
   let syncTimer: ReturnType<typeof setTimeout>
   let lastActivity = Date.now()
   let reviewElement = $state<HTMLElement>()
-  const current = $derived(data?.queue.find(t => t.id === selectedId) ?? data?.queue.find(t => !skipped.includes(t.id)))
+  const current = $derived(reviewQueue.find(t => t.id === selectedId) ?? reviewQueue.find(t => !skipped.includes(t.id)))
   const amazonTargets = $derived((data?.amazon_targets ?? data?.queue ?? []).filter(isAmazon))
   const displayedMemo = $derived(amazonDraft ?? current?.memo ?? '')
   const currentId = $derived(current?.id)
@@ -265,12 +275,13 @@
   })
   $effect(() => {
     const snapshot = data
+    const ordered = reviewQueue
     const id = currentId
     suggestionVersion
     let cancelled = false
     untrack(() => {
       picksStatus = 'ready'
-      for (const t of snapshot?.queue.filter(t => !skipped.includes(t.id) && !special(t)).slice(0, 6) ?? []) void matches(t.id).catch(() => {})
+      for (const t of ordered.filter(t => !skipped.includes(t.id) && !special(t)).slice(0, 6)) void matches(t.id).catch(() => {})
       if (snapshot && id && current && !special(current)) {
         const epoch = sessionEpoch
         picksStatus = 'loading'
@@ -523,7 +534,7 @@
       const actions: Record<string, () => void> = {
         [menuKeys.settings]: () => modal = 'settings',
         ...(data ? {
-          [menuKeys.transaction]: () => view = 'transaction',
+          [menuKeys.transaction]: showTransactionView,
           [menuKeys.list]: () => view = 'list',
           [menuKeys.sync]: () => { if (!busy && !saving && !saveFailed && data?.plan_id) void sync() },
           [menuKeys.undo]: undo,
@@ -587,7 +598,7 @@
     <nav aria-label="App controls">
       {#if data}
         <div class="view-switch" role="group" aria-label="Transaction views">
-          <Button icon="transaction" label="Transaction" altKey={menuKeys.transaction} pressed={view === 'transaction'} onclick={() => view = 'transaction'}>Transaction</Button>
+          <Button icon="transaction" label="Transaction" altKey={menuKeys.transaction} pressed={view === 'transaction'} onclick={showTransactionView}>Transaction</Button>
           <Button icon="list" label="List" altKey={menuKeys.list} pressed={view === 'list'} onclick={() => view = 'list'}>List</Button>
         </div>
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
@@ -670,11 +681,22 @@
         <section class="empty-state"><h1>{data.connected ? 'Choose your plan' : 'Connect YNAB'}</h1><Button primary onclick={() => modal = 'settings'}>{data.connected ? 'Choose plan' : 'Connect'}</Button></section>
       {:else if view === 'list'}
         <section aria-label="Transaction list">
-          <p class="field-note list-note">Current review batch · {reviewRows.filter(t => t.approved).length} reviewed. Reviewed transactions stay gray until the next batch.</p>
+          <p class="field-note list-note">Current review batch · {reviewRows.filter(t => t.approved).length} reviewed.</p>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll the table horizontally.) -->
           <div class="transaction-table" tabindex="0" role="region" aria-label="Review batch table">
             <table>
-              <thead><tr><th scope="col">Date</th><th scope="col">Payee</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col" class="table-amount">Amount</th><th scope="col">Status</th></tr></thead>
+              <thead><tr>
+                {#each reviewColumns as [column, label]}
+                  <th scope="col" class:table-amount={column === 'amount'} aria-sort={sortColumn === column ? sortDirection : 'none'}>
+                    <button class="sort-header" onclick={() => sortBy(column)} title={`Sort by ${label.toLowerCase()} ${sortColumn === column && sortDirection === 'ascending' ? 'descending' : 'ascending'}`}>
+                      {label}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        {#if sortColumn !== column}<path d="m8 9 4-4 4 4M8 15l4 4 4-4" />{:else if sortDirection === 'ascending'}<path d="m6 10 6-6 6 6M12 4v16" />{:else}<path d="m6 14 6 6 6-6M12 4v16" />{/if}
+                      </svg>
+                    </button>
+                  </th>
+                {/each}
+              </tr></thead>
               <tbody>
                 {#each reviewRows as transaction (transaction.id)}
                   <tr class:reviewed={transaction.approved}>

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockApp, suggestions } from './fixtures'
+import { mockApp, suggestions, synthetic } from './fixtures'
 import { amazonState, amazonRecords } from './amazon-fixture'
 
 test('native unlock opens automatically without a browser password and lock revokes access', async ({ page }) => {
@@ -76,7 +76,7 @@ test('one-key suggestions, category search, undo and skip', async ({ page }) => 
 })
 
 test('Command-Z restores a skipped item before undoing the preceding approval', async ({ page }) => {
-  const actions = await mockApp(page)
+  const actions = await mockApp(page, { state: { ...synthetic, queue: synthetic.queue.map((t, index) => ({ ...t, date: `2026-09-0${index + 1}` })) } })
   await expect(page.getByRole('button', { name: /24 similar transactions/ })).toBeVisible()
   await page.keyboard.press('1')
   await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
@@ -90,7 +90,7 @@ test('Command-Z restores a skipped item before undoing the preceding approval', 
 })
 
 test('Undo retraces consecutive skips even with no approvals', async ({ page }) => {
-  const actions = await mockApp(page)
+  const actions = await mockApp(page, { state: { ...synthetic, queue: synthetic.queue.map((t, index) => ({ ...t, date: `2026-09-0${index + 1}` })) } })
   const first = await page.locator('.transaction h1').textContent()
   await page.keyboard.press('s')
   await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
@@ -109,7 +109,7 @@ test('Undo retraces consecutive skips even with no approvals', async ({ page }) 
 })
 
 test('Undo reverses an approval before an earlier skip and preserves that skip', async ({ page }) => {
-  const actions = await mockApp(page)
+  const actions = await mockApp(page, { state: { ...synthetic, queue: synthetic.queue.map((t, index) => ({ ...t, date: `2026-09-0${index + 1}` })) } })
   const first = await page.locator('.transaction h1').textContent()
   await page.keyboard.press('s')
   await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
