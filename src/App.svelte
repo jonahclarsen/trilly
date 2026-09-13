@@ -985,7 +985,7 @@
     {#if data?.history_count}<p class="field-note settings-history">{data.history_count.toLocaleString()} past transactions</p>{/if}
   </Modal>
 {:else if modal === 'rules' && import.meta.env.DEV}
-  <PurchaseHistoryEditor onclose={() => modal = 'settings'} onsaved={(rules) => devRules = rules} />
+  <PurchaseHistoryEditor onclose={() => modal = 'settings'} onsaved={(rules) => devRules = rules} oncommitted={closeSettings} />
 {:else if modal === 'description'}
   <Modal title="Description" subtitle={`${current?.date ?? ''} · ${payeeName}`} onclose={() => { modal = null; memoDraft = ''; memoId = '' }}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
