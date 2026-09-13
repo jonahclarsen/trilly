@@ -4,11 +4,32 @@
   import Button from './Button.svelte'
   import type { PurchaseHistoryRule } from './types'
   let { onclose, onsaved }: { onclose: () => void; onsaved: (rules: PurchaseHistoryRule[]) => void } = $props()
-  let rows = $state<(PurchaseHistoryRule & { phrases: string })[]>([])
+  type Row = PurchaseHistoryRule & { phrases: string; key: string }
+  let rows = $state<Row[]>([])
+  const blank = (): Row => ({ key: crypto.randomUUID(), id: '', merchant: '', url: '', priority: 10, payee_contains: [], phrases: '' })
+  let dragging = $state<string | null>(null)
+  let table: HTMLTableElement
   let revision = $state('')
   let busy = $state(false)
   let error = $state('')
   let message = $state('')
+  function edited() {
+    message = ''; error = ''
+    const last = rows.at(-1)
+    if (last && (last.id || last.merchant || last.url || last.phrases || last.priority !== 10)) rows.push(blank())
+  }
+  function move(key: string, target: number) {
+    const from = rows.findIndex(row => row.key === key)
+    if (from < 0 || target < 0 || target >= rows.length - 1 || from === target) return
+    const [row] = rows.splice(from, 1)
+    rows.splice(target, 0, row!)
+    message = ''; error = ''
+  }
+  function drag(event: PointerEvent) {
+    if (!dragging) return
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLTableRowElement>('tr[data-row]')
+    if (target && table.contains(target)) move(dragging, rows.findIndex(row => row.key === target.dataset.row))
+  }
   async function request(body?: object) {
     const response = await fetch('/__dev/purchase-history', { method: body ? 'POST' : 'GET', headers: { 'x-trilly-editor': '1', ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
     const result = await response.json()
@@ -19,7 +40,7 @@
     busy = true; error = ''; message = ''
     try {
       const result = await request()
-      rows = result.rules.map((rule: PurchaseHistoryRule) => ({ ...rule, phrases: rule.payee_contains.join('\n') }))
+      rows = [...result.rules.map((rule: PurchaseHistoryRule) => ({ ...rule, key: crypto.randomUUID(), phrases: rule.payee_contains.join('\n') })), blank()]
       revision = result.revision
       onsaved(result.rules)
     } catch (e) { error = (e as Error).message } finally { busy = false }
@@ -27,7 +48,7 @@
   async function save() {
     busy = true; error = ''; message = ''
     try {
-      const rules = rows.map(({ phrases, ...rule }) => ({ ...rule, payee_contains: phrases.split('\n').map(p => p.trim()).filter(Boolean) }))
+      const rules = rows.slice(0, -1).map(({ phrases, key, ...rule }) => ({ ...rule, payee_contains: phrases.split('\n').map(p => p.trim()).filter(Boolean) }))
       const result = await request({ rules, revision })
       revision = result.revision
       onsaved(result.rules)
@@ -37,46 +58,66 @@
   onMount(() => { void load() })
 </script>
 
-<Modal title="Purchase history links" wide onclose={() => { if (!busy) onclose() }}>
-  <p class="field-note">Development only. Save updates and commits the entire rules file on the current branch. Other files are excluded. No push.</p>
-  <p class="field-note">Payee phrases ignore case. Higher priority wins; ties follow this list’s order. Use public merchant URLs and matching phrases only.</p>
+<svelte:window onpointermove={drag} onpointerup={() => dragging = null} onpointercancel={() => dragging = null} />
+
+<Modal title="Purchase history links" width={1240} onclose={() => { if (!busy) onclose() }}>
   <form onsubmit={(event) => { event.preventDefault(); void save() }}>
     <fieldset disabled={busy}>
-      {#each rows as row, i}
-        <section class="rule">
-          <div class="pair">
-            <label>Merchant<input required maxlength="200" bind:value={row.merchant} /></label>
-            <label>ID<input required maxlength="80" bind:value={row.id} /></label>
-          </div>
-          <label>Website<input type="url" required bind:value={row.url} placeholder="https://example.com/orders" /></label>
-          <div class="pair">
-            <label>Payee phrases (one per line)<textarea required rows="3" bind:value={row.phrases}></textarea></label>
-            <label>Priority<input type="number" step="1" min="-2147483648" max="2147483647" required bind:value={row.priority} /></label>
-          </div>
-          <div class="actions">
-            <Button disabled={i === 0} onclick={() => { [rows[i - 1], rows[i]] = [rows[i]!, rows[i - 1]!] }}>Move up</Button>
-            <Button disabled={i === rows.length - 1} onclick={() => { [rows[i], rows[i + 1]] = [rows[i + 1]!, rows[i]!] }}>Move down</Button>
-            <Button icon="close" onclick={() => rows = rows.filter((_, index) => index !== i)}>Remove</Button>
-          </div>
-        </section>
-      {/each}
-      <Button onclick={() => rows.push({ id: '', merchant: '', url: '', priority: 10, payee_contains: [], phrases: '' })}>Add merchant</Button>
+      <div class="table-scroll">
+        <table bind:this={table} oninput={edited}>
+          <colgroup><col class="control" /><col class="merchant" /><col class="id" /><col class="website" /><col class="phrases" /><col class="priority" /><col class="control" /></colgroup>
+          <thead><tr><th scope="col"><span class="sr-only">Order</span></th><th scope="col">Merchant</th><th scope="col">ID</th><th scope="col">Website</th><th scope="col">Payee phrases</th><th scope="col">Priority</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
+          <tbody>
+            {#each rows as row, i (row.key)}
+              {@const empty = i === rows.length - 1}
+              <tr data-row={row.key} class:dragging={dragging === row.key}>
+                <td>
+                  {#if !empty}
+                    <button type="button" class="handle icon-only" aria-label={`Reorder ${row.merchant || 'merchant'}`} title="Drag to reorder, or use Up and Down arrow keys"
+                      onpointerdown={(event) => { if (event.button === 0) dragging = row.key }}
+                      onkeydown={(event) => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); move(row.key, i + (event.key === 'ArrowUp' ? -1 : 1)) } }}>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="7" cy="5" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
+                    </button>
+                  {/if}
+                </td>
+                <td><input aria-label={`Merchant ${i + 1}`} required={!empty} maxlength="200" bind:value={row.merchant} /></td>
+                <td><input aria-label={`ID ${i + 1}`} required={!empty} maxlength="80" bind:value={row.id} /></td>
+                <td><input aria-label={`Website ${i + 1}`} type="url" required={!empty} bind:value={row.url} /></td>
+                <td><textarea aria-label={`Payee phrases ${i + 1}, one per line`} title="One phrase per line" required={!empty} rows="2" bind:value={row.phrases}></textarea></td>
+                <td><input aria-label={`Priority ${i + 1}`} type="number" step="1" min="-2147483648" max="2147483647" required={!empty} bind:value={row.priority} /></td>
+                <td>{#if !empty}<Button icon="close" label={`Remove ${row.merchant || 'merchant'}`} onclick={() => { rows = rows.filter(item => item.key !== row.key); edited() }} />{/if}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     </fieldset>
     {#if error}<p role="alert" class="modal-error">{error}</p>{/if}
     {#if message}<p role="status">{message}</p>{/if}
     <div class="actions">
       <Button type="submit" primary disabled={busy || !revision}>{busy ? 'Saving…' : 'Save and commit'}</Button>
-      <Button disabled={busy} onclick={() => void load()}>Reload file</Button>
-      <Button disabled={busy} onclick={onclose}>Done</Button>
     </div>
-    <p class="field-note">Reload file discards this draft. If a commit fails, the saved rules still apply; retry to commit them.</p>
   </form>
 </Modal>
 
 <style>
   fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-  .rule { padding: 16px 0; border-bottom: 1px solid var(--line); margin-bottom: 12px; display: grid; gap: 12px; }
-  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-  @media (max-width: 560px) { .pair { grid-template-columns: 1fr; } }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; min-width: 980px; table-layout: fixed; border-collapse: collapse; }
+  .control { width: 44px; }
+  .merchant { width: 17%; }
+  .id { width: 14%; }
+  .website { width: 29%; }
+  .phrases { width: 23%; }
+  .priority { width: 90px; }
+  th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 500; }
+  th, td { padding: 8px 5px; border-bottom: 1px solid var(--line); }
+  td { vertical-align: middle; }
+  input, textarea { width: 100%; min-width: 0; margin: 0; padding: 8px; font-size: 13px; }
+  textarea { resize: vertical; display: block; }
+  .handle { touch-action: none; cursor: grab; color: var(--muted); }
+  .dragging { background: var(--paper-strong); }
+  .dragging .handle { cursor: grabbing; }
+  .actions { display: flex; justify-content: flex-end; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>

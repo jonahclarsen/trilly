@@ -40,7 +40,7 @@ export function createRulesStore(root) {
     try {
       const rules = validateRules(input.rules)
       const current = await read()
-      if (input.revision !== current.revision) throw new Error('The file changed since you opened it. Reload the file before saving.')
+      if (input.revision !== current.revision) throw new Error('The file changed since you opened it. Close and reopen the editor before saving.')
       await git('ls-files', '--error-unmatch', '--', relative)
       await git('symbolic-ref', '--quiet', 'HEAD')
       const conflicts = await git('diff', '--name-only', '--diff-filter=U')
@@ -49,7 +49,7 @@ export function createRulesStore(root) {
       const temp = `${path}.${randomUUID()}.tmp`
       try {
         await writeFile(temp, text, { flag: 'wx' })
-        if ((await read()).revision !== current.revision) throw new Error('The file changed while saving. Reload the file before saving.')
+        if ((await read()).revision !== current.revision) throw new Error('The file changed while saving. Close and reopen the editor before saving.')
         await rename(temp, path)
       }
       finally { await unlink(temp).catch(() => {}) }

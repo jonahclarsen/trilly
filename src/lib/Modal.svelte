@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
   import Button from './Button.svelte'
-  let { title, onclose, children, wide = false, subtitle }: { title: string; onclose: () => void; children: Snippet; wide?: boolean; subtitle?: string } = $props()
+  let { title, onclose, children, wide = false, subtitle, width }: { title: string; onclose: () => void; children: Snippet; wide?: boolean; subtitle?: string; width?: number } = $props()
   function open(node: HTMLDialogElement) {
     window.addEventListener('keydown', keydown, true)
     node.showModal()
@@ -26,7 +26,7 @@
     return event.target === node && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)
   }
 </script>
-<dialog onpointerdown={(event) => outsidePress = outside(event)} onclick={(event) => { if (outsidePress && outside(event)) onclose(); outsidePress = false }} use:open class:wide oncancel={(event) => { event.preventDefault(); onclose() }} aria-label={title}>
+<dialog style:width={width ? `min(${width}px, calc(100vw - 32px))` : undefined} onpointerdown={(event) => outsidePress = outside(event)} onclick={(event) => { if (outsidePress && outside(event)) onclose(); outsidePress = false }} use:open class:wide oncancel={(event) => { event.preventDefault(); onclose() }} aria-label={title}>
   <div class="modal-heading" class:with-subtitle={!!subtitle}><h2>{title}</h2><Button icon="close" label="Close" shortcut="Esc" onclick={onclose} /></div>
   {#if subtitle}<p class="modal-subtitle muted">{subtitle}</p>{/if}
   {@render children()}
