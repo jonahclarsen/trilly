@@ -16,7 +16,7 @@
   import { api, ApiError, setSession, hasSession, shouldAutoUnlock } from './lib/api'
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
-  import { shortcuts, suggestionIndex } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -216,6 +216,10 @@
   async function removeExpense(plan_id: string, id: string) {
     if (await act({ action: 'remove_business_expense', plan_id, id })) businessMessage = 'Expense removed. Undo restores it.'
   }
+  let view = $state<'transaction' | 'list'>('transaction')
+  let selectedId = $state<string | null>(null)
+  const reviewRows = $derived(data?.review_rows ?? data?.queue ?? [])
+  async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
   let skipped = $state<string[]>([])
   let picks = $state<Suggestion[]>([])
   let picksStatus = $state<'loading' | 'ready' | 'error'>('ready')
@@ -226,7 +230,7 @@
   let syncTimer: ReturnType<typeof setTimeout>
   let lastActivity = Date.now()
   let reviewElement = $state<HTMLElement>()
-  const current = $derived(data?.queue.find(t => !skipped.includes(t.id)))
+  const current = $derived(data?.queue.find(t => t.id === selectedId) ?? data?.queue.find(t => !skipped.includes(t.id)))
   const amazonTargets = $derived((data?.amazon_targets ?? data?.queue ?? []).filter(isAmazon))
   const displayedMemo = $derived(amazonDraft ?? current?.memo ?? '')
   const currentId = $derived(current?.id)
@@ -318,7 +322,7 @@
     sessionEpoch++; setSession(''); data = null; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
-    picks = []; skipped = []; payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
+    picks = []; skipped = []; selectedId = null; payee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
     if (e instanceof ApiError && e.status === 401) forget()
@@ -359,17 +363,24 @@
     syncTimer = setTimeout(() => { if (busy) scheduleSync(500); else void sync(false) }, delay)
   }
   function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
-    const result = { ...snapshot, queue: [...snapshot.queue], undo_transactions: [...(snapshot.undo_transactions ?? [])] }
+    const result = { ...snapshot, queue: [...snapshot.queue], review_rows: [...(snapshot.review_rows ?? snapshot.queue)], undo_transactions: [...(snapshot.undo_transactions ?? [])] }
     if (event.body.action === 'review') {
       if (typeof event.body.amazon_payment_id === 'string') result.amazon_assignments = [...(result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.body.id), { payment_id: event.body.amazon_payment_id, transaction_id: String(event.body.id) }]
       const transaction = result.queue.find(t => t.id === event.body.id)
       if (transaction) result.undo_transactions.push(transaction)
+      result.review_rows = result.review_rows.map(t => t.id !== event.body.id ? t : {
+        ...t, approved: true,
+        payee_name: typeof event.body.amazon_marketplace === 'string' ? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
+        category_name: snapshot.categories.find(c => c.id === event.body.category_id)?.name ?? t.category_name,
+        memo: typeof event.body.memo === 'string' ? event.body.memo : t.memo,
+      })
       result.queue = result.queue.filter(t => t.id !== event.body.id)
       result.pending++; result.can_undo = true
     } else if (event.body.action === 'undo') {
       if (event.restore) result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.restore!.id)
       result.undo_transactions.pop()
       if (event.restore && event.restore.account_id === result.account_id) {
+        result.review_rows = [event.restore, ...result.review_rows.filter(t => t.id !== event.restore!.id)]
         result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
       }
       result.pending = Math.max(0, result.pending - 1)
@@ -456,7 +467,7 @@
     skipped = []; reviewElement?.focus()
   }
   function skip() {
-    if (current && (!busy || syncing)) { skipped = [...skipped, current.id]; reviewElement?.focus() }
+    if (current && (!busy || syncing)) { const id = current.id; selectedId = null; skipped = [...skipped, id]; reviewElement?.focus() }
   }
   async function lock() {
     const request = api('action', { action: 'lock' })
@@ -484,6 +495,24 @@
     if (data && (!modal || modal === 'business') && !typing && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
       event.preventDefault(); undo(); return
     }
+    if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && !modal) {
+      const actions: Record<string, () => void> = {
+        [menuKeys.settings]: () => modal = 'settings',
+        ...(data ? {
+          [menuKeys.transaction]: () => view = 'transaction',
+          [menuKeys.list]: () => view = 'list',
+          [menuKeys.sync]: () => { if (!busy && !saving && !saveFailed && data?.plan_id) void sync() },
+          [menuKeys.undo]: undo,
+          [menuKeys.business]: () => { businessMessage = ''; showArchived = false; modal = 'business' },
+          [menuKeys.help]: () => modal = 'shortcuts',
+          [menuKeys.lock]: () => void lock(),
+        } : {}),
+      }
+      // Option changes event.key on macOS, so use the physical letter key.
+      const action = actions[event.code.replace(/^Key/, '')]
+      if (action) { event.preventDefault(); action() }
+      return
+    }
     if (event.metaKey || event.ctrlKey || event.altKey) return
     if (!data) {
       if (event.key === 'Enter' && !modal && ready && !busy && unlockMode === 'macos') {
@@ -494,6 +523,7 @@
     if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoBusiness(); return }
     if (modal) return
     if (typing) return
+    if (view === 'list' && !['u', 'r', 'a', ',', 'l', '?'].includes(event.key.toLowerCase())) return
     const index = suggestionIndex(event)
     if (index !== undefined) {
       event.preventDefault()
@@ -532,15 +562,19 @@
     <Wordmark value={logo} />
     <nav aria-label="App controls">
       {#if data}
+        <div class="view-switch" role="group" aria-label="Transaction views">
+          <Button icon="transaction" label="Transaction" altKey={menuKeys.transaction} pressed={view === 'transaction'} onclick={() => view = 'transaction'}>Transaction</Button>
+          <Button icon="list" label="List" altKey={menuKeys.list} pressed={view === 'list'} onclick={() => view = 'list'}>List</Button>
+        </div>
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
-        <Button icon="sync" label="Sync" shortcut="R" disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
-        <Button icon="undo" label="Undo" shortcut="⌘Z / U" disabled={busy || saveFailed || (!data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
-        <Button icon="business" label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business {activeExpenses.length}</Button>
+        <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
+        <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
+        <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business {activeExpenses.length}</Button>
         <span class="nav-divider"></span>
-        <Button icon="keyboard" label="Help" shortcut="?" onclick={() => modal = 'shortcuts'}>Help</Button>
+        <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>
       {/if}
-      <Button icon="settings" label="Settings" shortcut="," onclick={() => modal = 'settings'}>Settings</Button>
-      {#if data}<Button icon="lock" label="Lock" shortcut="L" onclick={() => void lock()}>Lock</Button>{/if}
+      <Button icon="settings" label="Settings" altKey={menuKeys.settings} onclick={() => modal = 'settings'}>Settings</Button>
+      {#if data}<Button icon="lock" label="Lock" altKey={menuKeys.lock} onclick={() => void lock()}>Lock</Button>{/if}
     </nav>
   </header>
 
@@ -571,7 +605,7 @@
       </div>
     </main>
   {:else}
-    <main class="workspace" bind:this={reviewElement} tabindex="-1">
+    <main class="workspace" class:list-workspace={view === 'list'} bind:this={reviewElement} tabindex="-1">
       <div class="queue-heading">
         <div>
           <span class="eyebrow">{currentPlan?.name ?? 'Review'}</span>
@@ -610,6 +644,28 @@
 
       {#if !data.connected || !data.plan_id}
         <section class="empty-state"><h1>{data.connected ? 'Choose your plan' : 'Connect YNAB'}</h1><Button primary onclick={() => modal = 'settings'}>{data.connected ? 'Choose plan' : 'Connect'}</Button></section>
+      {:else if view === 'list'}
+        <section aria-label="Transaction list">
+          <p class="field-note list-note">Current review batch · {reviewRows.filter(t => t.approved).length} reviewed. Reviewed transactions stay gray until the next batch.</p>
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll the table horizontally.) -->
+          <div class="transaction-table" tabindex="0" role="region" aria-label="Review batch table">
+            <table>
+              <thead><tr><th scope="col">Date</th><th scope="col">Payee</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col" class="table-amount">Amount</th><th scope="col">Status</th></tr></thead>
+              <tbody>
+                {#each reviewRows as transaction (transaction.id)}
+                  <tr class:reviewed={transaction.approved}>
+                    <td><time datetime={transaction.date}>{dateLabel(transaction.date)}</time></td>
+                    <td>{transaction.payee_name ?? transaction.import_payee_name ?? 'Unknown payee'}</td>
+                    <td>{transaction.category_name ?? 'Uncategorized'}</td>
+                    <td>{transaction.memo ?? ''}</td>
+                    <td class="table-amount">{money(transaction.amount)}</td>
+                    <td>{#if transaction.approved}<span>Reviewed</span>{:else}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => openTransaction(transaction.id)}>{skipped.includes(transaction.id) ? 'Skipped · Review' : 'Review'}</Button>{/if}</td>
+                  </tr>
+                {:else}<tr><td colspan="6" class="table-empty">All caught up. New transactions will appear here after syncing.</td></tr>{/each}
+              </tbody>
+            </table>
+          </div>
+        </section>
       {:else if current}
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top"><time datetime={current.date}>{dateLabel(current.date)}</time>{#if !currency}<span>Currency unavailable</span>{/if}</div>

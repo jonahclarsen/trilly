@@ -116,6 +116,45 @@ fn snapshot(d: &Data) -> Value {
         })
         .collect();
     queue.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.id.cmp(&b.id)));
+    let cycle = d
+        .review_cycles
+        .iter()
+        .find(|c| c.account_id == d.account_id);
+    let mut review_rows: Vec<_> = d
+        .transactions
+        .iter()
+        .filter(|t| {
+            t.account_id == d.account_id
+                && !t.deleted
+                && (queue.iter().any(|q| q.id == t.id)
+                    || cycle.is_some_and(|c| c.ids.contains(&t.id)))
+        })
+        .cloned()
+        .collect();
+    for row in &mut review_rows {
+        if let Some(p) = d.pending.iter().find(|p| p.change.id == row.id) {
+            row.approved = p.change.approved;
+            if let Some(memo) = &p.change.memo {
+                row.memo = Some(memo.clone());
+            }
+            if !p.change.memo_only {
+                row.payee_id = p.change.payee_id.clone();
+                row.category_id = p.change.category_id.clone();
+                row.payee_name = p.change.payee_name.clone().or_else(|| {
+                    d.payees
+                        .iter()
+                        .find(|v| Some(&v.id) == row.payee_id.as_ref())
+                        .map(|v| v.name.clone())
+                });
+                row.category_name = d
+                    .categories
+                    .iter()
+                    .find(|v| Some(&v.id) == row.category_id.as_ref())
+                    .map(|v| v.name.clone());
+            }
+        }
+    }
+    review_rows.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.id.cmp(&b.id)));
     json!({"connected": !d.token.is_empty(), "plans": d.plans, "plan_id": d.plan_id,
         "account_id": d.account_id, "accounts": d.accounts.iter().filter(|a| !a.deleted && !a.closed).collect::<Vec<_>>(),
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
@@ -123,7 +162,7 @@ fn snapshot(d: &Data) -> Value {
         "description_pending": d.pending.iter().filter(|p| p.change.memo_only).map(|p| &p.change.id).collect::<Vec<_>>(),
         "amazon_assignments": d.amazon_assignments,
         "amazon_targets": d.transactions.iter().filter(|t| !t.deleted && !t.approved && t.transfer_account_id.is_none()).collect::<Vec<_>>(),
-        "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
+        "review_rows": review_rows, "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "business_expenses": d.business_expenses,
         "can_undo_business": !d.business_undo.is_empty() || !d.business_archive_undo.is_empty(),
@@ -350,6 +389,7 @@ async fn action(
         return Ok(Json(json!({"locked": true})));
     }
     let mut next = app.session.as_ref().unwrap().vault.data.clone();
+    next.update_review_cycles();
     let mut sync_error = None;
     match body {
         Action::Lock => unreachable!(),
@@ -558,6 +598,7 @@ async fn action(
             }
         }
     }
+    next.update_review_cycles();
     app.session.as_mut().unwrap().vault.commit(next)?;
     let mut result = snapshot(&app.session.as_ref().unwrap().vault.data);
     if let Some(error) = sync_error {
@@ -974,6 +1015,104 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn review_batches_survive_restart_sync_undo_and_reset_per_account() {
+        let mut d = Data::default();
+        d.account_id = "a".into();
+        d.accounts = vec![
+            Account {
+                id: "a".into(),
+                ..Default::default()
+            },
+            Account {
+                id: "b".into(),
+                ..Default::default()
+            },
+        ];
+        d.transactions = vec![
+            Transaction {
+                id: "one".into(),
+                account_id: "a".into(),
+                ..Default::default()
+            },
+            Transaction {
+                id: "two".into(),
+                account_id: "a".into(),
+                ..Default::default()
+            },
+            Transaction {
+                id: "other".into(),
+                account_id: "b".into(),
+                ..Default::default()
+            },
+            Transaction {
+                id: "old".into(),
+                account_id: "a".into(),
+                approved: true,
+                ..Default::default()
+            },
+        ];
+        d.update_review_cycles();
+        assert_eq!(snapshot(&d)["review_rows"].as_array().unwrap().len(), 2);
+        let before = d.transactions[0].clone();
+        d.pending.push(Pending {
+            change: Change {
+                approved: true,
+                memo: Some("Synthetic description".into()),
+                ..Change::from(&before)
+            },
+            before,
+            conflict: false,
+        });
+        d.update_review_cycles();
+        let state = snapshot(&d);
+        assert_eq!(state["queue"].as_array().unwrap().len(), 1);
+        assert_eq!(state["review_rows"][0]["approved"], true);
+        assert_eq!(state["review_rows"][0]["memo"], "Synthetic description");
+        // Simulate a successful sync, then round-trip through an isolated encrypted vault.
+        d.transactions[0].approved = true;
+        d.pending.clear();
+        d.update_review_cycles();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("review-batch.vault");
+        let mut vault =
+            vault::Vault::create_native(path.clone(), &keystore::SyntheticKeyStore).unwrap();
+        vault.commit(d.clone()).unwrap();
+        assert_eq!(
+            snapshot(&vault.data)["review_rows"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        drop(vault);
+        let reopened = vault::Vault::open_native(path, &keystore::SyntheticKeyStore).unwrap();
+        d = reopened.data.clone();
+        d.transactions[1].approved = true;
+        d.update_review_cycles();
+        assert!(d.review_cycles[0].complete);
+        assert_eq!(snapshot(&d)["review_rows"].as_array().unwrap().len(), 2);
+        d.transactions[0].approved = false;
+        d.update_review_cycles();
+        assert!(!d.review_cycles[0].complete);
+        assert_eq!(snapshot(&d)["review_rows"].as_array().unwrap().len(), 2);
+        d.transactions[0].approved = true;
+        d.update_review_cycles();
+        d.transactions.push(Transaction {
+            id: "new".into(),
+            account_id: "a".into(),
+            ..Default::default()
+        });
+        d.update_review_cycles();
+        assert_eq!(snapshot(&d)["review_rows"].as_array().unwrap().len(), 1);
+        assert_eq!(snapshot(&d)["review_rows"][0]["id"], "new");
+        d.account_id = "b".into();
+        assert_eq!(snapshot(&d)["review_rows"][0]["id"], "other");
+        d.transactions[2].deleted = true;
+        d.update_review_cycles();
+        assert!(snapshot(&d)["review_rows"].as_array().unwrap().is_empty());
+    }
+
     #[test]
     fn business_expenses_survive_encrypted_restart_and_archive_without_changing_transactions() {
         let dir = tempfile::tempdir().unwrap();

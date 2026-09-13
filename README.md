@@ -18,6 +18,8 @@ live in one encrypted vault on your computer. No external categorization service
 </picture>
 </details>
 
+These screenshots predate the top-menu shortcuts and list view. Screenshot regeneration is pending authorization to run the isolated browser workflow.
+
 Screenshots use synthetic data and the default Iridescent theme. The previews follow your light/dark preference.
 
 ## Run
@@ -442,3 +444,18 @@ References: [YNAB API](https://api.ynab.com/),
 [code-signing requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements),
 [Argon2](https://docs.rs/argon2/0.5.3/argon2/),
 [XChaCha20-Poly1305](https://docs.rs/chacha20poly1305/0.10.1/chacha20poly1305/).
+
+### Review views and menu shortcuts
+
+The top menu shows Option shortcuts on macOS (⌥), and Alt+ elsewhere:
+**T** Transaction, **V** List, **R** Sync, **U** Undo, **B** Business,
+**H** Help, **S** Settings, and **L** Lock. Existing single-key shortcuts
+remain available. Menu shortcuts do not run while a dialog is open.
+
+List shows every transaction in the selected account's current review batch
+with date, payee, category, description, amount, and review status. Choose
+**Review** on a row to open it in Transaction view. Approved rows stay gray,
+including after sync and restart. Once the batch is complete, newly arriving
+unreviewed transactions start the next batch. Skipping does not count as approval.
+Undo reopens a reviewed transaction in its batch. Review batches are stored in
+the encrypted vault; no transaction data is stored in browser storage.

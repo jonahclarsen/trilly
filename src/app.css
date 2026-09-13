@@ -111,9 +111,9 @@ dialog::backdrop { background: rgb(0 0 0 / .3); backdrop-filter: blur(4px); }
 /* Text navigation and review hierarchy. */
 .app-shell > header { border-bottom: 1px solid var(--line); padding-inline: 4vw; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 82px; height: auto; padding-block: 18px; flex-wrap: wrap; }
 nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-nav > button { background: transparent; border-color: var(--line); padding: 6px 8px; gap: 6px; min-height: 34px; line-height: 20px; }
-nav > button svg { width: 16px; height: 16px; }
-nav > button kbd { display: none; }
+nav button { background: transparent; border-color: var(--line); padding: 6px 8px; gap: 6px; min-height: 34px; line-height: 20px; }
+nav button svg { width: 16px; height: 16px; }
+nav button kbd { margin-left: 3px; border: 0; padding: 0; min-width: auto; font-size: 11px; }
 .sync-state { display: inline-flex; align-items: center; min-height: 38px; line-height: 20px; color: var(--muted); font-size: 11px; margin-right: 10px; }
 .transaction-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 15px; }
 .amount { font-weight: 550; font-variant-numeric: tabular-nums; margin: 20px 0 10px; font-size: clamp(32px, 6vw, 41px); letter-spacing: -1.5px; }
@@ -292,7 +292,7 @@ input.hue-slider { appearance: none; height: 9px; border: 0; background: linear-
 @media (max-width: 540px) {
   .app-shell > header { padding: 14px 16px; gap: 10px; }
   nav { gap: 6px; }
-  nav > button { padding: 7px; gap: 5px; font-size: 12px; }
+  nav button { padding: 7px; gap: 5px; font-size: 12px; }
   .sync-state { display: flex; justify-content: flex-end; order: 1; width: 100%; min-height: 20px; margin: 4px 0 0; }
   .app-shell > header > .brand { align-self: flex-start; }
   .color-picker { gap: 14px; }
@@ -319,3 +319,19 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 .modal-subtitle { margin-bottom: 24px; line-height: 1.5; }
 
 .description-status { margin-top: 10px; }
+
+.view-switch { display: flex; flex-wrap: wrap; gap: 6px; padding-right: 12px; margin-right: 4px; border-right: 1px solid var(--line); }
+.view-switch button[aria-pressed='true'] { background: var(--active-nav); border-color: var(--accent); color: var(--accent-strong); }
+.list-workspace { width: min(1240px, 100%); }
+.list-note { margin-bottom: 16px; }
+.transaction-table { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.transaction-table:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offset: 3px; }
+.transaction-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.transaction-table th, .transaction-table td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.transaction-table th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+.transaction-table td { min-width: 120px; max-width: 340px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.transaction-table tr:last-child td { border-bottom: 0; }
+.transaction-table .table-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.transaction-table .reviewed { color: var(--muted); background: color-mix(in srgb, var(--muted) 6%, transparent); }
+.transaction-table td button { padding: 5px 8px; font-size: 12px; white-space: nowrap; background: transparent; }
+.transaction-table .table-empty { padding: 40px 20px; text-align: center; color: var(--muted); }

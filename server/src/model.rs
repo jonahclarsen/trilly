@@ -190,6 +190,8 @@ pub enum BusinessUndo {
 #[derive(Clone, Default, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Data {
     #[serde(default)]
+    pub review_cycles: Vec<ReviewCycle>,
+    #[serde(default)]
     pub amazon: crate::amazon::Store,
     #[serde(default)]
     pub amazon_assignments: Vec<crate::amazon::Assignment>,
@@ -223,4 +225,53 @@ pub struct Data {
     pub knowledge: i64,
     #[serde(default)]
     pub synced_at: Option<String>,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, Zeroize)]
+pub struct ReviewCycle {
+    pub account_id: String,
+    pub ids: Vec<String>,
+    pub complete: bool,
+}
+
+impl Data {
+    pub fn update_review_cycles(&mut self) {
+        for account in &self.accounts {
+            let awaiting: Vec<_> = self
+                .transactions
+                .iter()
+                .filter(|t| {
+                    t.account_id == account.id
+                        && !t.deleted
+                        && !t.approved
+                        && !self.pending.iter().any(|p| {
+                            p.change.id == t.id && !p.change.memo_only && p.change.approved
+                        })
+                })
+                .map(|t| t.id.clone())
+                .collect();
+            let index = self
+                .review_cycles
+                .iter()
+                .position(|c| c.account_id == account.id)
+                .unwrap_or_else(|| {
+                    self.review_cycles.push(ReviewCycle {
+                        account_id: account.id.clone(),
+                        ..Default::default()
+                    });
+                    self.review_cycles.len() - 1
+                });
+            let cycle = &mut self.review_cycles[index];
+            // Undo reopens the same batch; newly arriving transactions start the next one.
+            if cycle.complete && awaiting.iter().any(|id| !cycle.ids.contains(id)) {
+                cycle.ids.clear();
+            }
+            for id in &awaiting {
+                if !cycle.ids.contains(id) {
+                    cycle.ids.push(id.clone());
+                }
+            }
+            cycle.complete = awaiting.is_empty();
+        }
+    }
 }
