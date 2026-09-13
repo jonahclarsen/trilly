@@ -9,6 +9,12 @@ export type AmazonStore = { payments: AmazonPayment[]; orders: AmazonOrder[] }
 export type AmazonCandidate = { payment: AmazonPayment; orders: AmazonOrder[]; confident: boolean; reason: string }
 export type AmazonStatus = { running: boolean; pages: number; orders: number; queued: number; active: number; message: string; paused: { tab: number; marketplace: string; reason: string }[] }
 export const emptyAmazon = (): AmazonStore => ({ payments: [], orders: [] })
+export function amazonLinkSummary(targets: Transaction[], assignments: { transaction_id: string }[]) {
+  const targetIds = new Set(targets.map(target => target.id))
+  const linked = new Set(assignments.filter(assignment => targetIds.has(assignment.transaction_id)).map(assignment => assignment.transaction_id)).size
+  if (!linked) return `${targets.length} ${targets.length === 1 ? 'transaction' : 'transactions'} to link`
+  return `${linked} ${linked === 1 ? 'transaction' : 'transactions'} linked, ${targets.length - linked} unlinked`
+}
 export function isAmazon(t: Transaction) {
   if (t.transfer_account_id || t.debt_transaction_type) return false
   const names = [t.import_payee_name_original, t.import_payee_name, t.payee_name].filter(Boolean).join(' ').toLowerCase()

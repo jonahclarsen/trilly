@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { amazonPayee, amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
+import { amazonLinkSummary, amazonPayee, amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
 const t = { id: 'synthetic-bank', date: '2026-09-03', amount: -30000, payee_name: 'AMZN MKTP CA', account_id: 'synthetic-card', approved: false, transfer_account_id: null, debt_transaction_type: null };
 const item = { id: 'item-a', title: 'USB CABLE', quantity: 1, unit_price: 10000, image: '' };
 const item2 = { ...item, id: 'item-b', title: 'NOTEBOOK', unit_price: 20000 };
@@ -46,6 +46,18 @@ test('reimports update cached orders without losing other evidence; card payment
 test('a previously assigned payment is excluded for another transaction', () => {
   assert.equal(amazonCandidates(store, t, 'CAD', [t], [{ payment_id: payment.id, transaction_id: 'already-approved' }]).length, 0);
   assert.equal(amazonCandidates(store, t, 'CAD', [t], [{ payment_id: payment.id, transaction_id: t.id }]).length, 1);
+});
+test('link summary reports work remaining and ignores duplicate or stale assignments', () => {
+  const targets = [t, { ...t, id: 'other-bank' }];
+  assert.equal(amazonLinkSummary(Array.from({ length: 10 }, (_, id) => ({ ...t, id: `bank-${id}` })), []), '10 transactions to link');
+  assert.equal(amazonLinkSummary(targets, []), '2 transactions to link');
+  assert.equal(amazonLinkSummary(targets, [{ transaction_id: t.id }]), '1 transaction linked, 1 unlinked');
+  assert.equal(amazonLinkSummary(targets, [
+    { transaction_id: t.id },
+    { transaction_id: t.id },
+    { transaction_id: 'stale-bank' },
+  ]), '1 transaction linked, 1 unlinked');
+  assert.equal(amazonLinkSummary([t], []), '1 transaction to link');
 });
 test('generated descriptions respect the API limit without splitting Unicode characters', () => {
   const description = amazonDescription([{ ...item, title: 'A'.repeat(600) }], true);
