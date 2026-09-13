@@ -637,6 +637,25 @@ test('Amazon cards fill lowercase descriptions and combine them with approval', 
   await expect.poll(() => actions.find(a => a.action === 'review')).toMatchObject({ memo: 'usb-c charging cable; ruled notebook', amazon_marketplace: 'amazon.ca', amazon_payment_id: 'synthetic-payment' })
 })
 
+test('Amazon order action replaces Google and opens from the A shortcut', async ({ page }) => {
+  await mockApp(page, { state: amazonState, amazon: amazonRecords })
+  const href = 'https://www.amazon.ca/gp/your-account/order-details?orderID=000-0000000-0000001'
+  const order = page.getByRole('link', { name: 'Open Amazon order (opens in a new tab)' })
+  await expect(order).toHaveAttribute('href', href)
+  await expect(page.getByRole('link', { name: /Search Google/ })).toHaveCount(0)
+  const popupPromise = page.waitForEvent('popup')
+  await page.keyboard.press('a')
+  const popup = await popupPromise
+  expect(popup.url()).toBe(href)
+  await popup.close()
+})
+
+test('A does nothing when no Amazon order is available', async ({ page }) => {
+  await mockApp(page)
+  await page.keyboard.press('a')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
 test('multi-product refunds require choosing products and use refund for', async ({ page }) => {
   const state = structuredClone(amazonState), records = structuredClone(amazonRecords)
   state.queue[0].amount = 11200

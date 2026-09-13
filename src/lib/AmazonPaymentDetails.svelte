@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { orderURL, marketplaceLabel, type AmazonPayment } from './amazon'
+  import { paymentOrderURL, marketplaceLabel, type AmazonPayment } from './amazon'
   let { payment }: { payment: AmazonPayment } = $props()
   function link(id: string) {
-    if (!/^\d{3}-\d{7}-\d{7}$/.test(id)) return ''
-    const market = payment.order_marketplaces?.[id] ?? payment.marketplace
-    return orderURL(`https://www.${market}/gp/your-account/order-details?orderID=${id}`, market)
+    return paymentOrderURL({ ...payment, order_ids: [id] })
   }
 </script>
 

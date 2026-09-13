@@ -51,6 +51,22 @@ test('payment details stay visible with separate fields and safe order links bef
   } finally { await server.close(); }
 });
 
+test('Amazon order action renders the safe order target, logo, and shortcut', async () => {
+  const server = await createServer({ configFile: false, plugins: [svelte()], server: { middlewareMode: true, hmr: false, watch: null }, appType: 'custom' });
+  try {
+    const { default: Link } = await server.ssrLoadModule('/src/lib/AmazonOrderLink.svelte');
+    const { render } = await server.ssrLoadModule('svelte/server');
+    const { parseHTML } = await import('linkedom');
+    const href = 'https://www.amazon.ca/gp/your-account/order-details?orderID=000-0000000-0000001';
+    const document = parseHTML(render(Link, { props: { href } }).body).document;
+    const link = document.querySelector('a');
+    assert.equal(link.getAttribute('href'), href);
+    assert.equal(link.getAttribute('aria-keyshortcuts'), 'A');
+    assert.equal(link.querySelector('kbd').textContent, 'A');
+    assert.ok(link.querySelector('.amazon-logo'));
+  } finally { await server.close(); }
+});
+
 
 test('review hides a sole charge card while retaining evidence and uncertain-match confirmation', async () => {
   const server = await createServer({ configFile: false, plugins: [svelte()], server: { middlewareMode: true, hmr: false, watch: null }, appType: 'custom' });
