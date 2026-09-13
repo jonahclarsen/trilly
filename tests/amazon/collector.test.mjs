@@ -118,9 +118,10 @@ test('a US reader alone opens a Canadian link on ca and rejects unsupported dest
 
 test('completion waits for every saved packet and replays a missed final status', async () => {
   const h = harness(); await h.start();
-  for (const reader of [...h.tabs.values()].filter(t => t.url.includes('/cpe/'))) {
-    await h.send({ type: 'PAGE', job: h.job, payments: [], hasNext: false }, reader.id);
-  }
+  const reader = [...h.tabs.values()].find(t => t.url.includes('/cpe/'));
+  const record = { ...payment(1), order_ids: [], order_marketplaces: {} };
+  await h.send({ type: 'PAGE', job: h.job, payments: [record], hasNext: true }, reader.id);
+  await h.send({ type: 'PAGE', job: h.job, payments: [], hasNext: false }, reader.id);
   const packets = h.messages.filter(m => m.payload?.type === 'DATA').map(m => m.payload.packet);
   assert.equal(packets.length, 2);
   await h.send({ type: 'ACK', job: h.job, packet: packets[0] });
