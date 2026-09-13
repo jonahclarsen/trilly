@@ -110,7 +110,7 @@ dialog::backdrop { background: rgb(0 0 0 / .3); backdrop-filter: blur(4px); }
 
 /* Text navigation and review hierarchy. */
 /* Size to the contents so vertical padding controls the visible spacing. */
-.app-shell > header { border-bottom: 1px solid var(--line); padding-inline: 4vw; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: auto; padding-block: 4px; flex-wrap: wrap; }
+.app-shell > header { border-bottom: 1px solid var(--line); padding-inline: 4vw; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: auto; padding-block: 9px; flex-wrap: wrap; }
 nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 nav button { background: transparent; border-color: var(--line); padding: 6px 8px; gap: 6px; min-height: 34px; line-height: 20px; }
 nav button svg { width: 16px; height: 16px; }
