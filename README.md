@@ -142,7 +142,7 @@ row or numeric keypad to apply a payee/category pair and approve. Physical
 number keys also work on layouts that produce symbols and with Num Lock off.
 Suggestion shortcuts remain inactive while typing or while a dialog is open.
 Suggestions refresh after syncing; the section is hidden when there are no matches. Upcoming suggestions are preloaded. Use E
-and C to choose manually. Approve and undo update the screen immediately while
+and C to choose manually. Descriptions, business expense entry, approvals, and review undo update the screen immediately while
 requests save in order. Undo uses Command-Z on Mac, Ctrl-Z, or U; text fields
 keep their native undo. The header shows saves in progress and changes pending
 YNAB sync. A failed or uncertain save pauses review and offers “Reload saved
@@ -188,10 +188,12 @@ Press **D** or **Add description** / **Edit description** to edit the current
 transaction's YNAB memo, labeled Description in Trilly. Enter saves; Shift+Enter
 inserts a line break. Existing text starts selected. Empty text clears it. The
 500-character limit follows the [YNAB API](https://api.ynab.com/v1).
-The change is saved in the encrypted outbox and synced immediately, without
-approving the transaction or changing its payee/category. The transaction stays
-visible; approval waits until the description syncs. Offline changes remain saved
-and can be retried with Sync. Description changes share approval undo history;
+The dialog closes and the description updates immediately while the change saves
+to the encrypted outbox and syncs in the background. You can keep editing or
+approve immediately; the save queue syncs the description before sending the next
+edit of that transaction. Changes confirmed in the local outbox survive offline
+use and can be retried with Sync. A failed prerequisite sync pauses queued edits
+and offers Reload saved state. Description changes share approval undo history;
 Undo restores the previous memo using a durable reverse edit.
 
 ## Amazon purchases and refunds

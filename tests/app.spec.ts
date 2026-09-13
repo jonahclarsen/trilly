@@ -643,3 +643,39 @@ test('multi-product refunds require choosing products and use refund for', async
   await page.getByRole('checkbox', { name: 'Include ruled notebook in description' }).check()
   await expect(page.locator('.memo')).toHaveText('refund for ruled notebook')
 })
+
+test('description closes immediately and approval advances while its save is stalled', async ({ page }) => {
+  await mockApp(page)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  let release!: () => void
+  const stalled = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/action', async route => {
+    if (route.request().postDataJSON().action === 'description') await stalled
+    await route.fallback()
+  })
+  try {
+    await page.keyboard.press('d')
+    await page.getByLabel('Description', { exact: true }).fill('Synthetic immediate memo')
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.locator('.memo')).toHaveText('Synthetic immediate memo')
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('heading', { name: 'Brew House', exact: true })).toBeVisible()
+  } finally { release() }
+})
+
+test('failed background description restores confirmed state and offers recovery', async ({ page }) => {
+  await mockApp(page)
+  await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
+  await page.route('**/api/action', async route => {
+    if (route.request().postDataJSON().action === 'description') await route.abort('failed')
+    else await route.fallback()
+  })
+  await page.keyboard.press('d')
+  await page.getByLabel('Description', { exact: true }).fill('Synthetic failed memo')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: 'Reload saved state' })).toBeVisible()
+  await expect(page.locator('.memo')).toHaveText('Add description')
+  await page.getByRole('button', { name: 'Reload saved state' }).click()
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
+})
