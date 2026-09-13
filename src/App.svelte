@@ -23,7 +23,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, googlePayeeKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -303,6 +303,7 @@
   const amazonPayeeName = $derived(amazonMarket ? amazonPayee(data?.payees ?? [], amazonMarket)?.name ?? amazonMarket : null)
   const payeeName = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
+  let googlePayee = $state<{ open: () => void }>()
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -604,6 +605,7 @@
     const key = event.key.toLowerCase()
     const actions: Record<string, () => void> = {
       enter: () => void approve(),
+      [googlePayeeKey.toLowerCase()]: () => googlePayee?.open(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       a: () => { if (!busy && !saving && !saveFailed) modal = 'account' }, r: () => void sync(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
@@ -752,7 +754,7 @@
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
-            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<GooglePayee payee={searchPayee} /></div>
+            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<GooglePayee bind:this={googlePayee} payee={searchPayee} /></div>
           </div>
           <div class="amount">{money(current.amount)}</div>
           <h1 class="payee-title">{payeeName}</h1>

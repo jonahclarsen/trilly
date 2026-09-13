@@ -4,11 +4,14 @@ export function suggestionIndex(event: KeyboardEvent): number | undefined {
   return digit ? Number(digit) - 1 : undefined
 }
 
+export const googlePayeeKey = 'G'
+
 export const shortcuts = [
   ['Alt+T', 'Transaction view'], ['Alt+V', 'List view'], ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
   ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'], ['Alt+L', 'Lock'],
   ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],
   ['C', 'Choose category'], ['E', 'Choose payee'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo skip / approval / expense change'],
+  [googlePayeeKey, 'Search payee on Google'],
   ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['A', 'Choose account'], ['R', 'Sync'], [',', 'Settings'], ['L', 'Lock'], ['?', 'Help & shortcuts'],
 ] as const
 

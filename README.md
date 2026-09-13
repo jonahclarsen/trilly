@@ -410,8 +410,9 @@ HTTPS. There are no external categorization services, third-party remote scripts
 telemetry, or transaction/token logs.
 
 The Google “G” button beside the transaction date opens a payee search in a new
-tab. Clicking it sends the selected payee name to Google; no search is sent
-until you click it.
+tab. Press **G** in transaction view to open the same search; the button shows
+this shortcut. Clicking it or pressing G sends the selected payee name to Google;
+no search is sent until you activate it.
 
 **An unlocked app still handles plaintext.** A sufficiently privileged agent,
 debugger, extension, or modified app could access it. Keychain storage does
