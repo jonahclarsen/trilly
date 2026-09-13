@@ -2,7 +2,7 @@ import type { Option } from './types.ts'
 
 export function pickerResults(options: Option[], query: string, rankCategories = false, matchPayees = false): Option[] {
   const search = query.trim().toLowerCase()
-  const words = search.split(/\s+/)
+  const words = search.split(/[\s*]+/)
   const generalPayee = matchPayees && words.length > 2 ? words.slice(0, 2).join(' ') : null
   const matches = options.filter(o =>
     `${o.name} ${o.detail ?? ''}`.toLowerCase().includes(search) ||

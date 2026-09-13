@@ -40,6 +40,16 @@ test('two-word payee fallback ignores case and repeated whitespace', () => {
   assert.deepEqual(names(pickerResults([option(' WHOLE  Foods ')], '  Whole   FOODS  123  ', false, true)), [' WHOLE  Foods '])
 })
 
+test('two-word payee fallback accepts asterisks and mixed separators', () => {
+  const options = [option('Google Cloud'), option('GOOGLE*CLOUD*819nma'), option('Google Cloud Storage'), option('Google'), option('Other Google Cloud'), option('Unrelated', 0, 'Google Cloud')]
+  assert.deepEqual(names(pickerResults(options, 'GOOGLE*CLOUD*819nma', false, true)), ['Google Cloud', 'GOOGLE*CLOUD*819nma'])
+  for (const query of ['Google*Cloud 819nma', 'Google Cloud*819nma', '  GOOGLE ** CLOUD**819nma  ']) {
+    assert.deepEqual(names(pickerResults(options, query, false, true)), ['Google Cloud'])
+  }
+  assert.deepEqual(names(pickerResults(options, 'GOOGLE*CLOUD*819nma')), ['GOOGLE*CLOUD*819nma'])
+  assert.deepEqual(names(pickerResults(options, 'GOOGLE*CLOUD*819nma', true)), ['GOOGLE*CLOUD*819nma'])
+})
+
 test('two-word fallback does not change account or category searches', () => {
   const options = [option('Whole Foods'), option('Whole Foods 123')]
   assert.deepEqual(names(pickerResults(options, 'whole foods 123')), ['Whole Foods 123'])
