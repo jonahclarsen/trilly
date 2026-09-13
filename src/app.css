@@ -64,7 +64,7 @@ small { font-size: 12px; }
 .suggestion > svg { opacity: 0; width: 17px; color: var(--accent-strong); }
 .suggestion:hover > svg, .suggestion:focus-visible > svg { opacity: 1; }
 .suggestion > small { font-size: 11px; }
-footer { display: flex; justify-content: space-between; padding: 23px 2px; color: var(--muted); font-size: 11px; }
+footer { display: flex; justify-content: flex-end; padding: 23px 2px; color: var(--muted); font-size: 11px; }
 .text-button { background: transparent; border: 0; padding: 0; font-size: 11px; color: var(--muted); }
 .empty-state { min-height: 390px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; text-align: center; }
 .complete-mark { color: var(--theme-done); width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: var(--done-tint); }
@@ -90,6 +90,10 @@ dialog::backdrop { background: rgb(0 0 0 / .3); backdrop-filter: blur(4px); }
 .setting-row select { width: min(220px, 65%); }
 .setting-label { font-size: 13px; margin-bottom: 12px; }
 .settings-section .field-note { margin-top: 12px; }
+.diagnostics-settings { display: grid; justify-items: start; gap: 12px; }
+.diagnostics-settings h3, .diagnostics-settings .field-note { margin: 0; }
+.diagnostics-settings > label { width: 100%; }
+.settings-history { margin-top: 25px; text-align: center; }
 .token-actions { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 24px; font-size: 12px; }
 .shortcut-list { display: grid; gap: 18px; }
 .shortcut-list > div { display: flex; justify-content: space-between; align-items: center; font-size: 13px; gap: 20px; }
