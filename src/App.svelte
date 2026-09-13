@@ -497,7 +497,7 @@
   }
   function pickerOptions(): Option[] {
     if (!data) return []
-    if (modal === 'category') return data.categories.map(c => ({ id: c.id, name: c.name, detail: c.category_group_name }))
+    if (modal === 'category') return data.categories.map(c => ({ id: c.id, name: c.name, detail: c.category_group_name, transactionCount: data?.category_transaction_counts?.[c.id] ?? 0 }))
     if (modal === 'payee') return data.payees
     if (modal === 'account') return data.accounts
     return []
@@ -858,5 +858,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}

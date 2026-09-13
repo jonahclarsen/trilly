@@ -1,11 +1,12 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
   import Icon from './Icon.svelte'
+  import { pickerResults } from './picker-search'
   import type { Option } from './types'
-  let { title, options, onpick, onclose }: { title: string; options: Option[]; onpick: (id: string) => void; onclose: () => void } = $props()
+  let { title, options, rankCategories = false, onpick, onclose }: { title: string; options: Option[]; rankCategories?: boolean; onpick: (id: string) => void; onclose: () => void } = $props()
   let query = $state('')
   let selected = $state(0)
-  let results = $derived(options.filter(o => `${o.name} ${o.detail ?? ''}`.toLowerCase().includes(query.toLowerCase())).slice(0, 60))
+  let results = $derived(pickerResults(options, query, rankCategories))
   function keydown(event: KeyboardEvent) {
     if (['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) {
       event.preventDefault(); event.stopPropagation()

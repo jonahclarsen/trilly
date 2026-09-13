@@ -90,6 +90,29 @@ fn authorize<'a>(app: &'a mut App, headers: &HeaderMap) -> Result<&'a mut Sessio
     Ok(s)
 }
 
+fn category_transaction_counts(d: &Data) -> std::collections::HashMap<&str, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for transaction in d.transactions.iter().filter(|t| !t.deleted) {
+        // Count each transaction once per category, including split allocations.
+        let categories: std::collections::HashSet<&str> = transaction
+            .category_id
+            .as_deref()
+            .into_iter()
+            .chain(
+                transaction
+                    .subtransactions
+                    .iter()
+                    .filter(|s| !s.deleted)
+                    .filter_map(|s| s.category_id.as_deref()),
+            )
+            .collect();
+        for category in categories {
+            *counts.entry(category).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 fn snapshot(d: &Data) -> Value {
     let mut queue: Vec<_> = d
         .transactions
@@ -157,6 +180,7 @@ fn snapshot(d: &Data) -> Value {
     review_rows.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.id.cmp(&b.id)));
     json!({"connected": !d.token.is_empty(), "plans": d.plans, "plan_id": d.plan_id,
         "account_id": d.account_id, "accounts": d.accounts.iter().filter(|a| !a.deleted && !a.closed).collect::<Vec<_>>(),
+        "category_transaction_counts": category_transaction_counts(d),
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
         "description_pending": d.pending.iter().filter(|p| p.change.memo_only).map(|p| &p.change.id).collect::<Vec<_>>(),
@@ -1015,6 +1039,51 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn category_counts_include_all_accounts_and_splits_but_exclude_deleted_rows() {
+        let split = |category: &str, deleted| Split {
+            category_id: Some(category.into()),
+            deleted,
+            ..Default::default()
+        };
+        let mut d = Data::default();
+        d.account_id = "current".into();
+        d.transactions = vec![
+            Transaction {
+                account_id: "current".into(),
+                category_id: Some("food".into()),
+                ..Default::default()
+            },
+            Transaction {
+                account_id: "other".into(),
+                approved: true,
+                category_id: Some("food".into()),
+                ..Default::default()
+            },
+            Transaction {
+                deleted: true,
+                category_id: Some("food".into()),
+                subtransactions: vec![split("ignored", false)],
+                ..Default::default()
+            },
+            Transaction {
+                subtransactions: vec![
+                    split("food", false),
+                    split("food", false),
+                    split("travel", false),
+                    split("ignored", true),
+                ],
+                ..Default::default()
+            },
+            Transaction::default(),
+        ];
+        let result = snapshot(&d);
+        assert_eq!(
+            result["category_transaction_counts"],
+            json!({"food": 3, "travel": 1})
+        );
+    }
+
     #[test]
     fn review_batches_survive_restart_sync_undo_and_reset_per_account() {
         let mut d = Data::default();
