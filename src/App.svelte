@@ -881,7 +881,7 @@
 
           {#if !special(current) && (picks.length || picksStatus === 'loading' || picksStatus === 'error')}
             <section class="suggestions" aria-label="Suggestions">
-              <div class="suggestion-heading"><h2>Suggestions</h2><small>Use &amp; approve</small></div>
+              <div class="suggestion-heading"><h2>Suggestions</h2></div>
               {#if picksStatus === 'loading'}
                 <p class="muted" role="status">Finding matches in approved history…</p>
               {:else if picksStatus === 'error'}
