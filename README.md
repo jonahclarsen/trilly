@@ -416,6 +416,7 @@ GitHub preview stays current. Never take documentation screenshots of real data.
 pnpm check
 pnpm build
 pnpm test:amazon
+pnpm test:sort
 cargo test --manifest-path server/Cargo.toml -- --skip native_keychain_migrates_synthetic_rules_and_preserves_key
 # The following workflows require fresh explicit authorization:
 pnpm test:browser
@@ -453,7 +454,10 @@ The top menu shows Option shortcuts on macOS (⌥), and Alt+ elsewhere:
 remain available. Menu shortcuts do not run while a dialog is open.
 
 List shows every transaction in the selected account's current review batch
-with date, payee, category, description, amount, and review status. Choose
+with date, payee, category, description, amount, and review status. Click any
+column heading to sort ascending; click again for descending. Transaction view
+follows that same order, starting with the topmost unreviewed, unskipped row.
+Sorting defaults to date ascending and lasts for the browser session. Choose
 **Review** on a row to open it in Transaction view. Approved rows stay gray,
 including after sync and restart. Once the batch is complete, newly arriving
 unreviewed transactions start the next batch. Skipping does not count as approval.

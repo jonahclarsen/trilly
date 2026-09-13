@@ -15,6 +15,7 @@
     "install:app": "node scripts/start.mjs --release --install-only",
     "test:dev": "node --test scripts/runner-lock.test.mjs && playwright test --config playwright.dev.config.ts",
     "test:signing": "node scripts/test-signing.mjs",
+    "test:sort": "node --test tests/review-sort.test.mjs",
     "test:amazon": "node --test tests/amazon/*.test.mjs"
   },
   "devDependencies": {
