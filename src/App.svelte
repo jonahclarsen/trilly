@@ -646,7 +646,7 @@
         <section class="empty-state"><h1>{data.connected ? 'Choose your plan' : 'Connect YNAB'}</h1><Button primary onclick={() => modal = 'settings'}>{data.connected ? 'Choose plan' : 'Connect'}</Button></section>
       {:else if view === 'list'}
         <section aria-label="Transaction list">
-          <p class="field-note list-note">Current review batch · {reviewRows.filter(t => t.approved).length} reviewed. Reviewed transactions stay gray until the next batch.</p>
+          <p class="field-note list-note">Current review batch · {reviewRows.filter(t => t.approved).length} reviewed.</p>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll the table horizontally.) -->
           <div class="transaction-table" tabindex="0" role="region" aria-label="Review batch table">
             <table>
