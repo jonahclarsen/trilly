@@ -16,7 +16,7 @@ test('order cards render complete synthetic evidence as escaped text, without re
       items: [{ id: 'item', title: 'SYNTHETIC <script>bad()</script> CABLE', quantity: 2, unit_price: 5000, price_text: '$5.00', product_url: 'javascript:bad()', image: 'https://evil.test/tracker.png', seller: 'Synthetic seller', status: 'Delivered', details: 'Return window open' }],
       totals: [{ label: 'Item(s) Subtotal:', value: '$10.00' }, { label: 'Tax:', value: '$1.20' }, { label: 'Grand Total:', value: '$11.20' }],
     }, payments: [{ id: 'payment', marketplace: 'amazon.ca', amount: 11200, currency: 'CAD', date: '2026-09-02', refund: true, payment_method: 'Visa ending in 0000', order_ids: ['000-0000000-0000001'] }] } });
-    for (const expected of ['synthetic &lt;script>', 'Quantity 2', 'Synthetic seller', 'Delivered', 'Tax:', 'Grand Total:', 'Refund', 'Visa ending in 0000']) assert.ok(output.body.includes(expected), expected);
+    for (const expected of ['Amazon.ca', 'synthetic &lt;script>', 'Quantity 2', 'Synthetic seller', 'Delivered', 'Tax:', 'Grand Total:', 'Refund', 'Visa ending in 0000']) assert.ok(output.body.includes(expected), expected);
     assert.doesNotMatch(output.body, /<script>|javascript:|evil\.test|<img/);
   } finally { await server.close(); }
 });
@@ -36,6 +36,7 @@ test('payment details stay visible with separate fields and safe order links bef
     };
     const document = parseHTML(render(Details, { props: { payment } }).body).document;
     assert.equal(document.querySelector('details'), null);
+    assert.ok([...document.querySelectorAll('dd')].some(node => node.textContent === 'Amazon.com'));
     assert.equal(document.querySelectorAll('dl > div').length, 5);
     assert.ok([...document.querySelectorAll('dd')].some(node => node.textContent === payment.payment_method));
     assert.equal(document.querySelector('a').getAttribute('href'), `https://www.amazon.ca/gp/your-account/order-details?orderID=${id}`);
@@ -47,5 +48,36 @@ test('payment details stay visible with separate fields and safe order links bef
       assert.equal(parseHTML(output).document.querySelector('a'), null);
       assert.doesNotMatch(output, /<script>/);
     }
+  } finally { await server.close(); }
+});
+
+
+test('review hides a sole charge card while retaining evidence and uncertain-match confirmation', async () => {
+  const server = await createServer({ configFile: false, plugins: [svelte()], server: { middlewareMode: true, hmr: false, watch: null }, appType: 'custom' });
+  try {
+    const { default: Review } = await server.ssrLoadModule('/src/lib/AmazonReview.svelte');
+    const { render } = await server.ssrLoadModule('svelte/server');
+    const { parseHTML } = await import('linkedom');
+    const transaction = { id: 'synthetic-bank', payee_name: 'Amazon.ca', date: '2026-09-02', amount: -11200 };
+    const payment = { id: 'synthetic-payment', marketplace: 'amazon.ca', date: '2026-09-02', amount: -11200, currency: 'CAD', refund: false, payment_method: 'Synthetic card', order_ids: [] };
+    const review = (payments) => parseHTML(render(Review, { props: {
+      store: { payments, orders: [] }, transaction, currency: 'CAD', targets: [transaction], disabled: false, onchange: () => {},
+    } }).body).document;
+    const single = review([payment]);
+    assert.equal(single.querySelector('h2'), null);
+    assert.equal(single.querySelector('.amazon-candidate'), null);
+    assert.ok(single.querySelector('.amazon-evidence').textContent.includes('Synthetic card'));
+    assert.ok(![...single.querySelectorAll('button')].some(button => button.textContent.includes('Use this payment')));
+    const uncertain = review([{ ...payment, currency: 'USD' }]);
+    assert.equal(uncertain.querySelector('.amazon-candidate'), null);
+    assert.ok(uncertain.querySelector('.amazon-evidence'));
+    assert.ok([...uncertain.querySelectorAll('button')].some(button => button.textContent.includes('Use this payment')));
+    const multiple = review([payment, { ...payment, id: 'second', marketplace: 'amazon.com' }]);
+    assert.equal(multiple.querySelectorAll('.amazon-candidate').length, 2);
+    assert.match(multiple.querySelectorAll('.amazon-candidate')[0].textContent, /Amazon.ca/);
+    assert.match(multiple.querySelectorAll('.amazon-candidate')[1].textContent, /Amazon.com/);
+    const empty = review([]);
+    assert.equal(empty.querySelector('.amazon-evidence'), null);
+    assert.ok(empty.querySelector('.field-note').textContent.includes('No payment match yet'));
   } finally { await server.close(); }
 });
