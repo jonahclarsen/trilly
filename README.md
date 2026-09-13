@@ -142,7 +142,12 @@ row or numeric keypad to apply a payee/category pair and approve. Physical
 number keys also work on layouts that produce symbols and with Num Lock off.
 Suggestion shortcuts remain inactive while typing or while a dialog is open.
 Suggestions refresh after syncing; the section is hidden when there are no matches. Upcoming suggestions are preloaded. Use E
-and C to choose manually. Category search ranks name prefixes first, then the most
+and C to choose manually. Manually chosen payees and categories use muted styling
+and are preserved when a suggestion approves the transaction, including newly created payees.
+Crossed-out suggestion values will not apply; fields remain editable. These visual
+markers reset when you move to another transaction. Untouched fields keep their
+usual appearance. Saving a description mutes it, even if you deliberately leave it
+empty. Suggestions never replace descriptions. Category search ranks name prefixes first, then the most
 transactions in that category across the current plan, then alphabetically.
 Counts exclude deleted transactions and include split categories once per transaction. Descriptions, business expense entry, approvals, and review undo update the screen immediately while
 requests save in order. Undo uses Command-Z on Mac, Ctrl-Z, or U; text fields

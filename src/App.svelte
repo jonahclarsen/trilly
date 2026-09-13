@@ -19,6 +19,7 @@
   import { api, ApiError, setSession, hasSession, shouldAutoUnlock } from './lib/api'
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
+  import { reviewSelection } from './lib/review-selection'
   import { shortcuts, suggestionIndex, menuKeys } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
@@ -197,6 +198,7 @@
     if (amazonEdit) memoDraft = memoDraft.toLowerCase()
     enqueue({ body: { action: 'description', id: memoId, description: memoDraft } })
     reviewHistory = [...activeReviewHistory, { type: 'edit' }]
+    if (current?.id === memoId) descriptionFixed = true
     if (amazonEdit) { amazonDraft = null; amazonMemoTouched = true }
     modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
   }
@@ -246,6 +248,9 @@
   let newPayee = $state<string | null>(null)
   let category = $state<string | null>(null)
   let edited = $state(false)
+  let payeeFixed = $state(false)
+  let categoryFixed = $state(false)
+  let descriptionFixed = $state(false)
   let sessionEpoch = 0
   let syncTimer: ReturnType<typeof setTimeout>
   let lastActivity = Date.now()
@@ -272,6 +277,7 @@
     untrack(() => {
       const t = current
       amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMemoTouched = false; amazonPayeeTouched = false
+      payeeFixed = false; categoryFixed = false; descriptionFixed = false
       newPayee = null; payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
     })
   })
@@ -461,9 +467,9 @@
   }
   function approve(suggestion?: Suggestion) {
     if (!current || busy || saveFailed || !data) return
-    const selectedNewPayee = suggestion ? null : newPayee
-    const selectedPayee = amazonMarket ? payee : suggestion ? suggestion.payee_id : payee
-    const selectedCategory = suggestion ? suggestion.category_id : category
+    const { payee: selectedPayee, newPayee: selectedNewPayee, category: selectedCategory } = reviewSelection(
+      { payee, newPayee, category }, { payee: payeeFixed || !!amazonMarket, category: categoryFixed }, suggestion,
+    )
     if (!special(current) && ((!selectedPayee && !amazonMarket && !selectedNewPayee) || !selectedCategory)) return
     enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(amazonDraft !== null ? { memo: amazonDraft.toLowerCase() } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
@@ -507,12 +513,12 @@
   }
   async function pick(id: string) {
     if (modal === 'account') { clearSkipped(); await act({ action: 'account', id }) }
-    if (modal === 'category') { category = id; edited = true }
-    if (modal === 'payee') { newPayee = null; payee = id; edited = true; amazonPayeeTouched = true; amazonMarket = null }
+    if (modal === 'category') { category = id; categoryFixed = true; edited = true }
+    if (modal === 'payee') { newPayee = null; payee = id; payeeFixed = true; edited = true; amazonPayeeTouched = true; amazonMarket = null }
     modal = null; await tick(); reviewElement?.focus()
   }
   async function createPayee(name: string) {
-    newPayee = name; payee = null; edited = true; amazonPayeeTouched = true; amazonMarket = null
+    newPayee = name; payee = null; payeeFixed = true; edited = true; amazonPayeeTouched = true; amazonMarket = null
     modal = null; await tick(); reviewElement?.focus()
   }
   function openPicker(kind: 'category' | 'payee') { if (current && !special(current) && !busy) modal = kind }
@@ -724,10 +730,10 @@
 
           <div class="fields">
             {#if !special(current)}
-              <button class="field-button" disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
-              <button class="field-button" disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
+              <button class="field-button" class:field-fixed={payeeFixed} disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
+              <button class="field-button" class:field-fixed={categoryFixed} disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
             {/if}
-            <button class="field-button" disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
+            <button class="field-button" class:field-fixed={descriptionFixed} disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
           </div>
           {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
           {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} />{/key}{/if}
@@ -743,7 +749,7 @@
               {/if}
               {#each picks as suggestion, i}
                 <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
-                  <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong>{suggestion.category}</strong><span>{amazonMarket ?? suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
+                  <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong class:suggestion-unused={categoryFixed} aria-label={categoryFixed ? `${suggestion.category} — not applied; category fixed` : undefined}>{suggestion.category}</strong><span class:suggestion-unused={payeeFixed} aria-label={payeeFixed ? `${suggestion.payee} — not applied; payee fixed` : undefined}>{amazonMarket ?? suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
                 </button>
               {/each}
             </section>
