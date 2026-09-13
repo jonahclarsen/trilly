@@ -11,7 +11,7 @@ missing or different versions show an update warning and block collection.
 Start collection with **Fetch Amazon details** in Trilly. The extension does
 not collect data simply because it is installed or an Amazon tab is open.
 
-The button scans only Amazon.com payments in a separate, unfocused window.
+The button scans only Amazon.ca payments in a separate, unfocused window.
 Order links choose Amazon.ca or Amazon.com. Six order workers run alongside
 one payment reader (hard limit: twelve owned tabs). Payments pagination overlaps order extraction. Tabs close
 as their extracted records are handed off; only tabs created by this collector

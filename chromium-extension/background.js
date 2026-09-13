@@ -85,8 +85,8 @@ async function start(message, sender) {
     cached: Array.isArray(message.cached) ? message.cached.slice(0, 5000) : [] };
   // Read the shared account payment feed once; order links choose the storefront.
   const first = window.tabs[0].id;
-  job.tabs[first] = { kind: 'payments', marketplace: 'amazon.com', started: Date.now(), signatures: [], pages: 0 }; await save();
-  await chrome.tabs.update(first, { url: 'https://www.amazon.com/cpe/yourpayments/transactions' });
+  job.tabs[first] = { kind: 'payments', marketplace: 'amazon.ca', started: Date.now(), signatures: [], pages: 0 }; await save();
+  await chrome.tabs.update(first, { url: 'https://www.amazon.ca/cpe/yourpayments/transactions' });
   await chrome.alarms.create('trilly-amazon', { periodInMinutes: 0.5 }); await status();
 }
 async function page(message, sender) {
