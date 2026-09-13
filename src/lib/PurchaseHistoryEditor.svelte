@@ -3,10 +3,10 @@
   import Modal from './Modal.svelte'
   import Button from './Button.svelte'
   import type { PurchaseHistoryRule } from './types'
-  let { onclose, onsaved }: { onclose: () => void; onsaved: (rules: PurchaseHistoryRule[]) => void } = $props()
+  let { onclose, onsaved, oncommitted }: { onclose: () => void; onsaved: (rules: PurchaseHistoryRule[]) => void; oncommitted: () => void } = $props()
   type Row = PurchaseHistoryRule & { phrases: string; key: string }
   let rows = $state<Row[]>([])
-  const blank = (): Row => ({ key: crypto.randomUUID(), id: '', merchant: '', url: '', priority: 10, payee_contains: [], phrases: '' })
+  const blank = (): Row => ({ key: crypto.randomUUID(), id: crypto.randomUUID(), merchant: '', url: '', priority: 10, payee_contains: [], phrases: '' })
   let dragging = $state<string | null>(null)
   let table: HTMLTableElement
   let revision = $state('')
@@ -16,7 +16,7 @@
   function edited() {
     message = ''; error = ''
     const last = rows.at(-1)
-    if (last && (last.id || last.merchant || last.url || last.phrases || last.priority !== 10)) rows.push(blank())
+    if (last && (last.merchant || last.url || last.phrases || last.priority !== 10)) rows.push(blank())
   }
   function move(key: string, target: number) {
     const from = rows.findIndex(row => row.key === key)
@@ -53,6 +53,7 @@
       revision = result.revision
       onsaved(result.rules)
       error = result.error || ''; message = result.message || ''
+      if (!result.error) oncommitted()
     } catch (e) { error = (e as Error).message } finally { busy = false }
   }
   onMount(() => { void load() })
@@ -65,8 +66,8 @@
     <fieldset disabled={busy}>
       <div class="table-scroll">
         <table bind:this={table} oninput={edited}>
-          <colgroup><col class="control" /><col class="merchant" /><col class="id" /><col class="website" /><col class="phrases" /><col class="priority" /><col class="control" /></colgroup>
-          <thead><tr><th scope="col"><span class="sr-only">Order</span></th><th scope="col">Merchant</th><th scope="col">ID</th><th scope="col">Website</th><th scope="col">Payee phrases</th><th scope="col">Priority</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
+          <colgroup><col class="control" /><col class="merchant" /><col class="website" /><col class="phrases" /><col class="priority" /><col class="control" /></colgroup>
+          <thead><tr><th scope="col"><span class="sr-only">Order</span></th><th scope="col">Merchant</th><th scope="col">Website</th><th scope="col">Payee phrases</th><th scope="col">Priority</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
           <tbody>
             {#each rows as row, i (row.key)}
               {@const empty = i === rows.length - 1}
@@ -81,7 +82,6 @@
                   {/if}
                 </td>
                 <td><input aria-label={`Merchant ${i + 1}`} required={!empty} maxlength="200" bind:value={row.merchant} /></td>
-                <td><input aria-label={`ID ${i + 1}`} required={!empty} maxlength="80" bind:value={row.id} /></td>
                 <td><input aria-label={`Website ${i + 1}`} type="url" required={!empty} bind:value={row.url} /></td>
                 <td><textarea aria-label={`Payee phrases ${i + 1}, one per line`} title="One phrase per line" required={!empty} rows="2" bind:value={row.phrases}></textarea></td>
                 <td><input aria-label={`Priority ${i + 1}`} type="number" step="1" min="-2147483648" max="2147483647" required={!empty} bind:value={row.priority} /></td>
@@ -105,10 +105,9 @@
   .table-scroll { overflow-x: auto; }
   table { width: 100%; min-width: 980px; table-layout: fixed; border-collapse: collapse; }
   .control { width: 44px; }
-  .merchant { width: 17%; }
-  .id { width: 14%; }
-  .website { width: 29%; }
-  .phrases { width: 23%; }
+  .merchant { width: 23%; }
+  .website { width: 34%; }
+  .phrases { width: 26%; }
   .priority { width: 90px; }
   th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 500; }
   th, td { padding: 8px 5px; border-bottom: 1px solid var(--line); }
