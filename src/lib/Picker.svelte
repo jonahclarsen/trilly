@@ -13,7 +13,7 @@
   const choiceCount = $derived(results.length + (canCreate ? 1 : 0))
   function keydown(event: KeyboardEvent) {
     if (event.isComposing) return
-    if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && canCreate && selected !== results.length) {
+    if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && canCreate) {
       event.preventDefault(); event.stopPropagation()
       oncreate?.(newName)
       return
