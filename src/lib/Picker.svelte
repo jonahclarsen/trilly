@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import Modal from './Modal.svelte'
   import Icon from './Icon.svelte'
   import { pickerResults } from './picker-search'
   import type { Option } from './types'
-  let { title, options, rankCategories = false, onpick, onclose, oncreate }: { title: string; options: Option[]; rankCategories?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void } = $props()
-  let query = $state('')
+  let { title, options, initialQuery = '', rankCategories = false, onpick, onclose, oncreate }: { title: string; options: Option[]; initialQuery?: string; rankCategories?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void } = $props()
+  let query = $state(untrack(() => initialQuery))
   let selected = $state(0)
   let results = $derived(pickerResults(options, query.trim(), rankCategories))
   const newName = $derived(query.trim())

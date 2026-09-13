@@ -11,6 +11,7 @@
   import Icon from './lib/Icon.svelte'
   import Modal from './lib/Modal.svelte'
   import Picker from './lib/Picker.svelte'
+  import { titleCase } from './lib/title-case'
   import LogoSettings from './lib/LogoSettings.svelte'
   import Wordmark from './lib/Wordmark.svelte'
   import { project, type QueuedAction } from './lib/optimistic'
@@ -864,5 +865,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonMarket ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}
