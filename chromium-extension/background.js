@@ -89,7 +89,9 @@ async function page(message, sender) {
   const tabId = sender.tab.id, task = job.tabs[tabId];
   if (task.paused) return;
   if (task.kind === 'payments') {
-    if (!Array.isArray(message.payments) || message.payments.length > 100 || message.payments.some(p => p.marketplace !== task.marketplace)) throw new Error('Invalid payment page');
+    if (!Array.isArray(message.payments) || message.payments.length > 100 || message.payments.some(p => p.marketplace !== task.marketplace ||
+      (p.order_marketplaces && Object.entries(p.order_marketplaces).some(([id, market]) =>
+        !p.order_ids?.includes(id) || !['amazon.ca', 'amazon.com'].includes(market))))) throw new Error('Invalid payment page');
     const signature = message.payments.map(p => p.id).join('|');
     if (task.signatures.includes(signature)) { task.paused = 'Payments page repeated. Check pagination, then resume.'; await save(); await status(); return; }
     task.signatures.push(signature); task.pages++; job.pages++;
@@ -99,14 +101,15 @@ async function page(message, sender) {
       if (payment.date && new Date(payment.date + 'T00:00:00Z').getTime() < cutoff) continue;
       for (const id of payment.order_ids || []) {
         if (!/^\d{3}-\d{7}-\d{7}$/.test(id)) continue;
-        const key = `${task.marketplace}:${id}`;
+        const marketplace = payment.order_marketplaces?.[id] || payment.marketplace;
+        const key = `${marketplace}:${id}`;
         if (job.seen.includes(key)) continue;
         const cached = job.cached.find(c => c.key === key);
         // Refunds always refresh the order. Other orders refresh after 24 hours.
         if (cached && !payment.refund && Date.now() - Date.parse(cached.at) < 86400000) continue;
         if (job.seen.length >= 5000) { job.notice = 'Order limit reached. Some older details may be missing.'; continue; }
         job.seen.push(key);
-        job.queue.push({ id, marketplace: task.marketplace, amounts: message.payments.filter(p => p.order_ids.includes(id)).map(p => p.amount) });
+        job.queue.push({ id, marketplace, amounts: message.payments.filter(p => p.order_ids.includes(id) && (p.order_marketplaces?.[id] || p.marketplace) === marketplace).map(p => p.amount) });
       }
     }
     await packet({ payments: message.payments, orders: [] }); if (!job) return;

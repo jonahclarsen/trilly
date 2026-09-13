@@ -1,7 +1,7 @@
 import type { Transaction } from './types'
 
 export type Marketplace = 'amazon.ca' | 'amazon.com'
-export type AmazonPayment = { id: string; marketplace: Marketplace; date: string; amount: number; currency: string; refund: boolean; payment_method: string; order_ids: string[]; evidence: string }
+export type AmazonPayment = { id: string; marketplace: Marketplace; date: string; amount: number; currency: string; refund: boolean; payment_method: string; order_ids: string[]; order_marketplaces?: Record<string, Marketplace>; evidence: string }
 export type AmazonItem = { id: string; title: string; quantity: number; unit_price: number | null; price_text: string; product_url: string; image: string; seller: string; status: string; details: string }
 export type AmazonOrder = { id: string; marketplace: Marketplace; url: string; date: string; currency: string; total: number | null; payment_method: string; items: AmazonItem[]; totals: { label: string; value: string }[]; fetched_at: string }
 export type AmazonStore = { payments: AmazonPayment[]; orders: AmazonOrder[] }
@@ -29,6 +29,13 @@ export function mergeAmazon(store: AmazonStore, incoming: AmazonStore): AmazonSt
   return result
 }
 const distance = (a: string, b: string) => a && b ? Math.abs(Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400000 : Infinity
+export function paymentHasOrder(payment: AmazonPayment, order: AmazonOrder) {
+  return payment.order_ids.includes(order.id) && (payment.order_marketplaces?.[order.id] ?? payment.marketplace) === order.marketplace
+}
+export function paymentMarketplace(payment: AmazonPayment): Marketplace | null {
+  const markets = new Set(payment.order_ids.map(id => payment.order_marketplaces?.[id] ?? payment.marketplace))
+  return markets.size === 1 ? [...markets][0]! : markets.size === 0 ? payment.marketplace : null
+}
 export function amazonCandidates(store: AmazonStore, t: Transaction, currency: string | undefined, targets: Transaction[], assignments: { payment_id: string; transaction_id: string }[] = []): AmazonCandidate[] {
   if (!isAmazon(t)) return []
   const eligible = store.payments.filter(p => !assignments.some(a => a.payment_id === p.id && a.transaction_id !== t.id) && p.amount === t.amount && (p.refund === (t.amount > 0)) && (!p.date || distance(p.date, t.date) <= 14))
@@ -41,7 +48,7 @@ export function amazonCandidates(store: AmazonStore, t: Transaction, currency: s
       : confident ? 'Unique amount and currency match within 7 days'
       : competing.length > 1 ? 'Several bank transactions could match this payment'
       : 'Check the payment date and competing matches'
-    return { payment, confident, reason, orders: store.orders.filter(o => o.marketplace === payment.marketplace && payment.order_ids.includes(o.id)) }
+    return { payment, confident, reason, orders: store.orders.filter(o => paymentHasOrder(payment, o)) }
   }).sort((a, b) => Number(b.confident) - Number(a.confident) || distance(a.payment.date, t.date) - distance(b.payment.date, t.date))
 }
 export function automaticItems(candidate: AmazonCandidate): AmazonItem[] {

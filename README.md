@@ -217,7 +217,11 @@ job. Sign-in, Amazon challenges, changed markup and timeouts pause the affected
 pages; use **Open page** and **Resume**. The collector only controls its own tabs.
 It scans back to the oldest unapproved Amazon transaction plus a 14-day margin,
 with a 100-page limit per marketplace. Cached orders are reused for 24 hours;
-refunds trigger refreshes. Restart collection to retry missing work.
+refunds trigger refreshes. Order tabs use the marketplace in each Amazon order
+link, which can differ from the payments page. Matching retains this destination
+alongside the original payment source and currency. Existing cached payments
+without link destinations use their original marketplace until fetched again.
+Restart collection to retry missing work.
 
 Trilly displays an order card with lowercase product titles, optional thumbnails,
 quantities, unit prices, sellers, shipment and return information, payment method,

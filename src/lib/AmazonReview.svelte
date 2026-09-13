@@ -2,7 +2,7 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { amazonCandidates, automaticItems, amazonDescription, itemCombinations, type AmazonStore } from './amazon'
+  import { amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, type AmazonStore } from './amazon'
   import type { Transaction } from './types'
   let { store, transaction, currency, targets, disabled, collecting = false, assignments = [], onchange }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void } = $props()
   const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments))
@@ -20,10 +20,14 @@
   const fallback = $derived(search.trim() ? store.orders.filter(o => `${o.id} ${o.items.map(i => i.title).join(' ')}`.toLowerCase().includes(search.toLowerCase())).slice(0, 20) : [])
   $effect(() => {
     const found = automatic
-    const market = candidate?.payment.marketplace
+    const market = candidate ? paymentMarketplace(candidate.payment) : null
     if (!touched) untrack(() => onchange(amazonDescription(found, transaction.amount > 0), candidate?.confident && !collecting ? market ?? null : null, true, candidate?.confident && !collecting ? candidate.payment.id : undefined))
   })
-  function choose(id: string) { touched = true; choice = id; selected = []; manualOrder = ''; onchange('', candidates.find(c => c.payment.id === id)?.payment.marketplace ?? null, false, id) }
+  function choose(id: string) {
+    touched = true; choice = id; selected = []; manualOrder = ''
+    const payment = candidates.find(c => c.payment.id === id)?.payment
+    onchange('', payment ? paymentMarketplace(payment) : null, false, id)
+  }
   function select(ids: string[]) {
     touched = true; selected = ids
     onchange(amazonDescription(items.filter(i => ids.includes(i.id)), transaction.amount > 0), orders[0]?.marketplace ?? null, false, candidate?.payment.id)
@@ -53,7 +57,7 @@
     {/if}
   {/if}
   {#each orders as order (`${order.marketplace}:${order.id}`)}
-    <AmazonOrderCard {order} payments={store.payments.filter(p => p.marketplace === order.marketplace && p.order_ids.includes(order.id))} selected={selectedIds} {disabled} onchange={select} />
+    <AmazonOrderCard {order} payments={store.payments.filter(p => paymentHasOrder(p, order))} selected={selectedIds} {disabled} onchange={select} />
   {/each}
   {#if selectedIds.length > 1}
     <div class="amazon-allocation"><strong>For a category split</strong>

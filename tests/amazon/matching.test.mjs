@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { amazonCandidates, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
+import { amazonCandidates, paymentHasOrder, paymentMarketplace, automaticItems, amazonDescription, itemCombinations, isAmazon, mergeAmazon } from '../../src/lib/amazon.ts';
 const t = { id: 'synthetic-bank', date: '2026-09-03', amount: -30000, payee_name: 'AMZN MKTP CA', account_id: 'synthetic-card', approved: false, transfer_account_id: null, debt_transaction_type: null };
 const item = { id: 'item-a', title: 'USB CABLE', quantity: 1, unit_price: 10000, image: '' };
 const item2 = { ...item, id: 'item-b', title: 'NOTEBOOK', unit_price: 20000 };
@@ -52,4 +52,17 @@ test('generated descriptions respect the API limit without splitting Unicode cha
   assert.equal([...description].length, 500);
   assert.ok(description.startsWith('refund for '));
   assert.ok(description.endsWith('…'));
+});
+
+test('cross-storefront payment matches only its linked order and suggests the destination payee', () => {
+  const cross = { ...payment, marketplace: 'amazon.com', order_marketplaces: { order: 'amazon.ca' } };
+  const wrong = { ...order, marketplace: 'amazon.com' };
+  const candidate = amazonCandidates({ payments: [cross], orders: [order, wrong] }, t, 'CAD', [t])[0];
+  assert.deepEqual(candidate.orders, [order]);
+  assert.deepEqual(automaticItems(candidate), [item, item2]);
+  assert.equal(paymentHasOrder(cross, order), true);
+  assert.equal(paymentHasOrder(cross, wrong), false);
+  assert.equal(paymentMarketplace(cross), 'amazon.ca');
+  assert.equal(paymentMarketplace(payment), 'amazon.ca');
+  assert.equal(paymentMarketplace({ ...cross, order_ids: ['order', 'other'] }), null);
 });

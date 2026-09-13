@@ -61,7 +61,18 @@
       const amount = money(amountText); if (amount === null || !amount) return [];
       const evidence = text(container).slice(0, 2000);
       const links = [...container.querySelectorAll('a[href*="orderID"], a[href*="orderId"], a[href*="order-id"]')];
-      const order_ids = [...new Set(links.map(a => orderId(a.getAttribute('href'))).filter(Boolean))];
+      // Order links can point to a different storefront than the payments page.
+      // Keep only supported HTTPS destinations, and persist the host separately
+      // from the payment source and currency.
+      const order_marketplaces = {};
+      for (const link of links) {
+        try {
+          const target = new URL(link.getAttribute('href'), url);
+          const destination = market(target.href), id = orderId(target.href);
+          if (destination && id) order_marketplaces[id] = destination;
+        } catch {}
+      }
+      const order_ids = Object.keys(order_marketplaces);
       const refund = /\b(refund(?:ed)?|credit(?:ed)?|reimbursement)\b/i.test(evidence) || /\+/.test(amountText);
       const payment_date = dateAt(container);
       const payment_method = evidence.match(/(?:visa|mastercard|master card|amex|american express|discover)[^.]*?(?:\*+|ending\s+(?:in\s+)?|•+|·+)\s*\d{4}/i)?.[0] || '';
@@ -69,7 +80,7 @@
       const occurrence = occurrences.get(fingerprint) || 0; occurrences.set(fingerprint, occurrence + 1);
       return [{ id: `${marketplace}:${hash(fingerprint)}:${occurrence}`, marketplace, date: payment_date,
         amount: Math.abs(amount) * (refund ? 1 : -1), currency: currency(amountText, marketplace), refund,
-        payment_method, order_ids, evidence }];
+        payment_method, order_ids, order_marketplaces, evidence }];
     });
     const nextControl = [...doc.querySelectorAll('a, button, input, [role=button], .a-button')].find(el =>
       [text(el), el.getAttribute('aria-label'), el.getAttribute('value'), el.getAttribute('title')].some(label => /^(next(?: page)?|older(?: transactions)?|suivant)\s*[›»→]?$/i.test(label || '')) &&

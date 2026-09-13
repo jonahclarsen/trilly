@@ -71,3 +71,20 @@ test('hostile links cannot become product or order links', () => {
   const result = p.order(dom(orderHTML.replace('/dp/SYNTHETIC', 'javascript:alert(1)')), url);
   assert.equal(result.items[0].product_url, '');
 });
+
+test('payment order links retain their storefront independently of source and currency', () => {
+  const html = paymentHTML('US$30.00').replace('href="/gp/', 'href="https://www.amazon.ca/gp/');
+  const result = p.payments(dom(html), 'https://www.amazon.com/cpe/yourpayments/transactions').payments[0];
+  assert.equal(result.marketplace, 'amazon.com');
+  assert.equal(result.currency, 'USD');
+  assert.deepEqual(result.order_marketplaces, { [id]: 'amazon.ca' });
+  assert.deepEqual(result.order_ids, [id]);
+  const relative = p.payments(dom(paymentHTML('$30.00')), url).payments[0];
+  assert.deepEqual(relative.order_marketplaces, { [id]: 'amazon.ca' });
+});
+test('foreign, credentialed and non-HTTPS payment links cannot schedule orders', () => {
+  for (const host of ['https://amazon.ca.evil.test', 'https://user@amazon.ca', 'http://amazon.ca', 'https://amazon.ca:8443']) {
+    const html = paymentHTML('$30.00').replace('href="/gp/', `href="${host}/gp/`);
+    assert.deepEqual(p.payments(dom(html), url).payments[0].order_ids, []);
+  }
+});

@@ -80,3 +80,37 @@ test('unacknowledged packets survive worker state saves and repeated pages pause
   await h.send({ type: 'ACK', job: h.job, packet });
   assert.equal(Object.keys(h.saved.trillyAmazonJob.pending).length, 0);
 });
+
+test('cross-storefront payments schedule and deduplicate orders by destination', async () => {
+  const h = harness(); await h.start();
+  const readers = [...h.tabs.values()].filter(t => t.url.includes('/cpe/'));
+  const canadian = payment(1);
+  const american = { ...canadian, id: 'synthetic-us-payment', marketplace: 'amazon.com',
+    order_marketplaces: { [canadian.order_ids[0]]: 'amazon.ca' } };
+  for (const reader of readers) {
+    await h.send({ type: 'PAGE', job: h.job, payments: [reader.url.includes('amazon.com') ? american : canadian], hasNext: false }, reader.id);
+  }
+  const workers = [...h.tabs.values()].filter(t => t.url.includes('order-details'));
+  assert.equal(workers.length, 1);
+  assert.equal(new URL(workers[0].url).hostname, 'www.amazon.ca');
+  const records = h.messages.filter(m => m.payload?.type === 'DATA').flatMap(m => m.payload.payments);
+  assert.equal(records.find(p => p.marketplace === 'amazon.com').order_marketplaces[canadian.order_ids[0]], 'amazon.ca');
+  await h.send({ type: 'PAGE', job: h.job, order: { id: canadian.order_ids[0], marketplace: 'amazon.ca', items: [] } }, workers[0].id);
+  assert.equal(h.saved.trillyAmazonJob.completed, 1);
+});
+test('a US reader alone opens a Canadian link on ca and rejects unsupported destinations', async () => {
+  for (const destination of ['amazon.ca', 'evil.test']) {
+    const h = harness(); await h.start();
+    const reader = [...h.tabs.values()].find(t => t.url.includes('amazon.com/cpe'));
+    const record = { ...payment(1), marketplace: 'amazon.com', order_marketplaces: { [payment(1).order_ids[0]]: destination } };
+    const reply = await h.send({ type: 'PAGE', job: h.job, payments: [record], hasNext: false }, reader.id);
+    const workers = [...h.tabs.values()].filter(t => t.url.includes('order-details'));
+    if (destination === 'amazon.ca') {
+      assert.equal(workers.length, 1);
+      assert.equal(new URL(workers[0].url).hostname, 'www.amazon.ca');
+    } else {
+      assert.ok(reply.error);
+      assert.equal(workers.length, 0);
+    }
+  }
+});

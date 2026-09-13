@@ -12,7 +12,7 @@ pub struct Assignment {
     pub payment_id: String,
     pub transaction_id: String,
 }
-#[derive(Clone, Default, Serialize, Deserialize, Zeroize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Payment {
     pub id: String,
@@ -23,7 +23,27 @@ pub struct Payment {
     pub refund: bool,
     pub payment_method: String,
     pub order_ids: Vec<String>,
+    #[serde(default)]
+    pub order_marketplaces: std::collections::BTreeMap<String, String>,
     pub evidence: String,
+}
+// BTreeMap keys cannot be mutated in place. Remove each entry before wiping it.
+impl Zeroize for Payment {
+    fn zeroize(&mut self) {
+        self.id.zeroize();
+        self.marketplace.zeroize();
+        self.date.zeroize();
+        self.amount.zeroize();
+        self.currency.zeroize();
+        self.refund.zeroize();
+        self.payment_method.zeroize();
+        self.order_ids.zeroize();
+        for (mut id, mut market) in std::mem::take(&mut self.order_marketplaces) {
+            id.zeroize();
+            market.zeroize();
+        }
+        self.evidence.zeroize();
+    }
 }
 #[derive(Clone, Default, Serialize, Deserialize, Zeroize)]
 #[serde(deny_unknown_fields)]
@@ -108,6 +128,9 @@ impl Store {
                 || p.evidence.len() > 8000
                 || p.order_ids.len() > 30
                 || p.order_ids.iter().any(|id| !order_id(id))
+                || p.order_marketplaces
+                    .iter()
+                    .any(|(id, market)| !p.order_ids.contains(id) || !marketplace(market))
             {
                 return Err("Invalid Amazon payment".into());
             }
@@ -255,6 +278,58 @@ mod tests {
         );
         assert_eq!(store.payments[0].amount, -12000);
     }
+    #[test]
+    fn order_destinations_round_trip_and_old_payments_remain_readable() {
+        let mut original = serde_json::to_value(payment()).unwrap();
+        original
+            .as_object_mut()
+            .unwrap()
+            .remove("order_marketplaces");
+        let mut parsed: Payment = serde_json::from_value(original).unwrap();
+        assert!(parsed.order_marketplaces.is_empty());
+        parsed.marketplace = "amazon.com".into();
+        parsed
+            .order_marketplaces
+            .insert(parsed.order_ids[0].clone(), "amazon.ca".into());
+        let mut store = Store::default();
+        store
+            .merge(Store {
+                payments: vec![parsed.clone()],
+                ..Default::default()
+            })
+            .unwrap();
+        let mut restored: Store =
+            serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
+        assert_eq!(
+            restored.payments[0].order_marketplaces[&parsed.order_ids[0]],
+            "amazon.ca"
+        );
+        restored.zeroize();
+        assert!(restored.payments.is_empty());
+        parsed.zeroize();
+        assert!(parsed.order_marketplaces.is_empty());
+        assert!(parsed.order_ids.is_empty());
+        let mut parsed = payment();
+        parsed
+            .order_marketplaces
+            .insert(parsed.order_ids[0].clone(), "amazon.ca".into());
+        for (id, market) in [
+            ("000-0000000-0000001", "evil.test"),
+            ("000-0000000-0000002", "amazon.ca"),
+        ] {
+            let mut bad = parsed.clone();
+            bad.order_marketplaces.insert(id.into(), market.into());
+            assert!(
+                Store::default()
+                    .merge(Store {
+                        payments: vec![bad],
+                        ..Default::default()
+                    })
+                    .is_err()
+            );
+        }
+    }
+
     #[test]
     fn rejects_foreign_urls_and_invalid_dates() {
         assert!(!url("https://www.amazon.ca.evil.test/order", "amazon.ca"));
