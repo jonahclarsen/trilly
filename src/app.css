@@ -43,7 +43,7 @@ small { font-size: 12px; }
 .count { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .transaction { padding: 26px; background: var(--paper); border: 1px solid var(--line); border-radius: 15px; box-shadow: 0 4px 20px rgb(0 0 0 / .025); }
 .payee-title { font-size: 24px; line-height: 1.35; overflow-wrap: anywhere; }
-.payee-detail { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); align-items: baseline; gap: 8px; }
+.payee-detail { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); align-items: center; gap: 8px; }
 .payee-separator { color: var(--muted); opacity: .5; }
 .payee-detail + .payee-detail { margin-top: 12px; }
 .fields { margin-top: 24px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
