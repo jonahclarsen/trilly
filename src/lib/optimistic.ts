@@ -21,12 +21,24 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
   } else if (event.body.action === 'business_expense') {
     const transaction = result.queue.find(t => t.id === event.body.id)
     if (!transaction) return result
-    result.business_expenses = [...(result.business_expenses ?? []), {
+    const existing = (result.business_expenses ?? []).find(e => e.plan_id === result.plan_id && e.transaction_id === transaction.id)
+    const expense = existing ? { ...existing, description: String(event.body.description).trim(), note: String(event.body.note ?? '') } : {
       plan_id: result.plan_id, transaction_id: transaction.id,
       description: String(event.body.description).trim(), note: String(event.body.note ?? ''),
       date: transaction.date, amount: -transaction.amount,
       account: result.accounts.find(a => a.id === transaction.account_id)?.name ?? '', archived: false,
-    }]
+    }
+    result.business_expenses = existing
+      ? (result.business_expenses ?? []).map(e => e === existing ? expense : e)
+      : [...(result.business_expenses ?? []), expense]
+    result.can_undo_business = true; result.can_undo_archive = false
+  } else if (event.body.action === 'edit_business_expense') {
+    result.business_expenses = (result.business_expenses ?? []).map(expense =>
+      expense.plan_id === event.body.plan_id && expense.transaction_id === event.body.id ? {
+        ...expense,
+        description: String(event.body.description).trim(), date: String(event.body.date),
+        amount: Number(event.body.amount), account: String(event.body.account).trim(), note: String(event.body.note ?? ''),
+      } : expense)
     result.can_undo_business = true; result.can_undo_archive = false
   } else if (event.body.action === 'review') {
     if (result.amazon_targets) result.amazon_targets = result.amazon_targets.filter(t => t.id !== event.body.id)

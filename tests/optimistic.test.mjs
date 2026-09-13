@@ -48,6 +48,13 @@ test('business expense is immediately available and survives a following approva
   assert.equal(projected.queue.length, 0)
 })
 
+test('business expense edits project onto the existing row', () => {
+  const saved = project(initial(), { body: { action: 'business_expense', id: 'one', description: 'Supplies', note: '' } })
+  const edited = project(saved, { body: { action: 'edit_business_expense', plan_id: 'plan', id: 'one', description: 'Equipment', date: '2026-01-02', amount: 2500, account: 'Office card', note: 'Filed' } })
+  assert.equal(edited.business_expenses.length, 1)
+  assert.deepEqual(edited.business_expenses[0], { plan_id: 'plan', transaction_id: 'one', description: 'Equipment', note: 'Filed', date: '2026-01-02', amount: 2500, account: 'Office card', archived: false })
+})
+
 test('new payee approval shows the draft name immediately and undo restores the transaction', () => {
   const saved = initial()
   const approved = project(saved, { body: { action: 'review', id: 'one', payee_name: 'Cedar Workshop', payee_id: null } })

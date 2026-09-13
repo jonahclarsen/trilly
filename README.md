@@ -373,7 +373,7 @@ await fresh authorization to run the isolated browser workflow. Local
 
 ## Business expenses
 
-Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee followed by the first sentence of the transaction description, separated by ` - `. Any text after the first `. ` fills the optional note. The description starts fully selected, so typing replaces it; Enter saves from either field, Shift+Enter adds a line, and Tab moves to the optional note.
+Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee followed by the first sentence of the transaction description, separated by ` - `. Any text after the first `. ` fills the optional note. The description starts fully selected, so typing replaces it; Enter saves from either field, Shift+Enter adds a line, and Tab moves to the optional note. The button remains available after saving; reopening it edits that transaction's existing expense instead of creating another row.
 Date, amount, and account are captured from the transaction. This does not approve
 or modify the YNAB transaction. The header's **Business** count opens the saved table.
 
@@ -388,15 +388,17 @@ clipboard, outside vault encryption; clipboard managers may retain it.
 
 Expenses and archives survive restarts, syncs, account changes, plan changes, and
 token replacement in the encrypted vault. The queue combines saved expenses across
-plans; amounts are not currency-converted. **Archive all** clears the current queue
-without deleting records. **Undo expense** / **Undo archive**, U, or Command-Z / Ctrl-Z reverses business
-expense additions, removals, and archives, newest first, including after restart.
+plans; amounts are not currency-converted. Every table field is editable; each row's
+**Save** writes its changed description, date, amount, account, and note. The business
+table and development purchase-history editor share the same editable table component.
+**Archive all** clears the current queue without deleting records. U or Command-Z / Ctrl-Z reverses business
+expense additions, edits, removals, and archives, newest first, including after restart.
 The most recent 100 business changes are retained. Outside text fields, Undo
 reverses business changes in the business dialog. In review, it restores the
 latest skip first; otherwise business changes take priority over approvals.
-Use the rightmost SVG close button to remove an individual row; Undo restores it. The save button shows
+Use the rightmost SVG close button to remove an individual row; the keyboard shortcut can restore it. The expense form's save button shows
 its Enter shortcut. **Show archived** displays older rows.
-Saved transactions cannot be added twice, including archived transactions. Removing
+Saved transactions are updated in place, including archived transactions. Removing
 a row or undoing its addition allows that transaction to be added again.
 
 <picture>

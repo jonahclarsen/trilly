@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import Modal from './Modal.svelte'
   import Button from './Button.svelte'
+  import EditableTable from './EditableTable.svelte'
   import type { PurchaseHistoryRule } from './types'
   let { onclose, onsaved, oncommitted }: { onclose: () => void; onsaved: (rules: PurchaseHistoryRule[]) => void; oncommitted: () => void } = $props()
   type Row = PurchaseHistoryRule & { phrases: string; key: string }
@@ -64,7 +65,7 @@
 <Modal title="Purchase history links" width={1240} onclose={() => { if (!busy) onclose() }}>
   <form onsubmit={(event) => { event.preventDefault(); void save() }}>
     <fieldset disabled={busy}>
-      <div class="table-scroll">
+      <EditableTable>
         <table bind:this={table} oninput={edited}>
           <colgroup><col class="control" /><col class="merchant" /><col class="website" /><col class="phrases" /><col class="priority" /><col class="control" /></colgroup>
           <thead><tr><th scope="col"><span class="sr-only">Order</span></th><th scope="col">Merchant</th><th scope="col">Website</th><th scope="col">Payee phrases</th><th scope="col">Priority</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
@@ -90,7 +91,7 @@
             {/each}
           </tbody>
         </table>
-      </div>
+      </EditableTable>
     </fieldset>
     {#if error}<p role="alert" class="modal-error">{error}</p>{/if}
     {#if message}<p role="status">{message}</p>{/if}
@@ -102,18 +103,11 @@
 
 <style>
   fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-  .table-scroll { overflow-x: auto; }
-  table { width: 100%; min-width: 980px; table-layout: fixed; border-collapse: collapse; }
   .control { width: 44px; }
   .merchant { width: 23%; }
   .website { width: 34%; }
   .phrases { width: 26%; }
   .priority { width: 90px; }
-  th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 500; }
-  th, td { padding: 8px 5px; border-bottom: 1px solid var(--line); }
-  td { vertical-align: middle; }
-  input, textarea { width: 100%; min-width: 0; margin: 0; padding: 8px; font-size: 13px; }
-  textarea { resize: vertical; display: block; }
   .handle { touch-action: none; cursor: grab; color: var(--muted); }
   .dragging { background: var(--paper-strong); }
   .dragging .handle { cursor: grabbing; }

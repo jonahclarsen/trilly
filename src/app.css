@@ -315,18 +315,19 @@ input.hue-slider { appearance: none; height: 9px; border: 0; background: linear-
 
 textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
 .business-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.business-table { overflow-x: auto; }
-.business-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.business-table th, .business-table td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.business-table td { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 85px; }
-.business-table td:first-child { min-width: 140px; }
+.business-table .expense-description { width: 25%; }
+.business-table .expense-date { width: 138px; }
+.business-table .expense-amount { width: 110px; }
+.business-table .expense-account { width: 18%; }
+.business-table .expense-note { width: 25%; }
+.business-table .expense-actions { width: 116px; }
+.business-table .expense-row-actions { display: flex; align-items: center; gap: 6px; }
 
 .business-actions + .field-note { margin: 16px 0; }
 dialog form { display: grid; gap: 16px; }
 .review-actions { gap: 8px; flex-wrap: wrap; }
 textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offset: 3px; }
-
-.business-table td.expense-remove { min-width: 44px; width: 44px; padding: 6px 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .modal-heading.with-subtitle { margin-bottom: 6px; }
 .modal-subtitle { margin-bottom: 24px; line-height: 1.5; }

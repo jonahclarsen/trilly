@@ -39,14 +39,19 @@ export async function mockApp(page: Page, options: { syncError?: boolean; durabl
     else if (path === '/api/action') {
       const body = route.request().postDataJSON()
       actions.push(body)
-      if (['business_expense', 'archive_business_expenses', 'remove_business_expense'].includes(body.action)) {
+      if (['business_expense', 'edit_business_expense', 'archive_business_expenses', 'remove_business_expense'].includes(body.action)) {
         businessHistory.push({ expenses: structuredClone(state.business_expenses!), archive: body.action === 'archive_business_expenses' })
       }
       if (body.action === 'description') {
         state.queue.find(t => t.id === body.id)!.memo = body.description
       } else if (body.action === 'business_expense') {
         const t = state.queue.find(t => t.id === body.id)!
-        state.business_expenses!.push({ plan_id: state.plan_id, transaction_id: t.id, description: body.description.trim(), date: t.date, amount: -t.amount, account: state.accounts.find(a => a.id === t.account_id)!.name, note: body.note, archived: false })
+        const existing = state.business_expenses!.find(e => e.plan_id === state.plan_id && e.transaction_id === t.id)
+        if (existing) { existing.description = body.description.trim(); existing.note = body.note }
+        else state.business_expenses!.push({ plan_id: state.plan_id, transaction_id: t.id, description: body.description.trim(), date: t.date, amount: -t.amount, account: state.accounts.find(a => a.id === t.account_id)!.name, note: body.note, archived: false })
+      } else if (body.action === 'edit_business_expense') {
+        const expense = state.business_expenses!.find(e => e.plan_id === body.plan_id && e.transaction_id === body.id)!
+        Object.assign(expense, { description: body.description.trim(), date: body.date, amount: body.amount, account: body.account.trim(), note: body.note })
       } else if (body.action === 'archive_business_expenses') {
         state.business_expenses!.forEach(e => e.archived = true); state.can_undo_archive = true
       } else if (body.action === 'remove_business_expense') {

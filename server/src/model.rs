@@ -182,6 +182,9 @@ pub enum BusinessUndo {
         expense: BusinessExpense,
         index: usize,
     },
+    Updated {
+        expense: BusinessExpense,
+    },
     Archived {
         keys: Vec<(String, String)>,
     },

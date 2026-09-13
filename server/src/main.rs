@@ -398,6 +398,15 @@ enum Action {
         description: String,
         note: String,
     },
+    EditBusinessExpense {
+        plan_id: String,
+        id: String,
+        description: String,
+        date: String,
+        amount: i64,
+        account: String,
+        note: String,
+    },
     ArchiveBusinessExpenses,
     UndoBusinessArchive,
     UndoBusinessExpense,
@@ -488,7 +497,25 @@ async fn action(
             id,
             description,
             note,
-        } => add_business_expense(&mut next, &id, description, note)?,
+        } => save_business_expense(&mut next, &id, description, note)?,
+        Action::EditBusinessExpense {
+            plan_id,
+            id,
+            description,
+            date,
+            amount,
+            account,
+            note,
+        } => edit_business_expense(
+            &mut next,
+            &plan_id,
+            &id,
+            description,
+            date,
+            amount,
+            account,
+            note,
+        )?,
         Action::ArchiveBusinessExpenses => archive_business_expenses(&mut next),
         Action::UndoBusinessArchive | Action::UndoBusinessExpense => {
             undo_business_expense(&mut next)?
@@ -728,7 +755,7 @@ fn save_description(data: &mut Data, id: &str, description: String) -> Result<()
     Ok(())
 }
 
-fn add_business_expense(
+fn save_business_expense(
     data: &mut Data,
     id: &str,
     description: String,
@@ -740,14 +767,16 @@ fn add_business_expense(
     if description.len() > 10000 || note.len() > 10000 {
         return Err("Description or note is too long".into());
     }
-    if data
+    if let Some(index) = data
         .business_expenses
         .iter()
-        .any(|e| e.plan_id == data.plan_id && e.transaction_id == id)
+        .position(|e| e.plan_id == data.plan_id && e.transaction_id == id)
     {
-        return Err(
-            "Transaction is already saved as a business expense (possibly archived)".into(),
-        );
+        let previous = data.business_expenses[index].clone();
+        data.business_expenses[index].description = description.trim().into();
+        data.business_expenses[index].note = note;
+        remember_business(data, BusinessUndo::Updated { expense: previous });
+        return Ok(());
     }
     let transaction = data
         .transactions
@@ -777,6 +806,42 @@ fn add_business_expense(
         },
     );
     data.business_expenses.push(expense);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn edit_business_expense(
+    data: &mut Data,
+    plan_id: &str,
+    id: &str,
+    description: String,
+    date: String,
+    amount: i64,
+    account: String,
+    note: String,
+) -> Result<()> {
+    if description.trim().is_empty() || account.trim().is_empty() {
+        return Err("Description and account are required".into());
+    }
+    if description.len() > 10000 || account.len() > 1000 || note.len() > 10000 {
+        return Err("Business expense field is too long".into());
+    }
+    if chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
+        return Err("Date must use yyyy-mm-dd".into());
+    }
+    let index = data
+        .business_expenses
+        .iter()
+        .position(|e| e.plan_id == plan_id && e.transaction_id == id)
+        .ok_or("Business expense not found")?;
+    let previous = data.business_expenses[index].clone();
+    let expense = &mut data.business_expenses[index];
+    expense.description = description.trim().into();
+    expense.date = date;
+    expense.amount = amount;
+    expense.account = account.trim().into();
+    expense.note = note;
+    remember_business(data, BusinessUndo::Updated { expense: previous });
     Ok(())
 }
 
@@ -853,6 +918,16 @@ fn undo_business_expense(data: &mut Data) -> Result<()> {
         BusinessUndo::Removed { expense, index } => {
             data.business_expenses
                 .insert(index.min(data.business_expenses.len()), expense);
+        }
+        BusinessUndo::Updated { expense } => {
+            let saved = data
+                .business_expenses
+                .iter_mut()
+                .find(|e| {
+                    e.plan_id == expense.plan_id && e.transaction_id == expense.transaction_id
+                })
+                .ok_or("Business expense not found")?;
+            *saved = expense;
         }
         BusinessUndo::Archived { keys } => {
             for expense in &mut data.business_expenses {
@@ -1346,9 +1421,9 @@ mod tests {
             date: "2026-09-08".into(),
             ..Default::default()
         });
-        assert!(add_business_expense(&mut data, "missing", "Supplies".into(), "".into()).is_err());
-        assert!(add_business_expense(&mut data, "expense", " ".into(), "".into()).is_err());
-        add_business_expense(
+        assert!(save_business_expense(&mut data, "missing", "Supplies".into(), "".into()).is_err());
+        assert!(save_business_expense(&mut data, "expense", " ".into(), "".into()).is_err());
+        save_business_expense(
             &mut data,
             "expense",
             "Synthetic supplies".into(),
@@ -1358,9 +1433,12 @@ mod tests {
         assert_eq!(data.business_expenses[0].amount, 12345);
         assert!(!data.transactions[0].approved);
         assert!(data.pending.is_empty());
+        save_business_expense(&mut data, "expense", "Updated".into(), "".into()).unwrap();
+        assert_eq!(data.business_expenses[0].description, "Updated");
+        undo_business_expense(&mut data).unwrap();
+        assert_eq!(data.business_expenses[0].description, "Synthetic supplies");
         archive_business_expenses(&mut data);
         archive_business_expenses(&mut data); // Empty archive must preserve undo.
-        assert!(add_business_expense(&mut data, "expense", "Duplicate".into(), "".into()).is_err());
         vault.commit(data).unwrap();
         drop(vault);
         assert!(
