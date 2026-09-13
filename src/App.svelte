@@ -638,7 +638,7 @@
         <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
         <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
         <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!canUndoSkip && !data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
-        <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business {activeExpenses.length}</Button>
+        <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={() => { businessMessage = ''; showArchived = false; modal = 'business' }}>Business</Button>
         <span class="nav-divider"></span>
         <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>
       {/if}
