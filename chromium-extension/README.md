@@ -3,6 +3,10 @@
 Load this folder as an unpacked extension in Chrome (or a Chromium browser).
 Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
 select this folder, and reload Trilly at `http://127.0.0.1:28753`.
+After repository updates, reload **Trilly Amazon** in chrome://extensions and
+reload Trilly. The app requires the version in its bundled extension manifest;
+missing or different versions show an update warning and block collection.
+
 Start collection with **Fetch Amazon details** in Trilly. The extension does
 not collect data simply because it is installed or an Amazon tab is open.
 
@@ -46,3 +50,6 @@ verified in an automated browser; tests use synthetic DOM and Chrome API mocks.
 
 Run `pnpm test:amazon` for parser, matching, scheduler, cancellation, trust-boundary
 and server-rendered card tests. These do not launch or control a browser.
+
+When changing extension behavior, bump `manifest.json`’s version. Trilly imports
+that manifest as its required version, so there is no second version to maintain.

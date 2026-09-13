@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte'
+  import extensionManifest from '../chromium-extension/manifest.json'
   import { businessRows } from './lib/business'
   import Button from './lib/Button.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
@@ -20,6 +21,7 @@
 
   let amazon = $state<AmazonStore>(emptyAmazon())
   let amazonReady = $state(false)
+  let amazonVersionWarning = $state('')
   let amazonJob = $state('')
   let amazonStatus = $state<AmazonStatus>({ running: false, pages: 0, orders: 0, queued: 0, active: 0, message: '', paused: [] })
   let amazonMessage = $state('')
@@ -57,7 +59,12 @@
     return true
   }
   function receiveAmazon(message: Record<string, any>) {
-    if (message.type === 'READY') { amazonReady = true; return }
+    if (message.type === 'READY') {
+      amazonReady = message.version === extensionManifest.version
+      amazonVersionWarning = amazonReady ? '' : `Amazon extension update required (installed: ${typeof message.version === 'string' ? message.version.slice(0, 32) : 'unknown'}; required: ${extensionManifest.version}). In chrome://extensions, reload Trilly Amazon from this repository, then reload Trilly.`
+      if (!amazonReady && amazonJob) stopAmazon()
+      return
+    }
     if (message.type === 'STATUS' && message.job !== amazonJob) { if (message.running) amazonCommand('STOP', { job: message.job }); return }
     if (!data || !amazonJob || message.job !== amazonJob) return
     if (message.type === 'STATUS') { amazonStatus = message as AmazonStatus; return }
@@ -582,12 +589,14 @@
           </div>
           {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
           {#each amazonStatus.paused as pause}<div class="amazon-paused"><span>{pause.marketplace}: {pause.reason}</span><Button onclick={() => amazonCommand('FOCUS', { job: amazonJob, tab: pause.tab })}>Open page</Button><Button onclick={() => amazonCommand('RESUME', { job: amazonJob })}>Resume</Button></div>{/each}
+          {#if amazonVersionWarning && !amazonSetup}<p role="alert">{amazonVersionWarning}</p>{/if}
           {#if amazonMessage}<p role="status">{amazonMessage}</p>{/if}
         </section>
       {/if}
       {#if amazonSetup}
         <section class="amazon-setup" aria-label="Amazon setup">
           <h2>Amazon setup</h2>
+          {#if amazonVersionWarning}<p role="alert">{amazonVersionWarning}</p>{/if}
           <p>In Chrome, open chrome://extensions, enable Developer mode, and load the chromium-extension folder from the Trilly repository. Reload Trilly, then choose Fetch Amazon details. Sign in to Amazon when prompted in its own window.</p>
           <p class="field-note">{amazonReady ? 'Extension connected.' : 'Extension not connected.'} Collection uses a separate window, up to six order tabs and two payment tabs. Results stay in your encrypted Trilly vault. Existing splits are edited in YNAB.</p>
           <details><summary>Paste Amazon HTML instead</summary><label>Marketplace<select bind:value={amazonPasteMarket}><option value="amazon.ca">amazon.ca</option><option value="amazon.com">amazon.com</option></select></label><label>Order URL (optional, for order fragments)<input type="url" bind:value={amazonOrderURL} placeholder="https://www.amazon.ca/…" /></label><label>Payments page or order details<textarea bind:value={amazonHTML} rows="5" placeholder="Paste copied HTML"></textarea></label><Button disabled={amazonPasteBusy || !amazonHTML.trim()} onclick={() => void pasteAmazon()}>Import HTML</Button></details>

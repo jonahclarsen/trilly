@@ -186,7 +186,10 @@ Undo restores the previous memo using a durable reverse edit.
 Import your bank CSVs into YNAB first. When unapproved Amazon transactions are
 present, **Fetch Amazon details** starts a batch for all accounts in the selected
 plan. Install the [Trilly Amazon extension](chromium-extension/README.md) through
-Chrome's **Load unpacked** control first, then reload Trilly. **Amazon setup**
+Chrome's **Load unpacked** control first, then reload Trilly. Trilly checks the
+extension version against its bundled manifest and blocks collection if they differ
+(or the installed extension is too old to report a version). After updating the
+repository, reload **Trilly Amazon** in chrome://extensions, then reload Trilly. **Amazon setup**
 also provides an HTML-paste fallback for payments and order-detail pages.
 
 Collection uses your Amazon.ca and Amazon.com sessions in a separate unfocused

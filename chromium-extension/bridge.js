@@ -9,7 +9,7 @@
     if (!['PING', 'START', 'STOP', 'ACK', 'PRIORITY', 'RESUME', 'FOCUS'].includes(event.data.type)) return;
     chrome.runtime.sendMessage(event.data).then(response => {
       if (response?.error) emit({ type: 'ERROR', job: event.data.job, message: response.error });
-      else if (event.data.type === 'PING') emit({ type: 'READY' });
+      else if (event.data.type === 'PING') emit({ type: 'READY', version: chrome.runtime.getManifest().version });
     }).catch(() => emit({ type: 'ERROR', job: event.data.job, message: 'Reload Trilly after enabling the Amazon extension.' }));
   });
 })();

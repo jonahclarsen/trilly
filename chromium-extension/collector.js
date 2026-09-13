@@ -14,7 +14,8 @@
     const result = task.kind === 'payments' ? parser.payments(document, location.href) : parser.order(document, location.href);
     const ready = task.kind === 'payments' ? result.rowCount > 0 && result.payments.length > 0 : result?.items.length > 0 && result.totals.length > 0;
     if (ready) {
-      const signature = JSON.stringify(task.kind === 'payments' ? result.payments : result);
+      // Collection time changes on every read; only page content determines stability.
+      const signature = JSON.stringify(task.kind === 'payments' ? result.payments : { ...result, fetched_at: undefined });
       if (signature === previous && Date.now() < deadline) { schedule(); return; }
       if (signature !== last) { last = signature; stable = Date.now(); }
       if (Date.now() - stable >= 700) {
