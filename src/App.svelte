@@ -26,6 +26,9 @@
   let amazonReady = $state(false)
   let amazonVersionWarning = $state('')
   let amazonJob = $state('')
+  let amazonCollectedTargets = $state<string[]>([])
+  let amazonJobTargets: string[] = []
+  let amazonCompleting = ''
   let amazonStatus = $state<AmazonStatus>({ running: false, pages: 0, orders: 0, queued: 0, active: 0, message: '', paused: [] })
   let amazonMessage = $state('')
   let amazonSetup = $state(false)
@@ -50,17 +53,24 @@
     if (!data || !amazonTargets.length) return
     if (!amazonReady) { amazonSetup = true; amazonCommand('PING'); return }
     stopAmazon(); amazonJob = crypto.randomUUID(); amazonMessage = ''
+    amazonJobTargets = amazonTargets.map(t => t.id)
     amazonStatus = { running: true, pages: 0, orders: 0, queued: 0, active: 0, message: 'Opening Amazon…', paused: [] }
     amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount,
       cached: amazon.orders.map(o => ({ key: `${o.marketplace}:${o.id}`, at: o.fetched_at })) })
   }
   async function saveAmazon(records: AmazonStore, plan: string, generation: number) {
     if (generation !== amazonGeneration || data?.plan_id !== plan) return false
-    await api('amazon', { plan_id: plan, ...records })
+    const saved = await api<{ retained: boolean }>('amazon', { plan_id: plan, ...records })
     if (generation !== amazonGeneration || data?.plan_id !== plan) return false
-    amazon = mergeAmazon(amazon, records)
+    amazon = saved.retained ? mergeAmazon(amazon, records) : emptyAmazon()
     return true
   }
+  $effect(() => {
+    if (data?.amazon_cleared) untrack(() => {
+      stopAmazon(); amazonGeneration++; amazonPackets.clear(); amazon = emptyAmazon(); amazonCollectedTargets = []
+      amazonDraft = null; amazonMarket = null; amazonPayment = undefined
+    })
+  })
   function receiveAmazon(message: Record<string, any>) {
     if (message.type === 'READY') {
       amazonReady = message.version === extensionManifest.version
@@ -70,7 +80,21 @@
     }
     if (message.type === 'STATUS' && message.job !== amazonJob) { if (message.running) amazonCommand('STOP', { job: message.job }); return }
     if (!data || !amazonJob || message.job !== amazonJob) return
-    if (message.type === 'STATUS') { amazonStatus = message as AmazonStatus; return }
+    if (message.type === 'STATUS') {
+      amazonStatus = message as AmazonStatus
+      if (message.complete === true && amazonCompleting !== amazonJob) {
+        const job = amazonJob, generation = amazonGeneration, plan = data.plan_id, targets = [...amazonJobTargets]
+        amazonCompleting = job
+        amazonImports = amazonImports.then(async () => {
+          if (generation !== amazonGeneration || data?.plan_id !== plan) return
+          const saved = await api<{ retained: boolean }>('amazon', { plan_id: plan, completed_targets: targets })
+          if (generation !== amazonGeneration || data?.plan_id !== plan) return
+          amazonCollectedTargets = saved.retained ? [...new Set([...amazonCollectedTargets, ...targets])] : []
+          if (amazonJob === job) stopAmazon()
+        }).catch(e => { amazonCompleting = ''; handleError(e) })
+      }
+      return
+    }
     if (message.type === 'ERROR') { amazonMessage = String(message.message); stopAmazon(); return }
     if (message.type !== 'DATA' || typeof message.packet !== 'string' || !Array.isArray(message.orders) || !Array.isArray(message.payments)) return
     const packet = message.packet, job = amazonJob, generation = amazonGeneration, plan = data.plan_id
@@ -108,7 +132,7 @@
     try {
       await amazonImports
       await api('amazon', { plan_id: plan, clear: true, payments: [], orders: [] })
-      if (generation === amazonGeneration) { if (data) data = { ...data, amazon_assignments: [] }; amazon = emptyAmazon(); amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = 'Collected Amazon data cleared.' }
+      if (generation === amazonGeneration) { if (data) data = { ...data, amazon_assignments: [] }; amazon = emptyAmazon(); amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonCollectedTargets = []; amazonMessage = 'Collected Amazon data cleared.' }
     } catch (e) { handleError(e) }
     finally { amazonPasteBusy = false }
   }
@@ -129,10 +153,10 @@
     const plan = data?.plan_id ?? ''
     untrack(() => {
       if (plan === amazonScope) return
-      stopAmazon(); amazonScope = plan; amazonGeneration++; amazon = emptyAmazon(); amazonPackets.clear(); amazonHTML = ''
+      stopAmazon(); amazonScope = plan; amazonGeneration++; amazon = emptyAmazon(); amazonCollectedTargets = []; amazonPackets.clear(); amazonHTML = ''
       const generation = amazonGeneration
-      if (plan) void api<AmazonStore & { plan_id: string }>('amazon').then(result => {
-        if (generation === amazonGeneration && result.plan_id === plan) amazon = mergeAmazon(result, amazon)
+      if (plan) void api<AmazonStore & { plan_id: string; collected_targets?: string[] }>('amazon').then(result => {
+        if (generation === amazonGeneration && result.plan_id === plan) { amazon = mergeAmazon(result, amazon); amazonCollectedTargets = result.collected_targets ?? [] }
       }).catch(e => { if (generation === amazonGeneration) handleError(e) })
     })
   })
@@ -303,7 +327,7 @@
 
   onMount(() => {
     const unlistenAmazon = listenAmazon(receiveAmazon)
-    const amazonPing = setInterval(() => amazonCommand('PING'), 10000)
+    const amazonPing = setInterval(() => amazonCommand('PING', { job: amazonJob }), 10000)
     // Capture shortcuts before focused controls can consume bubbling key events.
     window.addEventListener('keydown', keydown, true)
     let mounted = true
@@ -642,7 +666,7 @@
         {#if data.plan_id}<span class="count">{remaining} to review</span>{/if}
       </div>
 
-      {#if amazonTargets.length || amazon.orders.length || amazonStatus.running}
+      {#if amazonTargets.some(t => !amazonCollectedTargets.includes(t.id)) || amazonStatus.running || amazonMessage || amazonVersionWarning}
         <section class="amazon-toolbar" aria-label="Amazon collection">
           <div><strong>Amazon</strong><span>{amazonTargets.length} transactions across this plan</span></div>
           <div class="amazon-toolbar-actions">

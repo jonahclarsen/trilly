@@ -316,13 +316,15 @@ async fn amazon_view(State(state): State<Shared>, headers: HeaderMap) -> Result<
     let mut app = state.lock().await;
     let d = &authorize(&mut app, &headers)?.vault.data;
     Ok(Json(
-        json!({"plan_id": d.plan_id, "payments": d.amazon.payments, "orders": d.amazon.orders}),
+        json!({"plan_id": d.plan_id, "payments": d.amazon.payments, "orders": d.amazon.orders, "collected_targets": d.amazon_collected_targets}),
     ))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AmazonImport {
     plan_id: String,
+    #[serde(default)]
+    completed_targets: Vec<String>,
     #[serde(default)]
     clear: bool,
     #[serde(default)]
@@ -344,13 +346,46 @@ async fn amazon_import(
     if body.clear {
         next.amazon = amazon::Store::default();
         next.amazon_assignments.clear();
+        next.amazon_collected_targets.clear();
     }
     next.amazon.merge(amazon::Store {
         payments: body.payments,
         orders: body.orders,
     })?;
+    if body.completed_targets.len() > 10000 {
+        return Err("Too many Amazon review targets".into());
+    }
+    for id in body.completed_targets {
+        if next
+            .transactions
+            .iter()
+            .any(|t| t.id == id && !t.deleted && !t.approved)
+            && !next.amazon_collected_targets.contains(&id)
+        {
+            next.amazon_collected_targets.push(id);
+        }
+    }
+    // A late collector packet must not repopulate a finished review.
+    let retained = !amazon_review_finished(&next);
+    if !retained {
+        clear_amazon(&mut next);
+    }
     session.vault.commit(next)?;
-    Ok(Json(json!({"saved": true})))
+    Ok(Json(json!({"saved": true, "retained": retained})))
+}
+
+// Consider the entire plan, including transfers and other accounts. Pending
+// approvals, undo writes and conflicts must be confirmed before deleting evidence.
+fn amazon_review_finished(data: &Data) -> bool {
+    !data.plan_id.is_empty()
+        && data.pending.is_empty()
+        && !data.transactions.iter().any(|t| !t.deleted && !t.approved)
+}
+
+fn clear_amazon(data: &mut Data) {
+    data.amazon = amazon::Store::default();
+    data.amazon_assignments.clear();
+    data.amazon_collected_targets.clear();
 }
 
 #[derive(Deserialize)]
@@ -439,6 +474,8 @@ async fn action(
     let mut next = app.session.as_ref().unwrap().vault.data.clone();
     next.update_review_cycles();
     let mut sync_error = None;
+    let mut amazon_cleared = false;
+    let is_sync = matches!(body, Action::Sync { .. });
     match body {
         Action::Lock => unreachable!(),
         Action::BusinessExpense {
@@ -639,9 +676,14 @@ async fn action(
             }
         }
     }
+    if is_sync && sync_error.is_none() && amazon_review_finished(&next) {
+        clear_amazon(&mut next);
+        amazon_cleared = true;
+    }
     next.update_review_cycles();
     app.session.as_mut().unwrap().vault.commit(next)?;
     let mut result = snapshot(&app.session.as_ref().unwrap().vault.data);
+    result["amazon_cleared"] = json!(amazon_cleared);
     if let Some(error) = sync_error {
         result["sync_error"] = json!(error);
     }
@@ -1427,7 +1469,7 @@ mod tests {
             "http://127.0.0.1:12345".into(),
             dir.path().into(),
         );
-        let mut body = json!({"plan_id": "synthetic-plan", "payments": [], "orders": [{
+        let mut body = json!({"plan_id": "synthetic-plan", "completed_targets": ["synthetic-bank", "synthetic-bank", "unknown-id"], "payments": [], "orders": [{
             "id": "000-0000000-0000001", "marketplace": "amazon.ca", "url": "https://www.amazon.ca/gp/your-account/order-details?orderID=000-0000000-0000001",
             "date": "2026-09-01", "currency": "CAD", "total": 10000, "payment_method": "synthetic card", "fetched_at": "2026-09-02T00:00:00Z", "totals": [],
             "items": [{"id": "synthetic-item", "title": "synthetic-only-product", "quantity": 1, "unit_price": 10000, "price_text": "$10.00", "product_url": "https://www.amazon.ca/dp/SYNTHETIC", "image": format!("data:image/png;base64,{}", "A".repeat(40000)), "seller": "synthetic seller", "status": "Delivered", "details": ""}]
@@ -1466,6 +1508,85 @@ mod tests {
             reopened.data.amazon.orders[0].items[0].title,
             "synthetic-only-product"
         );
+        assert_eq!(reopened.data.amazon_collected_targets, ["synthetic-bank"]);
+        let mut reopened = reopened;
+        let mut completed = reopened.data.clone();
+        completed.transactions[0].approved = true;
+        completed.transactions[0].memo = Some("reviewed description".into());
+        completed.amazon_assignments.push(amazon::Assignment {
+            payment_id: "synthetic-payment".into(),
+            transaction_id: "synthetic-bank".into(),
+        });
+        assert!(amazon_review_finished(&completed));
+        clear_amazon(&mut completed);
+        reopened.commit(completed).unwrap();
+        let cleaned =
+            vault::Vault::open_native(reopened.path.clone(), &keystore::SyntheticKeyStore).unwrap();
+        assert!(cleaned.data.amazon.orders.is_empty());
+        assert!(cleaned.data.amazon.payments.is_empty());
+        assert!(cleaned.data.amazon_assignments.is_empty());
+        assert!(cleaned.data.amazon_collected_targets.is_empty());
+        assert_eq!(
+            cleaned.data.transactions[0].memo.as_deref(),
+            Some("reviewed description")
+        );
+        drop(locked);
+        {
+            let mut locked = app.lock().await;
+            let session = locked.session.as_mut().unwrap();
+            session.vault.commit(cleaned.data.clone()).unwrap();
+        }
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/amazon")
+            .header("host", "127.0.0.1:12345")
+            .header("origin", "http://127.0.0.1:12345")
+            .header("x-trilly", "1")
+            .header("x-session", "synthetic-session")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap();
+        let response = service.oneshot(request).await.unwrap();
+        assert_eq!(response.status().as_u16(), 200);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let response: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(response["retained"], false);
+        let durable =
+            vault::Vault::open_native(reopened.path.clone(), &keystore::SyntheticKeyStore).unwrap();
+        assert!(durable.data.amazon.orders.is_empty());
+        assert!(durable.data.amazon_collected_targets.is_empty());
+    }
+
+    #[test]
+    fn amazon_cleanup_waits_for_the_whole_plan_and_confirmed_writes() {
+        let mut data = Data::default();
+        assert!(!amazon_review_finished(&data));
+        data.plan_id = "synthetic-plan".into();
+        data.account_id = "finished-account".into();
+        data.transactions.push(Transaction {
+            id: "other-account-transfer".into(),
+            account_id: "other-account".into(),
+            transfer_account_id: Some("finished-account".into()),
+            ..Default::default()
+        });
+        assert!(!amazon_review_finished(&data));
+        data.transactions[0].approved = true;
+        let before = data.transactions[0].clone();
+        data.pending.push(Pending {
+            change: Change::from(&before),
+            before,
+            conflict: false,
+        });
+        assert!(!amazon_review_finished(&data));
+        data.pending[0].conflict = true;
+        assert!(!amazon_review_finished(&data));
+        data.pending.clear();
+        assert!(amazon_review_finished(&data));
+        data.transactions[0].approved = false;
+        data.transactions[0].deleted = true;
+        assert!(amazon_review_finished(&data));
     }
 
     #[test]

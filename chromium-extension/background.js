@@ -1,12 +1,14 @@
 importScripts('parser.js');
 const ORIGIN = 'http://127.0.0.1:28753';
 const KEY = 'trillyAmazonJob';
+const RECEIPT = 'trillyAmazonFinished';
+let finished;
 const ORDER_LIMIT = 6;
 const TAB_LIMIT = 12;
 let chain = Promise.resolve();
 const serial = fn => { const next = chain.then(fn); chain = next.catch(() => {}); return next; };
 let job;
-const loaded = chrome.storage.session.get(KEY).then(result => { job = result[KEY] || null; });
+const loaded = Promise.all([chrome.storage.session.get(KEY), chrome.storage.session.get(RECEIPT)]).then(([active, last]) => { job = active[KEY] || null; finished = last[RECEIPT] || null; });
 const save = () => job ? chrome.storage.session.set({ [KEY]: job }) : chrome.storage.session.remove(KEY);
 function client(sender) { try { return sender.frameId === 0 && new URL(sender.url).origin === ORIGIN; } catch { return false; } }
 function owned(sender) { return job && sender.frameId === 0 && job.tabs[String(sender.tab?.id)] && globalThis.TrillyAmazonParser.market(sender.url) === job.tabs[String(sender.tab.id)].marketplace; }
@@ -56,7 +58,10 @@ async function pump() {
   }
   await save();
   if (!Object.keys(job.tabs).length && !job.queue.length && !Object.keys(job.pending).length) {
-    await emit({ type: 'STATUS', running: false, pages: job.pages, orders: job.completed, queued: 0, active: 0, paused: [], message: job.notice || 'Amazon collection complete.' });
+    // Retain only a tiny receipt so a missed terminal message can be replayed.
+    finished = { client: job.client, payload: { type: 'STATUS', job: job.id, complete: !job.notice, running: false, pages: job.pages, orders: job.completed, queued: 0, active: 0, paused: [], message: job.notice || 'Amazon collection complete.' } };
+    await chrome.storage.session.set({ [RECEIPT]: finished });
+    await emit(finished.payload);
     await cancel(); return;
   }
   await status();
@@ -73,6 +78,7 @@ async function packet(records) {
 async function start(message, sender) {
   if (!/^[a-zA-Z0-9-]{16,80}$/.test(message.job) || !/^20\d{2}-\d{2}-\d{2}$/.test(message.oldest)) throw new Error('Invalid collection request');
   if (job) { if (job.client !== sender.tab.id) throw new Error('Collection is already running in another Trilly tab.'); await cancel(); }
+  finished = null; await chrome.storage.session.remove(RECEIPT);
   const window = await chrome.windows.create({ url: 'about:blank', focused: false, type: 'normal' });
   job = { id: message.job, client: sender.tab.id, window: window.id, oldest: message.oldest, priority: message.priority,
     queue: [], seen: [], tabs: {}, pending: {}, pages: 0, completed: 0, notice: '',
@@ -145,9 +151,12 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (client(sender)) {
       if (message.type === 'PING') {
         if (job?.client === sender.tab.id) { await status(); for (const [id, records] of Object.entries(job?.pending || {})) await emit({ type: 'DATA', packet: id, ...records }); }
+        else if (!job && finished?.client === sender.tab.id && (!message.job || message.job === finished.payload.job)) await chrome.tabs.sendMessage(sender.tab.id, { source: 'trilly-amazon-worker', payload: finished.payload }).catch(() => {});
+        else if (!job && message.job) await chrome.tabs.sendMessage(sender.tab.id, { source: 'trilly-amazon-worker', payload: { type: 'STATUS', job: message.job, running: false, complete: false, pages: 0, orders: 0, queued: 0, active: 0, paused: [], message: 'Collection stopped. Fetch again to retry missing details.' } }).catch(() => {});
         return { ok: true };
       }
       if (message.type === 'START') { await start(message, sender); return { ok: true }; }
+      if (message.type === 'STOP' && finished?.client === sender.tab.id && finished.payload.job === message.job) { finished = null; await chrome.storage.session.remove(RECEIPT); }
       if (!job || job.client !== sender.tab.id || job.id !== message.job) return {};
       if (message.type === 'STOP') { await cancel(); return { ok: true }; }
       if (message.type === 'ACK') { delete job.pending[message.packet]; await pump(); }
@@ -174,7 +183,9 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   return true;
 });
 chrome.tabs.onRemoved.addListener((id, info) => { void serial(async () => {
-  await loaded; if (!job) return;
+  await loaded;
+  if (finished?.client === id) { finished = null; await chrome.storage.session.remove(RECEIPT); }
+  if (!job) return;
   if (job.client === id) { await cancel(); return; }
   if (job.tabs[id] && info?.isWindowClosing) { await emit({ type: 'STATUS', running: false, pages: job.pages, orders: job.completed, queued: 0, active: 0, paused: [], message: 'Amazon window closed. Fetch again to retry missing details.' }); await cancel(); return; }
   if (job.tabs[id]) { delete job.tabs[id]; job.notice = 'A collection tab was closed. Some details may be missing; fetch again to retry.'; await pump(); }
