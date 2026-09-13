@@ -35,5 +35,14 @@
     ],
     "url": "https://www.paypal.com/myaccount/home",
     "priority": 0
+  },
+  {
+    "id": "lyft",
+    "merchant": "Lyft",
+    "payee_contains": [
+      "lyft"
+    ],
+    "url": "https://mail.proton.me/u/13/almost-all-mail#keyword=lyft",
+    "priority": 10
   }
 ]
