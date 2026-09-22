@@ -5,7 +5,7 @@
 .amazon-setup p { line-height: 1.6; font-size: 13px; }
 .amazon-setup details[open], .amazon-search[open] { display: grid; gap: 12px; }
 .amazon-setup label { margin: 12px 0; }
-.amazon-review { display: grid; gap: 14px; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 20px; }
+.amazon-review { display: grid; gap: 14px; min-width: 0; }
 .amazon-review h2 { font-size: 15px; }
 .amazon-candidate { display: grid; justify-content: stretch; text-align: left; gap: 6px; width: 100%; background: transparent; }
 .amazon-candidate.selected { border-color: var(--accent-strong); background: var(--active-nav); }

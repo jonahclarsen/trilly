@@ -358,3 +358,11 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 .field-button.field-fixed { background: color-mix(in srgb, var(--muted) 7%, var(--paper)); }
 .field-button.field-fixed strong { color: var(--muted); }
 .suggestion-copy .suggestion-unused { color: var(--muted); text-decoration: line-through; }
+
+/* Amazon evidence sits beside the review card when there is room for both. */
+.amazon-workspace { width: min(1280px, 100%); }
+.transaction-layout { display: grid; align-items: start; gap: 24px; }
+.transaction-layout > * { min-width: 0; }
+@media (min-width: 1000px) {
+  .transaction-layout.with-amazon { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+}

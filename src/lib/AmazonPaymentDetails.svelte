@@ -1,28 +1,39 @@
 <script lang="ts">
-  import { paymentOrderURL, marketplaceLabel, type AmazonPayment } from './amazon'
-  let { payment }: { payment: AmazonPayment } = $props()
-  function link(id: string) {
-    return paymentOrderURL({ ...payment, order_ids: [id] })
-  }
+  import { paymentHasOrder, orderURL, type AmazonPayment, type AmazonOrder } from './amazon'
+  let { payment, orders }: { payment: AmazonPayment; orders: AmazonOrder[] } = $props()
+  const paymentOrders = $derived(orders.filter(order => paymentHasOrder(payment, order)))
 </script>
 
 <section class="amazon-evidence" aria-label="Payment details from Amazon">
   <strong>Payment details from Amazon</strong>
-  <dl>
-    <div><dt>Date</dt><dd>{payment.date || 'Unavailable'}</dd></div>
-    <div><dt>{payment.refund ? 'Refund' : 'Charge'}</dt><dd>{new Intl.NumberFormat(undefined, { style: 'currency', currency: payment.currency }).format(payment.amount / 1000)} {payment.currency}</dd></div>
-    <div><dt>Payment method</dt><dd>{payment.payment_method || 'Unavailable'}</dd></div>
-    <div><dt>Payment source</dt><dd>{marketplaceLabel(payment.marketplace)}</dd></div>
-    {#each payment.order_ids as id}
-      <div><dt>Order</dt><dd>{#if link(id)}<a href={link(id)} target="_blank" rel="noreferrer">{id}</a>{:else}{id}{/if}</dd></div>
-    {/each}
-  </dl>
+  {#if paymentOrders.some(order => order.items.length)}
+    <div class="payment-products" aria-label="Products from linked orders">
+      {#each paymentOrders as order (`${order.marketplace}:${order.id}`)}
+        {#each order.items as item (item.id)}
+          <div class="payment-product">
+            {#if /^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(item.image)}
+              <img src={item.image} alt="" width="48" height="48" loading="lazy" />
+            {:else}
+              <span class="image-unavailable">No image</span>
+            {/if}
+            <div class="amazon-item-copy">
+              {#if orderURL(item.product_url, order.marketplace)}
+                <a class="amazon-product" href={orderURL(item.product_url, order.marketplace)} target="_blank" rel="noreferrer">{item.title}</a>
+              {:else}
+                <strong>{item.title}</strong>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      {/each}
+    </div>
+  {/if}
 </section>
 
 <style>
-  .amazon-evidence { margin-block: .75rem; }
-  dl { display: grid; gap: .4rem; margin: .5rem 0 0; }
-  dl > div { display: flex; flex-wrap: wrap; gap: .25rem .75rem; }
-  dt { min-width: 8rem; }
-  dd { margin: 0; overflow-wrap: anywhere; }
+  .amazon-evidence { margin: 0; }
+  .payment-products { display: grid; gap: 8px; margin-top: 8px; }
+  .payment-product { display: flex; align-items: center; gap: 10px; }
+  .payment-product img { width: 48px; height: 48px; object-fit: contain; flex-shrink: 0; }
+  .image-unavailable { display: grid; place-items: center; flex: 0 0 48px; height: 48px; color: var(--muted); font-size: 10px; }
 </style>

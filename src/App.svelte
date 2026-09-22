@@ -804,7 +804,7 @@
       </div>
     </main>
   {:else}
-    <main class="workspace" class:list-workspace={view === 'list'} bind:this={reviewElement} tabindex="-1">
+    <main class="workspace" class:list-workspace={view === 'list'} class:amazon-workspace={view === 'transaction' && !!current && isAmazon(current)} bind:this={reviewElement} tabindex="-1">
       <div class="queue-heading">
         <div>
           <span class="eyebrow">{currentPlan?.name ?? 'Review'}</span>
@@ -877,6 +877,7 @@
           </div>
         </section>
       {:else if current}
+        <div class="transaction-layout" class:with-amazon={isAmazon(current)}>
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
@@ -914,8 +915,7 @@
             {/if}
             <button class="field-button" class:field-fixed={descriptionFixed} disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
           </div>
-          {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are below.' : ''}</p>{/if}
-          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} />{/key}{/if}
+          {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are in the Amazon details.' : ''}</p>{/if}
           {#if paypalDraft !== null && amazonDraft === null}<p class="field-note">PayPal description will be saved when you approve.</p>{/if}
           {#if descriptionPending}<p class="field-note description-status" role="status">Description queued for sync. You can keep reviewing.</p>{/if}
 
@@ -941,6 +941,8 @@
             <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && ((!payee && !amazonMarket && !newPayee) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
+          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} />{/key}{/if}
+        </div>
       {:else}
         <section class="empty-state">
           <div class="complete-mark"><Icon name="check" /></div>

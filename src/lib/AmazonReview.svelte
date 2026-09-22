@@ -49,7 +49,7 @@
     {/each}
   {/if}
   {#if paymentDetails}
-    <AmazonPaymentDetails payment={paymentDetails.payment} />
+    <AmazonPaymentDetails payment={paymentDetails.payment} orders={paymentDetails.orders} />
     {#if !candidate}
       <p class="field-note">{paymentDetails.reason}</p>
       <Button {disabled} onclick={() => choose(paymentDetails!.payment.id)}>Use this payment</Button>
