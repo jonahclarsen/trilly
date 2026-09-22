@@ -21,36 +21,6 @@ test('order cards render complete synthetic evidence as escaped text, without re
   } finally { await server.close(); }
 });
 
-test('payment details stay visible with separate fields and safe order links before order collection', async () => {
-  const server = await createServer({ configFile: false, plugins: [svelte()], server: { middlewareMode: true, hmr: false, watch: null }, appType: 'custom' });
-  try {
-    const { default: Details } = await server.ssrLoadModule('/src/lib/AmazonPaymentDetails.svelte');
-    const { render } = await server.ssrLoadModule('svelte/server');
-    const { parseHTML } = await import('linkedom');
-    const id = '000-0000000-0000001';
-    const payment = {
-      id: 'synthetic-payment', marketplace: 'amazon.com', date: '2026-09-02',
-      amount: -11200, currency: 'CAD', refund: false, payment_method: 'Visa ending in 0000',
-      order_ids: [id], order_marketplaces: { [id]: 'amazon.ca' },
-      evidence: '$11.20Visa ending in 0000Order000-0000000-0000001',
-    };
-    const document = parseHTML(render(Details, { props: { payment } }).body).document;
-    assert.equal(document.querySelector('details'), null);
-    assert.ok([...document.querySelectorAll('dd')].some(node => node.textContent === 'Amazon.com'));
-    assert.equal(document.querySelectorAll('dl > div').length, 5);
-    assert.ok([...document.querySelectorAll('dd')].some(node => node.textContent === payment.payment_method));
-    assert.equal(document.querySelector('a').getAttribute('href'), `https://www.amazon.ca/gp/your-account/order-details?orderID=${id}`);
-    for (const invalid of [
-      { ...payment, order_marketplaces: { [id]: 'evil.test' } },
-      { ...payment, order_ids: ['<script>invalid</script>'] },
-    ]) {
-      const output = render(Details, { props: { payment: invalid } }).body;
-      assert.equal(parseHTML(output).document.querySelector('a'), null);
-      assert.doesNotMatch(output, /<script>/);
-    }
-  } finally { await server.close(); }
-});
-
 test('Amazon order action renders the safe order target, logo, and shortcut', async () => {
   const server = await createServer({ configFile: false, plugins: [svelte()], server: { middlewareMode: true, hmr: false, watch: null }, appType: 'custom' });
   try {
@@ -68,7 +38,7 @@ test('Amazon order action renders the safe order target, logo, and shortcut', as
 });
 
 
-test('review hides a sole charge card while retaining evidence and uncertain-match confirmation', async () => {
+test('review omits redundant payment summaries while retaining uncertain-match confirmation', async () => {
   const server = await createServer({ configFile: false, plugins: [svelte()], server: { middlewareMode: true, hmr: false, watch: null }, appType: 'custom' });
   try {
     const { default: Review } = await server.ssrLoadModule('/src/lib/AmazonReview.svelte');
@@ -82,11 +52,11 @@ test('review hides a sole charge card while retaining evidence and uncertain-mat
     const single = review([payment]);
     assert.equal(single.querySelector('h2'), null);
     assert.equal(single.querySelector('.amazon-candidate'), null);
-    assert.ok(single.querySelector('.amazon-evidence').textContent.includes('Synthetic card'));
+    assert.equal(single.querySelector('.amazon-evidence'), null);
     assert.ok(![...single.querySelectorAll('button')].some(button => button.textContent.includes('Use this payment')));
     const uncertain = review([{ ...payment, currency: 'USD' }]);
     assert.equal(uncertain.querySelector('.amazon-candidate'), null);
-    assert.ok(uncertain.querySelector('.amazon-evidence'));
+    assert.equal(uncertain.querySelector('.amazon-evidence'), null);
     assert.ok([...uncertain.querySelectorAll('button')].some(button => button.textContent.includes('Use this payment')));
     const multiple = review([payment, { ...payment, id: 'second', marketplace: 'amazon.com' }]);
     assert.equal(multiple.querySelectorAll('.amazon-candidate').length, 2);

@@ -915,9 +915,9 @@
           <div class="fields">
             {#if !special(current)}
               <button class="field-button" class:field-fixed={payeeFixed} disabled={busy} onclick={() => openPicker('payee')}><span><small>Payee</small><strong>{payeeName}</strong></span><kbd>E</kbd></button>
-              <button class="field-button" class:field-fixed={categoryFixed} disabled={busy} onclick={() => openPicker('category')}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
+              <button class="field-button field-multiline" class:field-fixed={categoryFixed} disabled={busy} onclick={() => openPicker('category')} title={categoryName}><span><small>Category</small><strong>{categoryName}</strong></span><kbd>C</kbd></button>
             {/if}
-            <button class="field-button" class:field-fixed={descriptionFixed} disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
+            <button class="field-button field-multiline" class:field-fixed={descriptionFixed} disabled={busy || saveFailed} onclick={openDescription} title={displayedMemo || 'Add description'}><span><small>Description</small><strong class="memo">{displayedMemo || 'Add description'}</strong></span><kbd>D</kbd></button>
           </div>
           {#if amazonDraft !== null}<p class="field-note">Amazon description will be saved when you approve.{amazonDraft.endsWith('…') ? ' Shortened to 500 characters; full titles are in the Amazon details.' : ''}</p>{/if}
           {#if paypalDraft !== null && amazonDraft === null}<p class="field-note">PayPal description will be saved when you approve.</p>{/if}

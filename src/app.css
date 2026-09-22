@@ -366,3 +366,16 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 @media (min-width: 1000px) {
   .transaction-layout.with-amazon { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
 }
+
+.field-multiline { align-items: flex-start; }
+.field-multiline > span { flex: 1; }
+.field-multiline > kbd { flex-shrink: 0; }
+.field-multiline strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  line-clamp: 8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}

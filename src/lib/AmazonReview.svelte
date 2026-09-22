@@ -1,7 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
-  import AmazonPaymentDetails from './AmazonPaymentDetails.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
   import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, itemCombinations, type AmazonStore } from './amazon'
   import type { Transaction } from './types'
@@ -48,12 +47,9 @@
       </button>
     {/each}
   {/if}
-  {#if paymentDetails}
-    <AmazonPaymentDetails payment={paymentDetails.payment} orders={paymentDetails.orders} />
-    {#if !candidate}
-      <p class="field-note">{paymentDetails.reason}</p>
-      <Button {disabled} onclick={() => choose(paymentDetails!.payment.id)}>Use this payment</Button>
-    {/if}
+  {#if paymentDetails && !candidate}
+    <p class="field-note">{paymentDetails.reason}</p>
+    <Button {disabled} onclick={() => choose(paymentDetails!.payment.id)}>Use this payment</Button>
   {/if}
   {#if candidate}
     {#if candidate.orders.length < candidate.payment.order_ids.length}<p class="field-note">Order details are still missing. Collection can continue while you review other transactions.</p>{/if}
