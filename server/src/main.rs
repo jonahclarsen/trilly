@@ -397,6 +397,7 @@ enum Action {
         id: String,
         description: String,
         note: String,
+        amount: Option<i64>,
     },
     EditBusinessExpense {
         plan_id: String,
@@ -497,7 +498,8 @@ async fn action(
             id,
             description,
             note,
-        } => save_business_expense(&mut next, &id, description, note)?,
+            amount,
+        } => save_business_expense(&mut next, &id, description, note, amount)?,
         Action::EditBusinessExpense {
             plan_id,
             id,
@@ -760,6 +762,7 @@ fn save_business_expense(
     id: &str,
     description: String,
     note: String,
+    amount: Option<i64>,
 ) -> Result<()> {
     if description.trim().is_empty() {
         return Err("Description is required".into());
@@ -775,6 +778,9 @@ fn save_business_expense(
         let previous = data.business_expenses[index].clone();
         data.business_expenses[index].description = description.trim().into();
         data.business_expenses[index].note = note;
+        if let Some(amount) = amount {
+            data.business_expenses[index].amount = amount;
+        }
         remember_business(data, BusinessUndo::Updated { expense: previous });
         return Ok(());
     }
@@ -793,7 +799,10 @@ fn save_business_expense(
         transaction_id: id.into(),
         description: description.trim().into(),
         date: transaction.date.clone(),
-        amount: transaction.amount.checked_neg().ok_or("Invalid amount")?,
+        amount: match amount {
+            Some(amount) => amount,
+            None => transaction.amount.checked_neg().ok_or("Invalid amount")?,
+        },
         account: account.name.clone(),
         note,
         archived: false,
@@ -1421,19 +1430,23 @@ mod tests {
             date: "2026-09-08".into(),
             ..Default::default()
         });
-        assert!(save_business_expense(&mut data, "missing", "Supplies".into(), "".into()).is_err());
-        assert!(save_business_expense(&mut data, "expense", " ".into(), "".into()).is_err());
+        assert!(
+            save_business_expense(&mut data, "missing", "Supplies".into(), "".into(), None)
+                .is_err()
+        );
+        assert!(save_business_expense(&mut data, "expense", " ".into(), "".into(), None).is_err());
         save_business_expense(
             &mut data,
             "expense",
             "Synthetic supplies".into(),
             "Optional note".into(),
+            None,
         )
         .unwrap();
         assert_eq!(data.business_expenses[0].amount, 12345);
         assert!(!data.transactions[0].approved);
         assert!(data.pending.is_empty());
-        save_business_expense(&mut data, "expense", "Updated".into(), "".into()).unwrap();
+        save_business_expense(&mut data, "expense", "Updated".into(), "".into(), None).unwrap();
         assert_eq!(data.business_expenses[0].description, "Updated");
         undo_business_expense(&mut data).unwrap();
         assert_eq!(data.business_expenses[0].description, "Synthetic supplies");

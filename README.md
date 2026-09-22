@@ -373,7 +373,7 @@ await fresh authorization to run the isolated browser workflow. Local
 
 ## Business expenses
 
-Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee followed by the first sentence of the transaction description, separated by ` - `. Any text after the first `. ` fills the optional note. The description starts fully selected, so typing replaces it; Enter saves from either field, Shift+Enter adds a line, and Tab moves to the optional note. The button remains available after saving; reopening it edits that transaction's existing expense instead of creating another row.
+Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee followed by the first sentence of the transaction description, separated by ` - `. Any text after the first `. ` fills the optional note. The description starts fully selected, so typing replaces it; Enter saves, Shift+Enter adds a line in text fields, and Tab moves through the price and optional note. The price is editable and defaults to the transaction amount with expenses positive and refunds negative, so refunds subtract from the total. Reopening a saved expense preserves its edited price. The button remains available after saving; reopening it edits that transaction's existing expense instead of creating another row.
 Date, amount, and account are captured from the transaction. This does not approve
 or modify the YNAB transaction. The header's **Business** count opens the saved table.
 

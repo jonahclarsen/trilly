@@ -22,10 +22,11 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     const transaction = result.queue.find(t => t.id === event.body.id)
     if (!transaction) return result
     const existing = (result.business_expenses ?? []).find(e => e.plan_id === result.plan_id && e.transaction_id === transaction.id)
-    const expense = existing ? { ...existing, description: String(event.body.description).trim(), note: String(event.body.note ?? '') } : {
+    const amount = typeof event.body.amount === 'number' ? event.body.amount : existing?.amount ?? -transaction.amount
+    const expense = existing ? { ...existing, amount, description: String(event.body.description).trim(), note: String(event.body.note ?? '') } : {
       plan_id: result.plan_id, transaction_id: transaction.id,
       description: String(event.body.description).trim(), note: String(event.body.note ?? ''),
-      date: transaction.date, amount: -transaction.amount,
+      date: transaction.date, amount,
       account: result.accounts.find(a => a.id === transaction.account_id)?.name ?? '', archived: false,
     }
     result.business_expenses = existing

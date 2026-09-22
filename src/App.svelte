@@ -248,6 +248,8 @@
   let expenseId = $state('')
   let description = $state('')
   let expenseNote = $state('')
+  let expenseAmount = $state<number | undefined>(undefined)
+  const validExpenseAmount = $derived(typeof expenseAmount === 'number' && Number.isSafeInteger(Math.round(expenseAmount * 1000)))
   let businessMessage = $state('')
   let showArchived = $state(false)
   type ExpenseDraft = Omit<BusinessExpense, 'amount'> & { amount: number | undefined }
@@ -266,6 +268,7 @@
       expenseId = current.id
       description = currentExpense.description
       expenseNote = currentExpense.note
+      expenseAmount = currentExpense.amount / 1000
       modal = 'expense'
       return
     }
@@ -273,6 +276,7 @@
     const separator = displayedMemo.indexOf('. ')
     const expenseSummary = (separator === -1 ? displayedMemo : displayedMemo.slice(0, separator)).trim()
     expenseId = current.id
+    expenseAmount = -current.amount / 1000
     description = expenseSummary ? `${expensePayee} - ${expenseSummary}` : expensePayee
     expenseNote = separator === -1 ? '' : displayedMemo.slice(separator + 2).trim()
     modal = 'expense'
@@ -292,9 +296,9 @@
     modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
   }
   async function saveExpense() {
-    if (!data || busy || saveFailed || !expenseId || !description.trim()) return
-    enqueue({ body: { action: 'business_expense', id: expenseId, description, note: expenseNote } })
-    modal = null; description = ''; expenseNote = ''; expenseId = ''; await tick(); reviewElement?.focus()
+    if (!data || busy || saveFailed || !expenseId || !description.trim() || !validExpenseAmount) return
+    enqueue({ body: { action: 'business_expense', id: expenseId, description, note: expenseNote, amount: Math.round(expenseAmount! * 1000) } })
+    modal = null; description = ''; expenseNote = ''; expenseAmount = undefined; expenseId = ''; await tick(); reviewElement?.focus()
   }
   async function copyExpenses() {
     try { await navigator.clipboard.writeText(businessRows(activeExpenses)); businessMessage = 'Copied. Paste into your sheet.' }
@@ -478,7 +482,7 @@
   function forget() {
     stopAmazon(); amazonGeneration++; amazonScope = ''; amazon = emptyAmazon(); amazonHTML = ''; amazonOrderURL = ''; amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = ''; amazonPackets.clear(); amazonSetup = false
     sessionEpoch++; setSession(''); data = null; workspaceReady = false; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
-    description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
+    description = ''; expenseNote = ''; expenseAmount = undefined; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
     picks = []; clearSkipped(); payee = null; newPayee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
@@ -1037,12 +1041,14 @@
     </form>
   </Modal>
 {:else if modal === 'expense'}
-  <Modal title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseId = '' }}>
+  <Modal title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseAmount = undefined; expenseId = '' }}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <form onsubmit={(event) => { event.preventDefault(); void saveExpense() }}>
       <label>Description<textarea data-modal-focus bind:value={description} required maxlength="10000" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
+      <label>Price<input type="number" required step="0.001" bind:value={expenseAmount} aria-describedby="expense-price-help" /></label>
+      <p id="expense-price-help" class="field-note">Expenses are positive. Refunds default to a negative price and subtract from the total.</p>
       <label>Note (optional)<textarea bind:value={expenseNote} maxlength="10000" rows="2" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
-      <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed || !description.trim()}>Save expense</Button>
+      <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed || !description.trim() || !validExpenseAmount}>Save expense</Button>
     </form>
   </Modal>
 {:else if modal === 'business'}
