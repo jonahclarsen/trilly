@@ -2,9 +2,9 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, itemCombinations, type AmazonStore } from './amazon'
+  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, itemCombinations, type AmazonStore, type AmazonOrder } from './amazon'
   import type { Transaction } from './types'
-  let { store, transaction, currency, targets, disabled, collecting = false, assignments = [], onchange, onorderlink }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void; onorderlink?: (link: string) => void } = $props()
+  let { store, transaction, currency, targets, disabled, collecting = false, assignments = [], onchange, onorderlink, onorders }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void; onorderlink?: (link: string) => void; onorders?: (orders: AmazonOrder[]) => void } = $props()
   const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments))
   let choice = $state('')
   let selected = $state<string[]>([])
@@ -19,6 +19,7 @@
   const automatic = $derived(!touched && !collecting && candidate ? automaticItems(candidate) : [])
   const selectedIds = $derived(touched ? selected : automatic.map(i => i.id))
   const fallback = $derived(search.trim() ? store.orders.filter(o => `${o.id} ${o.items.map(i => i.title).join(' ')}`.toLowerCase().includes(search.toLowerCase())).slice(0, 20) : [])
+  $effect(() => { onorders?.(orders) })
   $effect(() => { onorderlink?.(paymentDetails ? paymentOrderURL(paymentDetails.payment) : '') })
   $effect(() => {
     const found = automatic

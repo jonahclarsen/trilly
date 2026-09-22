@@ -373,9 +373,32 @@ await fresh authorization to run the isolated browser workflow. Local
 
 ## Business expenses
 
-Press **B** or click **Business expense** while reviewing to open **Add business expense**. The description defaults to the selected payee followed by the first sentence of the transaction description, separated by ` - `. Any text after the first `. ` fills the optional note. The description starts fully selected, so typing replaces it; Enter saves, Shift+Enter adds a line in text fields, and Tab moves through the price and optional note. The price is editable and defaults to the transaction amount with expenses positive and refunds negative, so refunds subtract from the total. Reopening a saved expense preserves its edited price. The button remains available after saving; reopening it edits that transaction's existing expense instead of creating another row.
-Date, amount, and account are captured from the transaction. This does not approve
-or modify the YNAB transaction. The header's **Business** count opens the saved table.
+Press **B** or click **Business expense** while reviewing to add or edit expenses.
+Each checked row becomes a separate business expense with an editable description,
+price, and optional note. **Add expense** adds a manual row. Enter saves;
+Shift+Enter adds a line in text fields. Reopening preserves saved prices.
+Unchecking a saved row removes it on save; undo restores the entire previous selection.
+
+For a matched Amazon order with multiple products, new expenses start as separate
+product rows with blank prices. Calculate and enter the final amount yourself.
+**Use separate product expenses** explicitly replaces an existing combined expense
+with product rows. The modal shows the collected products, quantities, item prices,
+order totals, taxes/fees when available, payment charges, refunds, and currencies
+as reference. **Choose another reference order** lets you show collected orders
+when a payment match is unavailable. Showing reference data does not allocate it:
+Trilly does not distribute taxes, fees, discounts, or refunds, infer a product's
+final cost, or convert currencies. A selected total helps compare your entries
+with the transaction; selecting only some products is allowed.
+
+Refund transactions and products whose recorded status confirms a completed
+refund start unchecked. Order-level refund payments do not identify which product
+was refunded; check the product status and payment details yourself. Saved choices
+are preserved. If you include a refund, use a negative price to subtract it.
+Single expenses default to the signed transaction amount.
+
+Date and account come from the transaction; existing rows retain their saved date,
+account, and archive state. Saving does not approve or modify the YNAB transaction.
+The header's **Business** count opens the saved table.
 
 **Copy to sheet** copies current rows without headers in this order: description,
 `yyyy-mm-dd` date, amount, account, note. Paste into the first destination cell.
@@ -398,7 +421,7 @@ reverses business changes in the business dialog. In review, it restores the
 latest skip first; otherwise business changes take priority over approvals.
 Use the rightmost SVG close button to remove an individual row; the keyboard shortcut can restore it. The expense form's save button shows
 its Enter shortcut. **Show archived** displays older rows.
-Saved transactions are updated in place, including archived transactions. Removing
+Saved expense rows are updated in place, including archived rows. Removing
 a row or undoing its addition allows that transaction to be added again.
 
 <picture>

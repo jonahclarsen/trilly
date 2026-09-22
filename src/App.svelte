@@ -3,7 +3,7 @@
   import { diagnosticsReport, diagnosticVersion, receiveDiagnostics, recordDiagnostic } from './lib/diagnostics'
   import extensionManifest from '../chromium-extension/manifest.json'
   import { reviewColumns, sortReviewRows, orderedReviewQueue, type ReviewSortColumn, type ReviewSortDirection } from './lib/review-sort'
-  import { businessRows } from './lib/business'
+  import { businessRows, expenseKey, type BusinessExpenseInput } from './lib/business'
   import Button from './lib/Button.svelte'
   import EditableTable from './lib/EditableTable.svelte'
   import { purchaseHistoryLinks, paypalDescription } from './lib/purchase-history'
@@ -29,8 +29,9 @@
   import GooglePayee from './lib/GooglePayee.svelte'
   import AmazonOrderLink from './lib/AmazonOrderLink.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
+  import BusinessExpenseEditor from './lib/BusinessExpenseEditor.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
-  import { amazonLinkSummary, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { amazonLinkSummary, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonOrder, type AmazonStore, type AmazonStatus } from './lib/amazon'
   import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
@@ -98,7 +99,7 @@
   }
   $effect(() => {
     if (data?.amazon_cleared) untrack(() => {
-      stopAmazon(); amazonGeneration++; amazonPackets.clear(); amazon = emptyAmazon(); amazonCollectedTargets = []
+      amazonExpenseOrders = []; stopAmazon(); amazonGeneration++; amazonPackets.clear(); amazon = emptyAmazon(); amazonCollectedTargets = []
       amazonDraft = null; amazonMarket = null; amazonPayment = undefined
     })
   })
@@ -163,7 +164,7 @@
   }
   async function clearAmazon(): Promise<boolean> {
     if (!data || amazonPasteBusy) return false
-    stopAmazon(); amazonGeneration++; amazonPasteBusy = true
+    amazonExpenseOrders = []; stopAmazon(); amazonGeneration++; amazonPasteBusy = true
     const plan = data.plan_id, generation = amazonGeneration
     try {
       await amazonImports
@@ -248,15 +249,15 @@
   let expenseId = $state('')
   let description = $state('')
   let expenseNote = $state('')
-  let expenseAmount = $state<number | undefined>(undefined)
-  const validExpenseAmount = $derived(typeof expenseAmount === 'number' && Number.isSafeInteger(Math.round(expenseAmount * 1000)))
+  let amazonExpenseOrders = $state<AmazonOrder[]>([])
   let businessMessage = $state('')
   let showArchived = $state(false)
   type ExpenseDraft = Omit<BusinessExpense, 'amount'> & { amount: number | undefined }
   let expenseDrafts = $state<ExpenseDraft[]>([])
   const expenses = $derived(data?.business_expenses ?? [])
   const activeExpenses = $derived(expenses.filter(e => !e.archived))
-  const currentExpense = $derived(expenses.find(e => e.plan_id === data?.plan_id && e.transaction_id === currentId))
+  const currentExpenses = $derived(expenses.filter(e => e.plan_id === data?.plan_id && e.transaction_id === currentId))
+  const currentExpense = $derived(currentExpenses[0])
   function openBusiness() {
     businessMessage = ''; showArchived = false
     expenseDrafts = expenses.map(expense => ({ ...expense, amount: expense.amount / 1000 }))
@@ -268,7 +269,6 @@
       expenseId = current.id
       description = currentExpense.description
       expenseNote = currentExpense.note
-      expenseAmount = currentExpense.amount / 1000
       modal = 'expense'
       return
     }
@@ -276,7 +276,6 @@
     const separator = displayedMemo.indexOf('. ')
     const expenseSummary = (separator === -1 ? displayedMemo : displayedMemo.slice(0, separator)).trim()
     expenseId = current.id
-    expenseAmount = -current.amount / 1000
     description = expenseSummary ? `${expensePayee} - ${expenseSummary}` : expensePayee
     expenseNote = separator === -1 ? '' : displayedMemo.slice(separator + 2).trim()
     modal = 'expense'
@@ -295,10 +294,10 @@
     if (amazonEdit) { amazonDraft = null; amazonMemoTouched = true }
     modal = null; memoDraft = ''; memoId = ''; await tick(); reviewElement?.focus()
   }
-  async function saveExpense() {
-    if (!data || busy || saveFailed || !expenseId || !description.trim() || !validExpenseAmount) return
-    enqueue({ body: { action: 'business_expense', id: expenseId, description, note: expenseNote, amount: Math.round(expenseAmount! * 1000) } })
-    modal = null; description = ''; expenseNote = ''; expenseAmount = undefined; expenseId = ''; await tick(); reviewElement?.focus()
+  async function saveExpense(rows: BusinessExpenseInput[]) {
+    if (!data || busy || saveFailed || !expenseId) return
+    enqueue({ body: { action: 'replace_business_expenses', id: expenseId, expenses: rows } })
+    modal = null; description = ''; expenseNote = ''; expenseId = ''; await tick(); reviewElement?.focus()
   }
   async function copyExpenses() {
     try { await navigator.clipboard.writeText(businessRows(activeExpenses)); businessMessage = 'Copied. Paste into your sheet.' }
@@ -320,17 +319,17 @@
   async function removeExpense(plan_id: string, id: string) {
     if (await act({ action: 'remove_business_expense', plan_id, id })) {
       businessMessage = 'Expense removed.'
-      expenseDrafts = expenseDrafts.filter(expense => expense.plan_id !== plan_id || expense.transaction_id !== id)
+      expenseDrafts = expenseDrafts.filter(expense => expense.plan_id !== plan_id || expenseKey(expense) !== id)
     }
   }
   function expenseChanged(draft: ExpenseDraft) {
-    const saved = expenses.find(expense => expense.plan_id === draft.plan_id && expense.transaction_id === draft.transaction_id)
+    const saved = expenses.find(expense => expense.plan_id === draft.plan_id && expenseKey(expense) === expenseKey(draft))
     return !saved || draft.description !== saved.description || draft.date !== saved.date || typeof draft.amount !== 'number' || Math.round(draft.amount * 1000) !== saved.amount || draft.account !== saved.account || draft.note !== saved.note
   }
   function saveExpenseRow(draft: ExpenseDraft) {
     if (!draft.description.trim() || !draft.account.trim() || !draft.date || typeof draft.amount !== 'number' || !Number.isFinite(draft.amount)) return
     enqueue({ body: {
-      action: 'edit_business_expense', plan_id: draft.plan_id, id: draft.transaction_id,
+      action: 'edit_business_expense', plan_id: draft.plan_id, id: expenseKey(draft),
       description: draft.description, date: draft.date, amount: Math.round(draft.amount * 1000),
       account: draft.account, note: draft.note,
     } })
@@ -407,7 +406,7 @@
     const id = currentId
     untrack(() => {
       const t = current
-      amazonDraft = null; amazonMarket = t ? automaticAmazonMarketplace(t) : null; amazonPayment = undefined; amazonOrderLink = ''; amazonMemoTouched = false; amazonPayeeTouched = false
+      amazonDraft = null; amazonMarket = t ? automaticAmazonMarketplace(t) : null; amazonPayment = undefined; amazonOrderLink = ''; amazonExpenseOrders = []; amazonMemoTouched = false; amazonPayeeTouched = false
       payeeFixed = false; categoryFixed = false; descriptionFixed = false
       newPayee = null; payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
     })
@@ -480,9 +479,9 @@
   })
 
   function forget() {
-    stopAmazon(); amazonGeneration++; amazonScope = ''; amazon = emptyAmazon(); amazonHTML = ''; amazonOrderURL = ''; amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = ''; amazonPackets.clear(); amazonSetup = false
+    amazonExpenseOrders = []; stopAmazon(); amazonGeneration++; amazonScope = ''; amazon = emptyAmazon(); amazonHTML = ''; amazonOrderURL = ''; amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = ''; amazonPackets.clear(); amazonSetup = false
     sessionEpoch++; setSession(''); data = null; workspaceReady = false; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
-    description = ''; expenseNote = ''; expenseAmount = undefined; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
+    description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
     picks = []; clearSkipped(); payee = null; newPayee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
@@ -945,7 +944,7 @@
             <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && ((!payee && !amazonMarket && !newPayee) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
-          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} />{/key}{/if}
+          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} onorders={(orders) => amazonExpenseOrders = orders} />{/key}{/if}
         </div>
       {:else}
         <section class="empty-state">
@@ -1041,15 +1040,11 @@
     </form>
   </Modal>
 {:else if modal === 'expense'}
-  <Modal title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseAmount = undefined; expenseId = '' }}>
+  <Modal width={800} title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseId = '' }}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
-    <form onsubmit={(event) => { event.preventDefault(); void saveExpense() }}>
-      <label>Description<textarea data-modal-focus bind:value={description} required maxlength="10000" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
-      <label>Price<input type="number" required step="0.001" bind:value={expenseAmount} aria-describedby="expense-price-help" /></label>
-      <p id="expense-price-help" class="field-note">Expenses are positive. Refunds default to a negative price and subtract from the total.</p>
-      <label>Note (optional)<textarea bind:value={expenseNote} maxlength="10000" rows="2" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (description.trim()) void saveExpense() } }}></textarea></label>
-      <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed || !description.trim() || !validExpenseAmount}>Save expense</Button>
-    </form>
+    {#if current}
+      <BusinessExpenseEditor transaction={current} saved={currentExpenses} {description} note={expenseNote} orders={amazonExpenseOrders} store={amazon} {currency} disabled={busy || saveFailed} onsave={(rows) => void saveExpense(rows)} />
+    {/if}
   </Modal>
 {:else if modal === 'business'}
   <Modal title="Business expenses" width={1240} onclose={() => modal = null}>
@@ -1064,7 +1059,7 @@
     <EditableTable minWidth={1040}><table class="business-table">
       <colgroup><col class="expense-description" /><col class="expense-date" /><col class="expense-amount" /><col class="expense-account" /><col class="expense-note" /><col class="expense-actions" /></colgroup>
       <thead><tr><th>Description</th><th>Date</th><th>Amount</th><th>Account</th><th>Note</th><th><span class="sr-only">Actions</span></th></tr></thead>
-      <tbody>{#each expenseDrafts.filter(e => e.archived === showArchived) as expense (`${expense.plan_id}:${expense.transaction_id}`)}
+      <tbody>{#each expenseDrafts.filter(e => e.archived === showArchived) as expense (`${expense.plan_id}:${expenseKey(expense)}`)}
         <tr>
           <td><textarea aria-label={`Description for ${expense.date}`} required maxlength="10000" rows="2" bind:value={expense.description}></textarea></td>
           <td><input aria-label={`Date for ${expense.description}`} type="date" required bind:value={expense.date} /></td>
@@ -1073,7 +1068,7 @@
           <td><textarea aria-label={`Note for ${expense.description}`} maxlength="10000" rows="2" bind:value={expense.note}></textarea></td>
           <td><div class="expense-row-actions">
               <Button primary disabled={busy || !!saving || saveFailed || !expenseChanged(expense) || !expense.description.trim() || !expense.account.trim() || !expense.date || typeof expense.amount !== 'number'} onclick={() => saveExpenseRow(expense)}>Save</Button>
-              <Button icon="close" label={`Remove expense: ${expense.description}`} disabled={busy || !!saving || saveFailed} onclick={() => void removeExpense(expense.plan_id, expense.transaction_id)} />
+              <Button icon="close" label={`Remove expense: ${expense.description}`} disabled={busy || !!saving || saveFailed} onclick={() => void removeExpense(expense.plan_id, expenseKey(expense))} />
           </div></td>
         </tr>
       {:else}<tr><td colspan="6">{showArchived ? 'No archived expenses.' : 'No current expenses. Press B while reviewing a transaction to add one.'}</td></tr>{/each}</tbody>

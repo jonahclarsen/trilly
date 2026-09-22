@@ -391,6 +391,17 @@ fn clear_amazon(data: &mut Data) {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BusinessExpenseInput {
+    expense_id: String,
+    #[serde(default)]
+    product_key: String,
+    description: String,
+    amount: i64,
+    note: String,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 enum Action {
     BusinessExpense {
@@ -398,6 +409,10 @@ enum Action {
         description: String,
         note: String,
         amount: Option<i64>,
+    },
+    ReplaceBusinessExpenses {
+        id: String,
+        expenses: Vec<BusinessExpenseInput>,
     },
     EditBusinessExpense {
         plan_id: String,
@@ -500,6 +515,9 @@ async fn action(
             note,
             amount,
         } => save_business_expense(&mut next, &id, description, note, amount)?,
+        Action::ReplaceBusinessExpenses { id, expenses } => {
+            replace_business_expenses(&mut next, &id, expenses)?
+        }
         Action::EditBusinessExpense {
             plan_id,
             id,
@@ -795,6 +813,8 @@ fn save_business_expense(
         .find(|a| a.id == transaction.account_id)
         .ok_or("Account not found")?;
     let expense = model::BusinessExpense {
+        expense_id: String::new(),
+        product_key: String::new(),
         plan_id: data.plan_id.clone(),
         transaction_id: id.into(),
         description: description.trim().into(),
@@ -815,6 +835,87 @@ fn save_business_expense(
         },
     );
     data.business_expenses.push(expense);
+    Ok(())
+}
+
+fn replace_business_expenses(
+    data: &mut Data,
+    id: &str,
+    rows: Vec<BusinessExpenseInput>,
+) -> Result<()> {
+    if rows.len() > 100 {
+        return Err("Too many expense rows".into());
+    }
+    let transaction = data
+        .transactions
+        .iter()
+        .find(|t| t.id == id && !t.deleted)
+        .ok_or("Transaction not found")?;
+    let account = data
+        .accounts
+        .iter()
+        .find(|a| a.id == transaction.account_id)
+        .ok_or("Account not found")?;
+    let previous: Vec<_> = data
+        .business_expenses
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.plan_id == data.plan_id && e.transaction_id == id)
+        .map(|(i, e)| (i, e.clone()))
+        .collect();
+    let mut keys = std::collections::HashSet::new();
+    let mut updated = Vec::new();
+    for row in rows {
+        if row.expense_id.len() > 200
+            || row.product_key.len() > 1000
+            || row.description.trim().is_empty()
+            || row.description.len() > 10000
+            || row.note.len() > 10000
+        {
+            return Err("Invalid expense row".into());
+        }
+        let existing = previous
+            .iter()
+            .find(|(_, e)| e.expense_id == row.expense_id);
+        if existing.is_none() && row.expense_id.is_empty() {
+            return Err("Expense row ID is required".into());
+        }
+        let mut expense =
+            existing
+                .map(|(_, e)| e.clone())
+                .unwrap_or_else(|| model::BusinessExpense {
+                    expense_id: row.expense_id,
+                    plan_id: data.plan_id.clone(),
+                    transaction_id: id.into(),
+                    date: transaction.date.clone(),
+                    account: account.name.clone(),
+                    ..Default::default()
+                });
+        if !keys.insert(expense.key().to_owned())
+            || data.business_expenses.iter().any(|e| {
+                e.plan_id == data.plan_id && e.transaction_id != id && e.key() == expense.key()
+            })
+        {
+            return Err("Expense row ID already exists".into());
+        }
+        expense.product_key = row.product_key;
+        expense.description = row.description.trim().into();
+        expense.amount = row.amount;
+        expense.note = row.note;
+        updated.push(expense);
+    }
+    let plan_id = data.plan_id.clone();
+    remember_business(
+        data,
+        BusinessUndo::Replaced {
+            plan_id: plan_id.clone(),
+            transaction_id: id.into(),
+            expenses: previous,
+        },
+    );
+    data.business_expenses
+        .retain(|e| e.plan_id != plan_id || e.transaction_id != id);
+    data.business_expenses.extend(updated);
     Ok(())
 }
 
@@ -841,7 +942,7 @@ fn edit_business_expense(
     let index = data
         .business_expenses
         .iter()
-        .position(|e| e.plan_id == plan_id && e.transaction_id == id)
+        .position(|e| e.plan_id == plan_id && e.key() == id)
         .ok_or("Business expense not found")?;
     let previous = data.business_expenses[index].clone();
     let expense = &mut data.business_expenses[index];
@@ -869,7 +970,7 @@ fn archive_business_expenses(data: &mut Data) {
         .iter()
         .map(|&i| {
             let e = &data.business_expenses[i];
-            (e.plan_id.clone(), e.transaction_id.clone())
+            (e.plan_id.clone(), e.key().to_owned())
         })
         .collect();
     remember_business(data, BusinessUndo::Archived { keys });
@@ -883,7 +984,7 @@ fn migrate_business_undo(data: &mut Data) {
     let keys: Vec<_> = std::mem::take(&mut data.business_archive_undo)
         .into_iter()
         .filter_map(|i| data.business_expenses.get(i))
-        .map(|e| (e.plan_id.clone(), e.transaction_id.clone()))
+        .map(|e| (e.plan_id.clone(), e.key().to_owned()))
         .collect();
     if !keys.is_empty() {
         data.business_undo.push(BusinessUndo::Archived { keys });
@@ -902,7 +1003,7 @@ fn remove_business_expense(data: &mut Data, plan_id: &str, id: &str) -> Result<(
     let index = data
         .business_expenses
         .iter()
-        .position(|e| e.plan_id == plan_id && e.transaction_id == id)
+        .position(|e| e.plan_id == plan_id && e.key() == id)
         .ok_or("Business expense not found")?;
     migrate_business_undo(data);
     let expense = data.business_expenses.remove(index);
@@ -917,12 +1018,24 @@ fn undo_business_expense(data: &mut Data) -> Result<()> {
         .pop()
         .ok_or("No business expense change to undo")?
     {
+        BusinessUndo::Replaced {
+            plan_id,
+            transaction_id,
+            expenses,
+        } => {
+            data.business_expenses
+                .retain(|e| e.plan_id != plan_id || e.transaction_id != transaction_id);
+            for (index, expense) in expenses {
+                data.business_expenses
+                    .insert(index.min(data.business_expenses.len()), expense);
+            }
+        }
         BusinessUndo::Added {
             plan_id,
             transaction_id,
         } => {
             data.business_expenses
-                .retain(|e| e.plan_id != plan_id || e.transaction_id != transaction_id);
+                .retain(|e| e.plan_id != plan_id || e.key() != transaction_id);
         }
         BusinessUndo::Removed { expense, index } => {
             data.business_expenses
@@ -932,9 +1045,7 @@ fn undo_business_expense(data: &mut Data) -> Result<()> {
             let saved = data
                 .business_expenses
                 .iter_mut()
-                .find(|e| {
-                    e.plan_id == expense.plan_id && e.transaction_id == expense.transaction_id
-                })
+                .find(|e| e.plan_id == expense.plan_id && e.key() == expense.key())
                 .ok_or("Business expense not found")?;
             *saved = expense;
         }
@@ -942,7 +1053,7 @@ fn undo_business_expense(data: &mut Data) -> Result<()> {
             for expense in &mut data.business_expenses {
                 if keys
                     .iter()
-                    .any(|(plan, id)| *plan == expense.plan_id && *id == expense.transaction_id)
+                    .any(|(plan, id)| *plan == expense.plan_id && *id == expense.key())
                 {
                     expense.archived = false;
                 }

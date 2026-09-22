@@ -1,3 +1,4 @@
+import { expenseKey, type BusinessExpenseInput } from './business.ts'
 import { amazonPayee } from './amazon.ts'
 import type { Snapshot, Transaction } from './types.ts'
 
@@ -33,9 +34,24 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
       ? (result.business_expenses ?? []).map(e => e === existing ? expense : e)
       : [...(result.business_expenses ?? []), expense]
     result.can_undo_business = true; result.can_undo_archive = false
+  } else if (event.body.action === 'replace_business_expenses') {
+    const transaction = result.queue.find(t => t.id === event.body.id)
+    if (!transaction) return result
+    const saved = result.business_expenses ?? []
+    const rows = event.body.expenses as BusinessExpenseInput[]
+    const updated = rows.map(row => {
+      const existing = saved.find(e => e.plan_id === result.plan_id && e.transaction_id === transaction.id && (e.expense_id ?? '') === row.expense_id)
+      return {
+        plan_id: result.plan_id, transaction_id: transaction.id, date: transaction.date,
+        account: result.accounts.find(a => a.id === transaction.account_id)?.name ?? '', archived: false,
+        ...existing, ...row, description: row.description.trim(),
+      }
+    })
+    result.business_expenses = [...saved.filter(e => e.plan_id !== result.plan_id || e.transaction_id !== transaction.id), ...updated]
+    result.can_undo_business = true; result.can_undo_archive = false
   } else if (event.body.action === 'edit_business_expense') {
     result.business_expenses = (result.business_expenses ?? []).map(expense =>
-      expense.plan_id === event.body.plan_id && expense.transaction_id === event.body.id ? {
+      expense.plan_id === event.body.plan_id && expenseKey(expense) === event.body.id ? {
         ...expense,
         description: String(event.body.description).trim(), date: String(event.body.date),
         amount: Number(event.body.amount), account: String(event.body.account).trim(), note: String(event.body.note ?? ''),

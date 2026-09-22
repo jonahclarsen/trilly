@@ -162,6 +162,10 @@ pub struct Pending {
 
 #[derive(Clone, Default, Serialize, Deserialize, Zeroize)]
 pub struct BusinessExpense {
+    #[serde(default)]
+    pub expense_id: String,
+    #[serde(default)]
+    pub product_key: String,
     pub plan_id: String,
     pub transaction_id: String,
     pub description: String,
@@ -172,8 +176,24 @@ pub struct BusinessExpense {
     pub archived: bool,
 }
 
+impl BusinessExpense {
+    // Legacy single expenses retain their transaction key; product rows have their own ID.
+    pub fn key(&self) -> &str {
+        if self.expense_id.is_empty() {
+            &self.transaction_id
+        } else {
+            &self.expense_id
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Zeroize)]
 pub enum BusinessUndo {
+    Replaced {
+        plan_id: String,
+        transaction_id: String,
+        expenses: Vec<(usize, BusinessExpense)>,
+    },
     Added {
         plan_id: String,
         transaction_id: String,

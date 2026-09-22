@@ -1,4 +1,4 @@
-export type BusinessExpense = { plan_id: string; transaction_id: string; description: string; date: string; amount: number; account: string; note: string; archived: boolean }
+export type BusinessExpense = { expense_id?: string; product_key?: string; plan_id: string; transaction_id: string; description: string; date: string; amount: number; account: string; note: string; archived: boolean }
 export type Option = { id: string; name: string; detail?: string; transactionCount?: number }
 export type Transaction = {
   id: string; account_id: string; date: string; amount: number; memo: string | null;
