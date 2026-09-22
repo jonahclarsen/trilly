@@ -33,7 +33,11 @@
       }
     })
   }
+  const combinedExpense = untrack(() => products.length > 1 && saved.length === 1 && !saved[0]?.product_key ? saved[0] : undefined)
   function initialRows(): Row[] {
+    if (products.length > 1 && (!saved.length || combinedExpense)) {
+      return productRows().map(row => ({ ...row, note: combinedExpense?.note ?? '' }))
+    }
     if (saved.length) {
       const restored = saved.map(e => ({
         expense_id: e.expense_id ?? '', product_key: e.product_key ?? '', description: e.description,
@@ -44,7 +48,6 @@
         : []
       return [...restored, ...omitted]
     }
-    if (products.length > 1) return productRows()
     const refunded = isRefunded(products[0]?.item.status ?? '')
     return [{
       expense_id: crypto.randomUUID(), product_key: products[0]?.key ?? '', description, note,
@@ -86,7 +89,10 @@
   }
 </script>
 
-<p class="field-note">Choose the expenses to keep and enter the final price for each. Taxes, fees, discounts and refunds are not allocated automatically. Unchecked rows are not saved.</p>
+<p class="field-note">Choose the business expenses to keep and enter the final price for each. Taxes, fees, discounts and refunds are not allocated automatically. Unchecked rows are not saved.</p>
+{#if combinedExpense}
+  <p class="field-note">Saved combined expense: {combinedExpense.description} · {money(combinedExpense.amount)}. Saving replaces it with the selected product expenses. Enter each price yourself; the saved total has not been divided.</p>
+{/if}
 {#if products.length > 1}
   <p class="field-note">Amazon item prices are reference data only. Calculate each selected product's share yourself; prices start blank when splitting by product.</p>
   {#if canUseProducts}

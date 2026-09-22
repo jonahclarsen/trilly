@@ -880,6 +880,9 @@ fn replace_business_expenses(
         if existing.is_none() && row.expense_id.is_empty() {
             return Err("Expense row ID is required".into());
         }
+        let combined = previous
+            .first()
+            .filter(|(_, e)| previous.len() == 1 && e.product_key.is_empty());
         let mut expense =
             existing
                 .map(|(_, e)| e.clone())
@@ -887,8 +890,11 @@ fn replace_business_expenses(
                     expense_id: row.expense_id,
                     plan_id: data.plan_id.clone(),
                     transaction_id: id.into(),
-                    date: transaction.date.clone(),
-                    account: account.name.clone(),
+                    date: combined
+                        .map_or_else(|| transaction.date.clone(), |(_, e)| e.date.clone()),
+                    account: combined
+                        .map_or_else(|| account.name.clone(), |(_, e)| e.account.clone()),
+                    archived: combined.is_some_and(|(_, e)| e.archived),
                     ..Default::default()
                 });
         if !keys.insert(expense.key().to_owned())

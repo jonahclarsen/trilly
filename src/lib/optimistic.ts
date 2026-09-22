@@ -38,12 +38,14 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     const transaction = result.queue.find(t => t.id === event.body.id)
     if (!transaction) return result
     const saved = result.business_expenses ?? []
+    const previous = saved.filter(e => e.plan_id === result.plan_id && e.transaction_id === transaction.id)
+    const combined = previous.length === 1 && !previous[0]?.product_key ? previous[0] : undefined
     const rows = event.body.expenses as BusinessExpenseInput[]
     const updated = rows.map(row => {
       const existing = saved.find(e => e.plan_id === result.plan_id && e.transaction_id === transaction.id && (e.expense_id ?? '') === row.expense_id)
       return {
-        plan_id: result.plan_id, transaction_id: transaction.id, date: transaction.date,
-        account: result.accounts.find(a => a.id === transaction.account_id)?.name ?? '', archived: false,
+        plan_id: result.plan_id, transaction_id: transaction.id, date: combined?.date ?? transaction.date,
+        account: combined?.account ?? result.accounts.find(a => a.id === transaction.account_id)?.name ?? '', archived: combined?.archived ?? false,
         ...existing, ...row, description: row.description.trim(),
       }
     })

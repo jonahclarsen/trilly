@@ -379,10 +379,15 @@ price, and optional note. **Add expense** adds a manual row. Enter saves;
 Shift+Enter adds a line in text fields. Reopening preserves saved prices.
 Unchecking a saved row removes it on save; undo restores the entire previous selection.
 
-For a matched Amazon order with multiple products, new expenses start as separate
-product rows with blank prices. Calculate and enter the final amount yourself.
-**Use separate product expenses** explicitly replaces an existing combined expense
-with product rows. The modal shows the collected products, quantities, item prices,
+For a linked Amazon order with multiple products, the business expense modal
+defaults to separate product rows, including when editing an existing combined
+business expense. New product prices start blank; calculate and enter each final
+amount yourself. The combined expense is replaced only when you save, with its
+note, date, account, and archive state preserved. Already saved product prices and
+selections are retained. This split applies only to business expense records;
+the original transaction and its YNAB categories are unchanged.
+
+The modal shows the collected products, quantities, item prices,
 order totals, taxes/fees when available, payment charges, refunds, and currencies
 as reference. **Choose another reference order** lets you show collected orders
 when a payment match is unavailable. Showing reference data does not allocate it:
