@@ -129,6 +129,7 @@ nav button kbd { margin-left: 3px; border: 0; padding: 0; min-width: auto; font-
 .sync-state { display: inline-flex; align-items: center; min-height: 38px; line-height: 20px; color: var(--muted); font-size: 11px; margin-right: 10px; }
 .transaction-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 15px; }
 .transaction-top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.lookup-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .amount { font-weight: 550; font-variant-numeric: tabular-nums; margin: 20px 0 10px; font-size: clamp(32px, 6vw, 41px); letter-spacing: -1.5px; }
 .bank-description { font-family: var(--font-mono); color: var(--muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 
@@ -337,7 +338,10 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 .view-switch { display: flex; flex-wrap: wrap; gap: 6px; padding-right: 12px; margin-right: 4px; border-right: 1px solid var(--line); }
 .view-switch button[aria-pressed='true'] { background: var(--active-nav); border-color: var(--accent); color: var(--accent-strong); }
 .list-workspace { width: min(1240px, 100%); }
-.list-note { margin-bottom: 16px; }
+.list-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
+.list-note .field-note { margin: 0; }
+.ynab-account-link { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 13px; }
+.ynab-account-link:hover { background: var(--paper-strong); border-color: var(--line-strong); text-decoration: none; }
 .transaction-table { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .transaction-table:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offset: 3px; }
 .transaction-table table { width: 100%; border-collapse: collapse; font-size: 13px; }

@@ -6,7 +6,7 @@
   import { businessRows, expenseKey, type BusinessExpenseInput } from './lib/business'
   import Button from './lib/Button.svelte'
   import EditableTable from './lib/EditableTable.svelte'
-  import { purchaseHistoryLinks, paypalDescription } from './lib/purchase-history'
+  import { purchaseHistoryLinks, paypalDescription, paypalMemo, isPaypal } from './lib/purchase-history'
   import PurchaseHistory from './lib/PurchaseHistory.svelte'
   import PurchaseHistoryEditor from './lib/PurchaseHistoryEditor.svelte'
   import type { BusinessExpense, PurchaseHistoryRule } from './lib/types'
@@ -27,6 +27,7 @@
     return () => { active = false; import.meta.hot?.off('trilly:purchase-history', update) }
   })
   import GooglePayee from './lib/GooglePayee.svelte'
+  import PaypalActivity from './lib/PaypalActivity.svelte'
   import AmazonOrderLink from './lib/AmazonOrderLink.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
   import BusinessExpenseEditor from './lib/BusinessExpenseEditor.svelte'
@@ -46,7 +47,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey, googlePayeeKey, amazonOrderKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -245,6 +246,8 @@
   let error = $state('')
   let modal = $state<'rules' | 'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'description' | null>(null)
   let memoDraft = $state('')
+  // Keep the caret after an untouched PayPal prefix so typing continues it.
+  let memoCaretEnd = $state(false)
   let memoId = $state('')
   let expenseId = $state('')
   let description = $state('')
@@ -282,7 +285,7 @@
   }
   function openDescription() {
     if (!current || busy || saveFailed) return
-    memoId = current.id; memoDraft = displayedMemo; modal = 'description'
+    memoId = current.id; memoDraft = displayedMemo; memoCaretEnd = amazonDraft === null && paypalDraft === paypalMemo; modal = 'description'
   }
   async function saveDescription() {
     if (!data || busy || saveFailed || !memoId) return
@@ -396,6 +399,9 @@
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
   let googlePayee = $state<{ open: () => void }>()
   let amazonOrderAction = $state<{ open: () => void }>()
+  let paypalActivity = $state<{ open: () => void }>()
+  const paypalTransaction = $derived(!!current && isPaypal(payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name))
+  const ynabAccountLink = $derived(data?.plan_id && data.account_id ? `https://app.ynab.com/${data.plan_id}/accounts/${data.account_id}` : '')
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -719,6 +725,7 @@
       [googlePayeeKey.toLowerCase()]: () => googlePayee?.open(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       [amazonOrderKey.toLowerCase()]: () => { if (amazonOrderLink) amazonOrderAction?.open() }, r: () => void sync(),
+      [paypalActivityKey.toLowerCase()]: () => paypalActivity?.open(),
       ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
     }
     // Native focused buttons retain Enter/Space activation.
@@ -848,7 +855,7 @@
         <section class="empty-state"><h1>{data.connected ? 'Choose your plan' : 'Connect YNAB'}</h1><Button primary onclick={() => modal = 'settings'}>{data.connected ? 'Choose plan' : 'Connect'}</Button></section>
       {:else if view === 'list'}
         <section aria-label="Transaction list">
-          <p class="field-note list-note">Current review batch · {remaining} to review · {reviewRows.filter(t => t.approved).length} reviewed</p>
+          <div class="list-note"><p class="field-note">Current review batch · {remaining} to review · {reviewRows.filter(t => t.approved).length} reviewed</p>{#if ynabAccountLink}<a class="ynab-account-link" href={ynabAccountLink} target="_blank" rel="noopener noreferrer" title="Open account in YNAB (new tab)">{currentAccount?.name ?? 'Account'} in YNAB<Icon name="external" /></a>{/if}</div>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll the table horizontally.) -->
           <div class="transaction-table" tabindex="0" role="region" aria-label="Review batch table">
             <table>
@@ -884,7 +891,7 @@
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
-            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={searchPayee} />{/if}</div>
+            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<div class="lookup-actions">{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={searchPayee} />{/if}{#if paypalTransaction}<PaypalActivity bind:this={paypalActivity} />{/if}</div></div>
           </div>
           <div class="amount">{money(current.amount)}</div>
           <div class="payee-detail">
@@ -1035,7 +1042,7 @@
   <Modal title="Description" subtitle={`${current?.date ?? ''} · ${payeeName}`} onclose={() => { modal = null; memoDraft = ''; memoId = '' }}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <form onsubmit={(event) => { event.preventDefault(); void saveDescription() }}>
-      <label>Description<textarea data-modal-focus bind:value={memoDraft} maxlength="500" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void saveDescription() } }}></textarea></label>
+      <label>Description<textarea data-modal-focus data-modal-caret-end={memoCaretEnd || undefined} bind:value={memoDraft} maxlength="500" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void saveDescription() } }}></textarea></label>
       <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed}>Save description</Button>
     </form>
   </Modal>

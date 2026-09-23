@@ -9,7 +9,9 @@
     queueMicrotask(() => {
       if (!node.open) return
       const input = node.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-modal-focus]')
-      input?.focus(); input?.select()
+      input?.focus()
+      if (input?.hasAttribute('data-modal-caret-end')) input.setSelectionRange(input.value.length, input.value.length)
+      else input?.select()
     })
     return { destroy() { window.removeEventListener('keydown', keydown, true); node.close() } }
   }

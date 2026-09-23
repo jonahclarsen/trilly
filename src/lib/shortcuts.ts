@@ -7,6 +7,7 @@ export function suggestionIndex(event: KeyboardEvent): number | undefined {
 export const merchantLinkKey = 'F'
 export const googlePayeeKey = 'G'
 export const amazonOrderKey = 'A'
+export const paypalActivityKey = 'P'
 
 export const shortcuts = [
   [merchantLinkKey, 'Open first merchant link in a new tab'],
@@ -16,6 +17,7 @@ export const shortcuts = [
   ['C', 'Choose category'], ['E', 'Choose payee'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo skip / approval / expense change'],
   [googlePayeeKey, 'Search payee on Google'],
   [amazonOrderKey, 'Open Amazon order when available'],
+  [paypalActivityKey, 'Open PayPal activity for PayPal transactions'],
   ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['R', 'Sync'], [',', 'Settings'], ['L', 'Lock'], ['?', 'Help & shortcuts'],
 ] as const
 

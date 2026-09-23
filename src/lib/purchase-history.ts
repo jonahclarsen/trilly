@@ -10,6 +10,10 @@ export function purchaseHistoryLinks(rules: PurchaseHistoryRule[] = [], payee: s
 }
 
 // Keep payment-provider context even when the selected payee is the merchant.
+export const paypalMemo = 'via paypal. '
+export function isPaypal(...payees: (string | null | undefined)[]) {
+  return payees.some(payee => payee?.toLowerCase().includes('paypal'))
+}
 export function paypalDescription(memo: string | null | undefined, ...payees: (string | null | undefined)[]) {
-  return !memo && payees.some(payee => payee?.toLowerCase().includes('paypal')) ? 'via paypal. ' : null
+  return !memo && isPaypal(...payees) ? paypalMemo : null
 }
