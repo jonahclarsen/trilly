@@ -3,6 +3,7 @@
   import Modal from './Modal.svelte'
   import Icon from './Icon.svelte'
   import { pickerResults } from './picker-search'
+  import { pickerQuickIndex, pickerQuickLabel, pickerQuickCount } from './shortcuts'
   import type { Option } from './types'
   let { title, options, initialQuery = '', rankCategories = false, matchPayees = false, onpick, onclose, oncreate, onrename, renameFailed = false }: { title: string; options: Option[]; initialQuery?: string; rankCategories?: boolean; matchPayees?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void; onrename?: (id: string, name: string) => Promise<string>; renameFailed?: boolean } = $props()
   let query = $state(untrack(() => initialQuery))
@@ -72,6 +73,12 @@
   const choiceCount = $derived(results.length + (canCreate ? 1 : 0))
   function keydown(event: KeyboardEvent) {
     if (event.isComposing || renaming) return
+    const quick = pickerQuickIndex(event)
+    if (quick !== undefined) {
+      event.preventDefault(); event.stopPropagation()
+      if (results[quick]) onpick(results[quick].id)
+      return
+    }
     if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && canCreate) {
       event.preventDefault(); event.stopPropagation()
       oncreate?.(newName)
@@ -100,7 +107,7 @@
       {:else}
       <button disabled={renaming} oncontextmenu={(event) => context(event, option)} id={`choice-${i}`} type="button" role="option" aria-selected={i === selected} class:selected={i === selected} onclick={() => { if (!renaming) onpick(option.id) }} onpointermove={() => selected = i}>
         <span>{option.name}{#if option.detail}<small>{option.detail}</small>{/if}</span>
-        {#if i === selected}<kbd>Enter</kbd>{/if}
+        {#if i === selected || i < pickerQuickCount}<span class="choice-keys">{#if i === selected}<kbd>Enter</kbd>{/if}{#if i < pickerQuickCount}<kbd>{pickerQuickLabel(i)}</kbd>{/if}</span>{/if}
       </button>
       {/if}
     {/each}
@@ -125,4 +132,5 @@
   .payee-rename { padding: 6px 8px; display: grid; gap: 8px; }
   .rename-status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .rename-error { color: var(--danger); }
+  .choice-keys { display: flex; gap: 6px; flex-shrink: 0; }
 </style>
