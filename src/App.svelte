@@ -488,7 +488,12 @@
       if (data && Date.now() - lastActivity >= IDLE_TIMEOUT_MS) void lock()
     }
     document.addEventListener('visibilitychange', wake)
-    return () => { stopAmazon(); unlistenAmazon(); clearInterval(amazonPing); window.removeEventListener('keydown', keydown, true); mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
+    // Browsers show their own generic leave-page prompt; custom text is ignored.
+    const leave = (event: BeforeUnloadEvent) => {
+      if (data && (saving || data.pending)) event.preventDefault()
+    }
+    window.addEventListener('beforeunload', leave)
+    return () => { window.removeEventListener('beforeunload', leave); stopAmazon(); unlistenAmazon(); clearInterval(amazonPing); window.removeEventListener('keydown', keydown, true); mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
   })
 
   function forget() {
