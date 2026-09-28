@@ -5,9 +5,9 @@
   import EditableTable from './EditableTable.svelte'
   import type { PurchaseHistoryRule } from './types'
   let { onclose, onsaved, oncommitted }: { onclose: () => void; onsaved: (rules: PurchaseHistoryRule[]) => void; oncommitted: () => void } = $props()
-  type Row = PurchaseHistoryRule & { phrases: string; key: string }
+  type Row = PurchaseHistoryRule & { phrases: string; key: string; icon_source: string }
   let rows = $state<Row[]>([])
-  const blank = (): Row => ({ key: crypto.randomUUID(), id: crypto.randomUUID(), merchant: '', url: '', priority: 10, payee_contains: [], phrases: '' })
+  const blank = (): Row => ({ key: crypto.randomUUID(), id: crypto.randomUUID(), merchant: '', url: '', priority: 10, payee_contains: [], phrases: '', icon_source: '' })
   let dragging = $state<string | null>(null)
   let table: HTMLTableElement
   let revision = $state('')
@@ -17,7 +17,7 @@
   function edited() {
     message = ''; error = ''
     const last = rows.at(-1)
-    if (last && (last.merchant || last.url || last.phrases || last.priority !== 10)) rows.push(blank())
+    if (last && (last.merchant || last.url || last.phrases || last.icon_source || last.priority !== 10)) rows.push(blank())
   }
   function move(key: string, target: number) {
     const from = rows.findIndex(row => row.key === key)
@@ -41,7 +41,7 @@
     busy = true; error = ''; message = ''
     try {
       const result = await request()
-      rows = [...result.rules.map((rule: PurchaseHistoryRule) => ({ ...rule, key: crypto.randomUUID(), phrases: rule.payee_contains.join('\n') })), blank()]
+      rows = [...result.rules.map((rule: PurchaseHistoryRule) => ({ ...rule, key: crypto.randomUUID(), phrases: rule.payee_contains.join('\n'), icon_source: rule.icon_source ?? '' })), blank()]
       revision = result.revision
       onsaved(result.rules)
     } catch (e) { error = (e as Error).message } finally { busy = false }
@@ -49,9 +49,10 @@
   async function save() {
     busy = true; error = ''; message = ''
     try {
-      const rules = rows.slice(0, -1).map(({ phrases, key, ...rule }) => ({ ...rule, payee_contains: phrases.split('\n').map(p => p.trim()).filter(Boolean) }))
+      const rules = rows.slice(0, -1).map(({ phrases, key, icon_source, ...rule }) => ({ ...rule, ...(icon_source.trim() ? { icon_source: icon_source.trim() } : {}), payee_contains: phrases.split('\n').map(p => p.trim()).filter(Boolean) }))
       const result = await request({ rules, revision })
       revision = result.revision
+      rows = [...result.rules.map((rule: PurchaseHistoryRule) => ({ ...rule, key: crypto.randomUUID(), phrases: rule.payee_contains.join('\n'), icon_source: rule.icon_source ?? '' })), blank()]
       onsaved(result.rules)
       error = result.error || ''; message = result.message || ''
       if (!result.error) oncommitted()
@@ -67,8 +68,8 @@
     <fieldset disabled={busy}>
       <EditableTable>
         <table bind:this={table} oninput={edited}>
-          <colgroup><col class="control" /><col class="merchant" /><col class="website" /><col class="phrases" /><col class="priority" /><col class="control" /></colgroup>
-          <thead><tr><th scope="col"><span class="sr-only">Order</span></th><th scope="col">Merchant</th><th scope="col">Website</th><th scope="col">Payee phrases</th><th scope="col">Priority</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
+          <colgroup><col class="control" /><col class="icon" /><col class="merchant" /><col class="website" /><col class="phrases" /><col class="priority" /><col class="control" /></colgroup>
+          <thead><tr><th scope="col"><span class="sr-only">Order</span></th><th scope="col">Icon</th><th scope="col">Merchant</th><th scope="col" title="%s is replaced with the payee">Website</th><th scope="col">Payee phrases</th><th scope="col">Priority</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
           <tbody>
             {#each rows as row, i (row.key)}
               {@const empty = i === rows.length - 1}
@@ -82,8 +83,13 @@
                     </button>
                   {/if}
                 </td>
+                <td class="icon-cell">
+                  {#if row.icon}<img src={row.icon} alt="" width="20" height="20" />{/if}
+                  <input aria-label={`Icon source ${i + 1}`} title="Page or image URL for the icon. Blank uses the website. Saving fetches missing icons." placeholder="Website" bind:value={row.icon_source} oninput={() => row.icon = undefined} />
+                  {#if row.icon}<Button icon="sync" label={`Refetch ${row.merchant || 'merchant'} icon on save`} onclick={() => { row.icon = undefined; edited() }} />{/if}
+                </td>
                 <td><input aria-label={`Merchant ${i + 1}`} required={!empty} maxlength="200" bind:value={row.merchant} /></td>
-                <td><input aria-label={`Website ${i + 1}`} type="url" required={!empty} bind:value={row.url} /></td>
+                <td><input aria-label={`Website ${i + 1}`} type="url" required={!empty} placeholder="https://…%s…" bind:value={row.url} oninput={() => { if (!row.icon_source.trim()) row.icon = undefined }} /></td>
                 <td><textarea aria-label={`Payee phrases ${i + 1}, one per line`} title="One phrase per line" required={!empty} rows="2" bind:value={row.phrases}></textarea></td>
                 <td><input aria-label={`Priority ${i + 1}`} type="number" step="1" min="-2147483648" max="2147483647" required={!empty} bind:value={row.priority} /></td>
                 <td>{#if !empty}<Button icon="close" label={`Remove ${row.merchant || 'merchant'}`} onclick={() => { rows = rows.filter(item => item.key !== row.key); edited() }} />{/if}</td>
@@ -104,9 +110,14 @@
 <style>
   fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .control { width: 44px; }
-  .merchant { width: 23%; }
-  .website { width: 34%; }
-  .phrases { width: 26%; }
+  .icon { width: 22%; }
+  .merchant { width: 16%; }
+  .website { width: 30%; }
+  .phrases { width: 20%; }
+  .icon-cell > :global(*) { vertical-align: middle; }
+  .icon-cell { white-space: nowrap; }
+  .icon-cell img { width: 20px; height: 20px; object-fit: contain; margin-right: 6px; }
+  .icon-cell input { width: calc(100% - 72px); min-width: 80px; }
   .priority { width: 90px; }
   .handle { touch-action: none; cursor: grab; color: var(--muted); }
   .dragging { background: var(--paper-strong); }

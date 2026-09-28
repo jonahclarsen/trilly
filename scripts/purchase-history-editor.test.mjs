@@ -23,7 +23,7 @@ async function repo(t) {
   await writeFile(join(root, 'other.txt'), 'original')
   await git('add', '.')
   await git('commit', '-m', 'Synthetic fixture')
-  return { root, git, store: createRulesStore(root) }
+  return { root, git, store: createRulesStore(root, async () => 'data:image/png;base64,AAAA') }
 }
 test('commits only the entire rules file, preserving unrelated staged and unstaged work', async t => {
   const { root, git, store } = await repo(t)

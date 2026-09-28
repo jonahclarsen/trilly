@@ -13,7 +13,7 @@ test('merchant phrases match case-insensitively inside payee names', () => {
   }
   for (const payee of ['LONG & MCQUADE', 'Long And McQuade', 'POS Long & McQuade 456']) {
     assert.deepEqual(purchaseHistoryLinks(rules, payee).map(({ merchant, url }) => ({ merchant, url })), [
-      { merchant: 'Long & McQuade', url: 'https://www.long-mcquade.com/page/tracking/' },
+      { merchant: 'Long & McQuade', url: 'https://mail.proton.me/u/13/almost-all-mail#keyword=mcquade' },
     ])
   }
 })

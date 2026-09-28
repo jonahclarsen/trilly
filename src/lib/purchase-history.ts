@@ -9,6 +9,11 @@ export function purchaseHistoryLinks(rules: PurchaseHistoryRule[] = [], payee: s
   return matches.filter(rule => (rule.priority ?? 0) === highestPriority)
 }
 
+// %s in a rule URL becomes the search payee.
+export function purchaseHistoryUrl(rule: PurchaseHistoryRule, query: string) {
+  return rule.url.replaceAll('%s', encodeURIComponent(query.trim()))
+}
+
 // Keep payment-provider context even when the selected payee is the merchant.
 export const paypalMemo = 'via paypal. '
 export function isPaypal(...payees: (string | null | undefined)[]) {

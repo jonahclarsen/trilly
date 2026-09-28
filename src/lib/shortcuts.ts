@@ -23,6 +23,8 @@ export function pickerQuickLabel(index: number) {
 export const merchantLinkKey = 'F'
 export const ynabAccountKey = merchantLinkKey
 export const googlePayeeKey = 'G'
+export const mailSearchKey = 'M'
+export const calendarWeekKey = 'K'
 export const amazonOrderKey = 'A'
 export const paypalActivityKey = 'P'
 export const viewKeys = { transaction: 'T', list: 'V' } as const
@@ -34,7 +36,9 @@ export const shortcuts = [
   ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'],
   ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],
   ['C', 'Choose category'], ['E', 'Choose payee'], ['⌘1–4 / Ctrl+1–4', 'Pick top category or payee result'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo skip / approval / expense change'],
-  [googlePayeeKey, 'Search payee on Google'],
+  [googlePayeeKey, 'Search original bank payee on Google'],
+  [mailSearchKey, 'Search payee in mail'],
+  [calendarWeekKey, 'Open calendar on transaction date'],
   [amazonOrderKey, 'Open Amazon order when available'],
   [paypalActivityKey, 'Open PayPal activity for PayPal transactions'],
   ['⌘C / Ctrl+C', 'Copy business expenses to sheet (no text selected)'], ['Alt+A', 'Show archived / current business expenses'],

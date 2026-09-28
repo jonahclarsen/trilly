@@ -9,6 +9,11 @@ pub struct Rule {
     url: String,
     #[serde(default)]
     priority: i32,
+    // Embedded favicon data URI; icon_source overrides where it was fetched from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon_source: Option<String>,
 }
 
 // Backend-owned registry: add merchants or alternative phrases in the JSON file.
@@ -37,7 +42,10 @@ mod tests {
                     .iter()
                     .all(|phrase| !phrase.trim().is_empty())
             );
-            let url = reqwest::Url::parse(&rule.url).unwrap();
+            if let Some(icon) = &rule.icon {
+                assert!(icon.starts_with("data:image/"));
+            }
+            let url = reqwest::Url::parse(&rule.url.replace("%s", "query")).unwrap();
             assert_eq!(url.scheme(), "https");
             assert!(url.host_str().is_some());
         }

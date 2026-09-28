@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { fetchFavicon, iconPattern, iconSourceUrl } from './favicon.mjs'
 
 const exec = promisify(execFile)
 const relative = 'server/src/purchase_history.json'
@@ -13,20 +14,34 @@ export function validateRules(rules) {
   const ids = new Set()
   return rules.map(rule => {
     if (!rule || typeof rule !== 'object') throw new Error('Invalid merchant.')
-    const { id, merchant, url, payee_contains, priority = 0 } = rule
+    const { id, merchant, url, payee_contains, priority = 0, icon, icon_source } = rule
     if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(id) || ids.has(id)) throw new Error('IDs must be unique lowercase letters, numbers and hyphens.')
     ids.add(id)
     if (typeof merchant !== 'string' || !merchant.trim() || merchant.length > 200) throw new Error('Each merchant needs a label (up to 200 characters).')
     let parsed
     try { parsed = new URL(url) } catch { throw new Error('Each merchant needs an HTTPS URL.') }
     if (typeof url !== 'string' || url.length > 2000 || parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) throw new Error('Use HTTPS URLs without embedded credentials.')
+    if (icon !== undefined && (typeof icon !== 'string' || icon.length > 100000 || !iconPattern.test(icon))) throw new Error('Icons must be embedded images under 100 KB.')
+    if (icon_source !== undefined && (typeof icon_source !== 'string' || icon_source.length > 2000)) throw new Error('Icon sources must be URLs.')
+    const source = icon_source?.trim() ? iconSourceUrl(icon_source).href : undefined
     if (!Array.isArray(payee_contains) || !payee_contains.length || payee_contains.length > 100 || payee_contains.some(p => typeof p !== 'string' || !p.trim() || p.length > 200)) throw new Error('Add at least one nonempty payee phrase per merchant (up to 200 characters each).')
     if (!Number.isInteger(priority) || priority < -2147483648 || priority > 2147483647) throw new Error('Priority must be a 32-bit whole number.')
-    return { id, merchant: merchant.trim(), payee_contains: payee_contains.map(p => p.trim()), url, priority }
+    return { id, merchant: merchant.trim(), payee_contains: payee_contains.map(p => p.trim()), url, priority, ...(source ? { icon_source: source } : {}), ...(icon ? { icon } : {}) }
   })
 }
 
-export function createRulesStore(root) {
+// Rules without an icon get their page's favicon, or the chosen icon source's.
+export async function addIcons(rules, fetchIcon = fetchFavicon) {
+  const failed = []
+  const results = await Promise.all(rules.map(async rule => {
+    if (rule.icon) return rule
+    try { return { ...rule, icon: await fetchIcon(rule.icon_source ?? rule.url) } }
+    catch { failed.push(rule.merchant); return rule }
+  }))
+  return { rules: validateRules(results), failed }
+}
+
+export function createRulesStore(root, fetchIcon = fetchFavicon) {
   const path = resolve(root, relative)
   const git = (...args) => exec('git', args, { cwd: root, timeout: 30000, maxBuffer: 1024 * 1024 })
   let busy = false
@@ -38,9 +53,11 @@ export function createRulesStore(root) {
     if (busy) throw new Error('Another save is running. Retry shortly.')
     busy = true
     try {
-      const rules = validateRules(input.rules)
       const current = await read()
       if (input.revision !== current.revision) throw new Error('The file changed since you opened it. Close and reopen the editor before saving.')
+      const { rules, failed } = await addIcons(validateRules(input.rules), fetchIcon)
+      const note = failed.length ? ` Icons unavailable for ${failed.join(', ')}; set an icon source to retry.` : ''
+      if ((await read()).revision !== current.revision) throw new Error('The file changed while fetching icons. Close and reopen the editor before saving.')
       await git('ls-files', '--error-unmatch', '--', relative)
       await git('symbolic-ref', '--quiet', 'HEAD')
       const conflicts = await git('diff', '--name-only', '--diff-filter=U')
@@ -56,9 +73,9 @@ export function createRulesStore(root) {
       const result = { rules, revision: revision(text) }
       try {
         const diff = await git('diff', 'HEAD', '--', relative)
-        if (!diff.stdout) return { ...result, message: 'No changes to commit.' }
+        if (!diff.stdout) return { ...result, message: `No changes to commit.${note}` }
         await git('commit', '--only', '-m', 'Update purchase history rules', '--', relative)
-        return { ...result, message: 'Saved and committed.' }
+        return { ...result, message: `Saved and committed.${note}` }
       } catch {
         return { ...result, error: 'File saved, but Git could not commit it. Check Git identity, hooks, or locks, then retry Save and commit.' }
       }
@@ -83,7 +100,7 @@ export function purchaseHistoryEditor(root, origin) {
           let body = ''
           for await (const chunk of req) {
             body += chunk.toString()
-            if (Buffer.byteLength(body) > 256000) return reply(413, { error: 'Rules file is too large.' })
+            if (Buffer.byteLength(body) > 8000000) return reply(413, { error: 'Rules file is too large.' })
           }
           const result = await store.save(JSON.parse(body))
           server.ws.send({ type: 'custom', event: 'trilly:purchase-history', data: result.rules })

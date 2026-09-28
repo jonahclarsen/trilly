@@ -6,7 +6,7 @@
   import { businessRows, expenseKey, type BusinessExpenseInput } from './lib/business'
   import Button from './lib/Button.svelte'
   import EditableTable from './lib/EditableTable.svelte'
-  import { purchaseHistoryLinks, paypalDescription, paypalMemo, isPaypal } from './lib/purchase-history'
+  import { purchaseHistoryLinks, purchaseHistoryUrl, paypalDescription, paypalMemo, isPaypal } from './lib/purchase-history'
   import PurchaseHistory from './lib/PurchaseHistory.svelte'
   import PurchaseHistoryEditor from './lib/PurchaseHistoryEditor.svelte'
   import type { BusinessExpense, PurchaseHistoryRule } from './lib/types'
@@ -27,6 +27,9 @@
     return () => { active = false; import.meta.hot?.off('trilly:purchase-history', update) }
   })
   import GooglePayee from './lib/GooglePayee.svelte'
+  import MailSearch from './lib/MailSearch.svelte'
+  import CalendarWeek from './lib/CalendarWeek.svelte'
+  import { readLookup, saveLookup, MAIL_PROVIDERS, CALENDAR_PROVIDERS, type MailProvider, type CalendarProvider } from './lib/lookup'
   import PaypalActivity from './lib/PaypalActivity.svelte'
   import AmazonOrderLink from './lib/AmazonOrderLink.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
@@ -48,7 +51,7 @@
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
   import { pageFromPath, pagePath, type Page } from './lib/route'
-  import { shortcuts, suggestionIndex, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, googlePayeeKey, mailSearchKey, calendarWeekKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -443,8 +446,13 @@
   ) : null)
   const displayedMemo = $derived(amazonDraft ?? paypalDraft ?? current?.memo ?? '')
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
+  // Google gets the bank's text verbatim; mail and %s links use the cleaned payee.
+  const googleQuery = $derived(current?.import_payee_name_original ?? current?.import_payee_name ?? searchPayee)
   let googlePayee = $state<{ open: () => void }>()
   let ynabAccountAction = $state<HTMLAnchorElement>()
+  let mailSearch = $state<{ open: () => void }>()
+  let calendarWeek = $state<{ open: () => void }>()
+  let lookup = $state(readLookup())
   let amazonOrderAction = $state<{ open: () => void }>()
   let paypalActivity = $state<{ open: () => void }>()
   const paypalTransaction = $derived(!!current && isPaypal(payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name))
@@ -453,6 +461,7 @@
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
+  $effect(() => { saveLookup(lookup) })
   $effect(() => {
     if (ready && !data && !modal) queueMicrotask(() => document.querySelector<HTMLInputElement>('.unlock-card input')?.focus())
   })
@@ -816,11 +825,13 @@
     const actions: Record<string, () => void> = {
       [merchantLinkKey.toLowerCase()]: () => {
         const link = current && purchaseHistoryLinks(devRules ?? data?.purchase_history_rules, payeeName)[0]
-        if (link) window.open(link.url, '_blank', 'noopener,noreferrer')
+        if (link) window.open(purchaseHistoryUrl(link, searchPayee), '_blank', 'noopener,noreferrer')
       },
       enter: () => void approve(),
       [viewKeys.transaction.toLowerCase()]: showTransactionView, [viewKeys.list.toLowerCase()]: () => void showListView(),
       [googlePayeeKey.toLowerCase()]: () => googlePayee?.open(),
+      [mailSearchKey.toLowerCase()]: () => mailSearch?.open(),
+      [calendarWeekKey.toLowerCase()]: () => calendarWeek?.open(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       [amazonOrderKey.toLowerCase()]: () => { if (amazonOrderLink) amazonOrderAction?.open() }, r: () => void sync(),
       [paypalActivityKey.toLowerCase()]: () => paypalActivity?.open(),
@@ -989,7 +1000,7 @@
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
-            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<div class="lookup-actions">{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={searchPayee} />{/if}{#if paypalTransaction}<PaypalActivity bind:this={paypalActivity} />{/if}</div></div>
+            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<div class="lookup-actions">{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={googleQuery} />{/if}<MailSearch bind:this={mailSearch} provider={lookup.mail} payee={searchPayee} /><CalendarWeek bind:this={calendarWeek} provider={lookup.calendar} date={current.date} />{#if paypalTransaction}<PaypalActivity bind:this={paypalActivity} />{/if}<PurchaseHistory rules={devRules ?? data.purchase_history_rules} payee={payeeName} query={searchPayee} /></div></div>
           </div>
           <div class="amount">{money(current.amount)}</div>
           <div class="payee-detail">
@@ -1004,7 +1015,6 @@
               <p class="bank-description">{current.import_payee_name_original ?? current.import_payee_name}</p>
             </div>
           {/if}
-          <PurchaseHistory rules={devRules ?? data.purchase_history_rules} payee={payeeName} />
 
           {#if special(current)}
             <div class="special-transaction">
@@ -1103,6 +1113,11 @@
       </div>
     </section>
     <LogoSettings value={logo} onchange={(value) => logo = value} />
+    <section class="settings-section">
+      <h3>Lookups</h3>
+      <label class="setting-row">Mail<select value={lookup.mail} onchange={(event) => lookup = { ...lookup, mail: event.currentTarget.value as MailProvider }}>{#each MAIL_PROVIDERS as provider}<option value={provider.id}>{provider.name}</option>{/each}</select></label>
+      <label class="setting-row">Calendar<select value={lookup.calendar} onchange={(event) => lookup = { ...lookup, calendar: event.currentTarget.value as CalendarProvider }}>{#each CALENDAR_PROVIDERS as provider}<option value={provider.id}>{provider.name}</option>{/each}</select></label>
+    </section>
     {#if import.meta.env.DEV && devRules !== null}
       <section class="settings-section">
         <h3>Development</h3>

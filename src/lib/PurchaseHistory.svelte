@@ -1,23 +1,20 @@
 <script lang="ts">
   import { merchantLinkKey } from './shortcuts'
-  import Icon from './Icon.svelte'
-  import { purchaseHistoryLinks } from './purchase-history'
+  import LookupLink from './LookupLink.svelte'
+  import { purchaseHistoryLinks, purchaseHistoryUrl } from './purchase-history'
   import type { PurchaseHistoryRule } from './types'
 
-  let { rules = [], payee }: { rules?: PurchaseHistoryRule[]; payee: string } = $props()
+  // Matches on the displayed payee; %s in a URL uses the search payee.
+  let { rules = [], payee, query }: { rules?: PurchaseHistoryRule[]; payee: string; query: string } = $props()
   const links = $derived(purchaseHistoryLinks(rules, payee))
 </script>
 
-{#if links.length}
-  <div class="purchase-history">
-    {#each links as link, index (link.id)}
-      <a href={link.url} target="_blank" rel="noopener noreferrer" aria-keyshortcuts={index === 0 ? merchantLinkKey : undefined} title={`Open ${link.merchant} in a new tab${index === 0 ? ` (${merchantLinkKey})` : ''}`}>{link.merchant}<Icon name="external" /></a>
-    {/each}
-  </div>
-{/if}
+{#each links as link, index (link.id)}
+  <LookupLink href={purchaseHistoryUrl(link, query)} label={`Open ${link.merchant}`} text={link.merchant} shortcut={index === 0 ? merchantLinkKey : undefined}>
+    {#if link.icon}<img class="favicon" src={link.icon} alt="" width="20" height="20" />{/if}
+  </LookupLink>
+{/each}
 
 <style>
-  .purchase-history { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  a { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 12px; background: transparent; }
-  a:hover { background: var(--paper-strong); border-color: var(--line-strong); text-decoration: none; }
+  .favicon { width: 20px; height: 20px; object-fit: contain; }
 </style>
