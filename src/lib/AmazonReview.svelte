@@ -6,7 +6,8 @@
   import type { Transaction } from './types'
   let { store, transaction, currency, targets, disabled, collecting = false, assignments = [], onchange, onorderlink, onorders }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void; onorderlink?: (link: string) => void; onorders?: (orders: AmazonOrder[]) => void } = $props()
   const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments))
-  let choice = $state('')
+  // A reopened review starts from the payment it was matched to.
+  let choice = $state(untrack(() => assignments.find(a => a.transaction_id === transaction.id)?.payment_id ?? ''))
   let selected = $state<string[]>([])
   let touched = $state(false)
   let search = $state('')

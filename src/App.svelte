@@ -406,8 +406,8 @@
     if (data && routed && location.pathname !== path) history.pushState(null, '', path + location.search + location.hash)
   })
   async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
-  const unsyncedReviews = $derived(new Set(data?.unsynced_reviews?.map(t => t.id)))
-  // An unsynced review leaves the sync queue so it can be edited again.
+  const unsyncedReviews = $derived(new Set(data?.unsynced_reviews?.map(r => r.before.id)))
+  // An unsynced review leaves the sync queue and reopens with its saved choices.
   function reopenTransaction(id: string) {
     if (!data || saveFailed || !unsyncedReviews.has(id)) return
     enqueue({ body: { action: 'reopen', id } })
@@ -445,7 +445,8 @@
   const paypalDraft = $derived(current && !descriptionFixed ? paypalDescription(
     current.memo, payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name,
   ) : null)
-  const displayedMemo = $derived(amazonDraft ?? paypalDraft ?? current?.memo ?? '')
+  const draftMemo = $derived(data?.review_drafts?.find(d => d.id === currentId)?.memo ?? null)
+  const displayedMemo = $derived(amazonDraft ?? paypalDraft ?? draftMemo ?? current?.memo ?? '')
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
   // Google gets the bank's text verbatim; mail and %s links use the cleaned payee.
   const googleQuery = $derived(current?.import_payee_name_original ?? current?.import_payee_name ?? searchPayee)
@@ -473,6 +474,13 @@
       amazonDraft = null; amazonMarket = t ? automaticAmazonMarketplace(t) : null; amazonPayment = undefined; amazonOrderLink = ''; amazonExpenseOrders = []; amazonMemoTouched = false; amazonPayeeTouched = false
       payeeFixed = false; categoryFixed = false; descriptionFixed = false
       newPayee = null; payee = t?.payee_id ?? null; category = t?.category_id ?? null; edited = false; picks = []
+      // A reopened review picks up where it left off instead of starting over.
+      const draft = data?.review_drafts?.find(d => d.id === id)
+      if (draft) {
+        payee = draft.payee_id; newPayee = draft.payee_id ? null : draft.payee_name ?? null; category = draft.category_id
+        payeeFixed = true; categoryFixed = true; edited = true; amazonMarket = null; amazonPayeeTouched = true
+        if (draft.memo !== undefined) { descriptionFixed = true; amazonMemoTouched = true }
+      }
     })
   })
   $effect(() => {
@@ -687,7 +695,7 @@
       return
     }
     const selectedName = selectedNewPayee ?? data.payees.find(p => p.id === selectedPayee)?.name
-    const reviewMemo = amazonDraft !== null ? amazonDraft.toLowerCase() : paypalDraft ?? (descriptionFixed ? null : paypalDescription(current.memo, selectedName))
+    const reviewMemo = amazonDraft !== null ? amazonDraft.toLowerCase() : paypalDraft ?? draftMemo ?? (descriptionFixed ? null : paypalDescription(current.memo, selectedName))
     enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(reviewMemo !== null ? { memo: reviewMemo } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
   }

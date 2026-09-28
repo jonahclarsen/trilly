@@ -10,6 +10,7 @@ export type Transaction = {
 }
 export type Suggestion = { payee_id: string | null; category_id: string | null; payee: string; category: string; count: number; reason: string }
 export type PurchaseHistoryRule = { id: string; merchant: string; payee_contains: string[]; url: string; priority?: number; icon?: string; icon_source?: string }
+export type ReviewChange = { id: string; payee_id: string | null; payee_name?: string; category_id: string | null; memo?: string; approved: boolean }
 export type Snapshot = {
   purchase_history_rules?: PurchaseHistoryRule[];
   review_rows?: Transaction[];
@@ -26,7 +27,8 @@ export type Snapshot = {
   categories: { id: string; name: string; category_group_name: string }[];
   payees: Option[]; queue: Transaction[]; pending: number; conflicts: number;
   undo_transactions?: Transaction[];
-  unsynced_reviews?: Transaction[];
+  unsynced_reviews?: { before: Transaction; change: ReviewChange }[];
+  review_drafts?: ReviewChange[];
   can_undo: boolean; synced_at: string | null; history_count: number; sync_error?: string; ynab_retry_at?: string | null;
 }
 export function special(t: Transaction) {

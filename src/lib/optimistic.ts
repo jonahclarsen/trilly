@@ -1,12 +1,17 @@
 import { expenseKey, type BusinessExpenseInput } from './business.ts'
 import { amazonPayee } from './amazon.ts'
-import type { Snapshot, Transaction } from './types.ts'
+import type { ReviewChange, Snapshot, Transaction } from './types.ts'
 
 export type QueuedAction = { body: Record<string, unknown>; restore?: Transaction }
 
 export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
   const result = { ...snapshot, queue: [...snapshot.queue], review_rows: [...(snapshot.review_rows ?? snapshot.queue)], undo_transactions: [...(snapshot.undo_transactions ?? [])] }
-  if (event.body.action === 'description') {
+  if (event.body.action === 'description' && result.review_drafts?.some(d => d.id === event.body.id)) {
+    // A reopened review keeps its description with the draft until it is approved.
+    const memo = String(event.body.description)
+    result.review_drafts = result.review_drafts.map(d => d.id === event.body.id ? { ...d, memo } : d)
+    result.review_rows = result.review_rows.map(t => t.id === event.body.id ? { ...t, memo } : t)
+  } else if (event.body.action === 'description') {
     const transaction = result.queue.find(t => t.id === event.body.id)
     const memo = String(event.body.description)
     if (!transaction || (transaction.memo ?? '') === memo) return result
@@ -66,9 +71,17 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     if (typeof event.body.amazon_payment_id === 'string') result.amazon_assignments = [...(result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.body.id), { payment_id: event.body.amazon_payment_id, transaction_id: String(event.body.id) }]
     const transaction = result.queue.find(t => t.id === event.body.id)
     if (transaction) result.undo_transactions.push(transaction)
-    // Reopening restores the transaction as it was before review, without its queued description.
+    // Remember the review so it can be reopened as a draft before it syncs.
     const original = result.undo_transactions.find(t => t.id === event.body.id)
-    if (transaction) result.unsynced_reviews = [...(result.unsynced_reviews ?? []), original ?? transaction]
+    const payeeName = typeof event.body.payee_name === 'string' ? event.body.payee_name : typeof event.body.amazon_marketplace === 'string' ? event.body.amazon_marketplace : undefined
+    const namedPayee = payeeName ? snapshot.payees.find(p => p.name.toLowerCase() === payeeName.trim().toLowerCase()) : undefined
+    if (transaction) result.unsynced_reviews = [...(result.unsynced_reviews ?? []), { before: original ?? transaction, change: {
+      id: transaction.id, approved: true, category_id: (event.body.category_id as string | null) ?? null,
+      payee_id: payeeName ? namedPayee?.id ?? null : (event.body.payee_id as string | null) ?? null,
+      ...(payeeName && !namedPayee ? { payee_name: payeeName } : {}),
+      ...(typeof event.body.memo === 'string' ? { memo: event.body.memo } : {}),
+    } }]
+    if (result.review_drafts) result.review_drafts = result.review_drafts.filter(d => d.id !== event.body.id)
     result.review_rows = result.review_rows.map(t => t.id !== event.body.id ? t : {
       ...t, approved: true,
       payee_name: typeof event.body.payee_name === 'string' ? event.body.payee_name : typeof event.body.amazon_marketplace === 'string' ? amazonPayee(snapshot.payees, event.body.amazon_marketplace)?.name ?? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
@@ -86,7 +99,7 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     if (event.restore) result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.restore!.id)
     result.undo_transactions.pop()
     if (event.restore) result.description_pending = (result.description_pending ?? []).filter(id => id !== event.restore!.id)
-    if (event.restore) result.unsynced_reviews = (result.unsynced_reviews ?? []).filter(t => t.id !== event.restore!.id)
+    if (event.restore) result.unsynced_reviews = (result.unsynced_reviews ?? []).filter(r => r.before.id !== event.restore!.id)
     if (event.restore && event.restore.account_id === result.account_id) {
       result.review_rows = [event.restore, ...result.review_rows.filter(t => t.id !== event.restore!.id)]
       result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
@@ -94,17 +107,26 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     result.pending = Math.max(0, result.pending - 1)
     result.can_undo = result.undo_transactions.length > 0
   } else if (event.body.action === 'reopen') {
-    // Take an unsynced review and any queued description back out of the sync queue.
-    const transaction = result.unsynced_reviews?.find(t => t.id === event.body.id)
-    if (!transaction) return result
-    result.unsynced_reviews = result.unsynced_reviews!.filter(t => t.id !== transaction.id)
-    result.undo_transactions = result.undo_transactions.filter(t => t.id !== transaction.id)
-    result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== transaction.id)
-    if (result.amazon_targets && !transaction.transfer_account_id) result.amazon_targets = [transaction, ...result.amazon_targets.filter(t => t.id !== transaction.id)]
-    result.review_rows = result.review_rows.map(t => t.id === transaction.id ? transaction : t)
-    result.queue = [transaction, ...result.queue.filter(t => t.id !== transaction.id)]
+    // Take an unsynced review out of the sync queue and keep it as an unapproved draft.
+    const review = result.unsynced_reviews?.find(r => r.before.id === event.body.id)
+    if (!review) return result
+    const { before, change } = review
+    result.unsynced_reviews = result.unsynced_reviews!.filter(r => r !== review)
+    result.review_drafts = [...(result.review_drafts ?? []).filter(d => d.id !== before.id), change]
+    result.undo_transactions = result.undo_transactions.filter(t => t.id !== before.id)
+    if (result.amazon_targets && !before.transfer_account_id) result.amazon_targets = [before, ...result.amazon_targets.filter(t => t.id !== before.id)]
+    result.review_rows = result.review_rows.map(t => t.id === before.id ? drafted(snapshot, before, change) : t)
+    result.queue = [before, ...result.queue.filter(t => t.id !== before.id)]
     result.pending = Math.max(0, result.pending - 1)
     result.can_undo = result.undo_transactions.length > 0
   }
   return result
+}
+
+function drafted(snapshot: Snapshot, t: Transaction, change: ReviewChange): Transaction {
+  return {
+    ...t, payee_id: change.payee_id, category_id: change.category_id, memo: change.memo ?? t.memo,
+    payee_name: change.payee_name ?? snapshot.payees.find(p => p.id === change.payee_id)?.name ?? null,
+    category_name: snapshot.categories.find(c => c.id === change.category_id)?.name ?? null,
+  }
 }

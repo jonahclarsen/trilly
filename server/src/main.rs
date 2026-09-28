@@ -212,15 +212,22 @@ fn snapshot(d: &Data) -> Value {
         .cloned()
         .collect();
     for row in &mut review_rows {
-        if let Some(p) = d.pending.iter().find(|p| p.change.id == row.id) {
-            row.approved = p.change.approved;
-            if let Some(memo) = &p.change.memo {
+        // A reopened review shows its draft until it is approved again.
+        let change = d
+            .pending
+            .iter()
+            .find(|p| p.change.id == row.id)
+            .map(|p| &p.change)
+            .or_else(|| d.review_drafts.iter().find(|c| c.id == row.id));
+        if let Some(change) = change {
+            row.approved = change.approved && d.pending.iter().any(|p| p.change.id == row.id);
+            if let Some(memo) = &change.memo {
                 row.memo = Some(memo.clone());
             }
-            if !p.change.memo_only {
-                row.payee_id = p.change.payee_id.clone();
-                row.category_id = p.change.category_id.clone();
-                row.payee_name = p.change.payee_name.clone().or_else(|| {
+            if !change.memo_only {
+                row.payee_id = change.payee_id.clone();
+                row.category_id = change.category_id.clone();
+                row.payee_name = change.payee_name.clone().or_else(|| {
                     d.payees
                         .iter()
                         .find(|v| Some(&v.id) == row.payee_id.as_ref())
@@ -247,6 +254,7 @@ fn snapshot(d: &Data) -> Value {
         "review_rows": review_rows, "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "unsynced_reviews": unsynced_reviews(d),
+        "review_drafts": d.review_drafts.iter().filter(|c| queue.iter().any(|t| t.id == c.id)).collect::<Vec<_>>(),
         "business_expenses": d.business_expenses,
         "business_categories": business_categories(d),
         "can_undo_business": !d.business_undo.is_empty() || !d.business_archive_undo.is_empty(),
@@ -255,8 +263,8 @@ fn snapshot(d: &Data) -> Value {
         "history_count": d.transactions.iter().filter(|t| t.approved && !t.deleted).count()})
 }
 
-// Reviews that can still be reopened, as they were before review.
-fn unsynced_reviews(d: &Data) -> Vec<&Transaction> {
+// Reviews that can still be reopened: the transaction before review and the review.
+fn unsynced_reviews(d: &Data) -> Vec<Value> {
     d.pending
         .iter()
         .filter(|p| {
@@ -265,7 +273,7 @@ fn unsynced_reviews(d: &Data) -> Vec<&Transaction> {
                 && !p.conflict
                 && p.before.account_id == d.account_id
         })
-        .map(|p| &p.before)
+        .map(|p| json!({"before": p.before, "change": p.change}))
         .collect()
 }
 
@@ -794,6 +802,7 @@ async fn action(
                     transaction_id: id.clone(),
                 });
             }
+            next.review_drafts.retain(|d| d.id != id);
             next.undo.push(pending);
             if next.undo.len() > 100 {
                 next.undo.remove(0);
@@ -851,6 +860,11 @@ async fn action(
 fn save_description(data: &mut Data, id: &str, description: String) -> Result<()> {
     if description.chars().count() > 500 {
         return Err("Description must be 500 characters or fewer".into());
+    }
+    // A reopened review keeps its description with the draft until it is approved.
+    if let Some(draft) = data.review_drafts.iter_mut().find(|d| d.id == id) {
+        draft.memo = Some(description);
+        return Ok(());
     }
     if let Some(index) = data.pending.iter().position(|p| p.change.id == id) {
         // Replace an unsynced description instead of waiting for YNAB.
@@ -1239,20 +1253,23 @@ fn undo(data: &mut Data) -> Result<()> {
     Ok(())
 }
 
-// Take an unsynced review back out of the sync queue so it can be reviewed
-// again. Every queued change to it, including a description edit, is dropped;
-// saving the review queues them again. A review a sync already sent is left alone.
+// Take an unsynced review back out of the sync queue so it can be edited. Every
+// queued change to it is dropped and the review is kept as an unapproved draft;
+// approving it queues the changes again. The Amazon payment match is kept. A
+// review a sync already sent is left alone.
 fn reopen(data: &mut Data, id: &str) -> Result<()> {
-    if !data
+    let Some(review) = data
         .pending
         .iter()
-        .any(|p| p.change.id == id && p.change.approved && !p.change.memo_only && !p.conflict)
-    {
+        .find(|p| p.change.id == id && p.change.approved && !p.change.memo_only && !p.conflict)
+        .map(|p| p.change.clone())
+    else {
         return Ok(());
-    }
+    };
     data.pending.retain(|p| p.change.id != id);
     data.undo.retain(|p| p.change.id != id);
-    data.amazon_assignments.retain(|a| a.transaction_id != id);
+    data.review_drafts.retain(|d| d.id != id);
+    data.review_drafts.push(review);
     Ok(())
 }
 

@@ -223,6 +223,9 @@ pub struct Data {
     pub amazon: crate::amazon::Store,
     #[serde(default)]
     pub amazon_assignments: Vec<crate::amazon::Assignment>,
+    // Reopened reviews waiting to be approved again; never synced on their own.
+    #[serde(default)]
+    pub review_drafts: Vec<Change>,
     #[serde(default)]
     pub amazon_collected_targets: Vec<String>,
     #[serde(default)]
