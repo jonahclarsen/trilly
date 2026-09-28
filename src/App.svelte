@@ -47,6 +47,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
+  import { pageFromPath, pagePath, type Page } from './lib/route'
   import { shortcuts, suggestionIndex, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
@@ -347,7 +348,7 @@
     } })
     businessMessage = 'Expense saved.'
   }
-  let view = $state<'transaction' | 'list'>('transaction')
+  let view = $state<'transaction' | 'list'>(pageFromPath(location.pathname) === 'list' ? 'list' : 'transaction')
   let selectedId = $state<string | null>(null)
   let skipped = $state<string[]>([])
   // Local skips share ordering with persisted edits, but never change backend data.
@@ -376,6 +377,30 @@
     // The browser clamps this position when the list cannot scroll far enough.
     window.scrollTo({ top: row ? Math.max(0, window.scrollY + row.getBoundingClientRect().top - window.innerHeight / 4) : 0, behavior: 'instant' })
   }
+  // The URL names the open page. Opening a page pushes history so Back closes it;
+  // the path is applied once data loads, since most pages need it.
+  let routed = $state(false)
+  const page = $derived<Page>(modal === 'settings' ? 'settings' : modal === 'rules' ? 'rules' : modal === 'business' ? 'business' : modal === 'shortcuts' ? 'help' : view)
+  function applyPage(target: Page) {
+    if (!data) return
+    if (target === 'settings' || (target === 'rules' && !import.meta.env.DEV)) modal = 'settings'
+    else if (target === 'rules') modal = 'rules'
+    else if (target === 'business') { if (modal !== 'business') openBusiness() }
+    else if (target === 'help') modal = 'shortcuts'
+    else {
+      if (modal === 'settings' || modal === 'rules') closeSettings()
+      else if (modal === 'business' || modal === 'shortcuts') modal = null
+      if (target === 'list') void showListView()
+      else if (view !== 'transaction') showTransactionView()
+    }
+  }
+  $effect(() => {
+    if (data && !routed) untrack(() => { routed = true; if (data?.connected) applyPage(pageFromPath(location.pathname)) })
+  })
+  $effect(() => {
+    const path = pagePath(page)
+    if (data && routed && location.pathname !== path) history.pushState(null, '', path + location.search + location.hash)
+  })
   async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
   const unsyncedReviews = $derived(new Set(data?.unsynced_reviews?.map(t => t.id)))
   // An unsynced review leaves the sync queue so it can be edited again.
@@ -488,6 +513,8 @@
         }).catch(error => { if (mounted) handleError(error) }).finally(() => { if (mounted) busy = false })
       } else if (unlockMode === 'macos' && shouldAutoUnlock()) void unlock()
     }).catch(error => { if (mounted) { ready = true; handleError(error) } })
+    const navigate = () => applyPage(pageFromPath(location.pathname))
+    window.addEventListener('popstate', navigate)
     const media = matchMedia('(prefers-color-scheme: dark)')
     const update = () => {
       now = Date.now(); systemDark = media.matches
@@ -509,12 +536,12 @@
       if (data && (saving || data.pending)) event.preventDefault()
     }
     window.addEventListener('beforeunload', leave)
-    return () => { window.removeEventListener('beforeunload', leave); stopAmazon(); unlistenAmazon(); clearInterval(amazonPing); window.removeEventListener('keydown', keydown, true); mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
+    return () => { window.removeEventListener('popstate', navigate); window.removeEventListener('beforeunload', leave); stopAmazon(); unlistenAmazon(); clearInterval(amazonPing); window.removeEventListener('keydown', keydown, true); mounted = false; sessionEpoch++; media.removeEventListener('change', update); clearInterval(timer); clearTimeout(syncTimer); document.removeEventListener('visibilitychange', wake) }
   })
 
   function forget() {
     amazonExpenseOrders = []; stopAmazon(); amazonGeneration++; amazonScope = ''; amazon = emptyAmazon(); amazonHTML = ''; amazonOrderURL = ''; amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = ''; amazonPackets.clear(); amazonSetup = false
-    sessionEpoch++; setSession(''); data = null; workspaceReady = false; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
+    sessionEpoch++; setSession(''); data = null; routed = false; workspaceReady = false; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; syncError = ''; syncDueBy = 0; suggestionCache.clear()
     picks = []; clearSkipped(); payee = null; newPayee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false

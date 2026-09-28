@@ -12,7 +12,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{any, get, post},
 };
 use model::*;
 use rand::{RngCore, rngs::OsRng};
@@ -24,7 +24,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const IDLE: Duration = Duration::from_secs(6 * 60 * 60);
@@ -1330,7 +1330,9 @@ fn router(shared: Shared, origin: String, dist: PathBuf) -> Router {
                 .post(amazon_import)
                 .layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
         )
-        .fallback_service(ServeDir::new(dist))
+        .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))
+        // Page paths such as /list load the app, which opens that page.
+        .fallback_service(ServeDir::new(&dist).fallback(ServeFile::new(dist.join("index.html"))))
         .layer(DefaultBodyLimit::max(32 * 1024))
         .layer(middleware::from_fn_with_state(origin, boundary))
         .with_state(shared)
