@@ -47,7 +47,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys, merchantLinkKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, viewKeys, merchantLinkKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -693,8 +693,6 @@
       const actions: Record<string, () => void> = {
         [menuKeys.settings]: () => modal = 'settings',
         ...(data ? {
-          [menuKeys.transaction]: showTransactionView,
-          [menuKeys.list]: () => void showListView(),
           [menuKeys.sync]: () => { if (!busy && !saving && !saveFailed && data?.plan_id) void sync() },
           [menuKeys.undo]: undo,
           [menuKeys.business]: openBusiness,
@@ -717,7 +715,7 @@
     if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoBusiness(); return }
     if (modal) return
     if (typing) return
-    if (view === 'list' && !['u', 'r', 'a', ',', 'l', '?'].includes(event.key.toLowerCase())) return
+    if (view === 'list' && !['t', 'v', 'u', 'r', 'a', ',', 'l', '?'].includes(event.key.toLowerCase())) return
     const index = suggestionIndex(event)
     if (index !== undefined) {
       event.preventDefault()
@@ -731,6 +729,7 @@
         if (link) window.open(link.url, '_blank', 'noopener,noreferrer')
       },
       enter: () => void approve(),
+      [viewKeys.transaction.toLowerCase()]: showTransactionView, [viewKeys.list.toLowerCase()]: () => void showListView(),
       [googlePayeeKey.toLowerCase()]: () => googlePayee?.open(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       [amazonOrderKey.toLowerCase()]: () => { if (amazonOrderLink) amazonOrderAction?.open() }, r: () => void sync(),
@@ -772,8 +771,8 @@
       <nav aria-label="App controls">
         {#if data}
           <div class="view-switch" role="group" aria-label="Transaction views">
-            <Button icon="transaction" label="Transaction" altKey={menuKeys.transaction} pressed={view === 'transaction'} onclick={showTransactionView}>Transaction</Button>
-            <Button icon="list" label="List" altKey={menuKeys.list} pressed={view === 'list'} onclick={() => void showListView()}>List</Button>
+            <Button icon="transaction" label="Transaction" shortcut={viewKeys.transaction} pressed={view === 'transaction'} onclick={showTransactionView}>Transaction</Button>
+            <Button icon="list" label="List" shortcut={viewKeys.list} pressed={view === 'list'} onclick={() => void showListView()}>List</Button>
           </div>
           <span class="sync-state" aria-live="polite">{saveFailed ? 'Save failed' : syncing ? (saving > 1 ? `Syncing · ${saving - 1} saving` : 'Syncing') : saving ? `${saving} saving` : data.pending ? `${data.pending} pending` : data.synced_at ? syncLabel(data.synced_at, now) : ''}</span>
           <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>

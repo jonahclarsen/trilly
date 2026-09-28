@@ -21,10 +21,12 @@ export const merchantLinkKey = 'F'
 export const googlePayeeKey = 'G'
 export const amazonOrderKey = 'A'
 export const paypalActivityKey = 'P'
+export const viewKeys = { transaction: 'T', list: 'V' } as const
 
 export const shortcuts = [
   [merchantLinkKey, 'Open first merchant link in a new tab'],
-  ['Alt+T', 'Transaction view'], ['Alt+V', 'List view'], ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
+  [viewKeys.transaction, 'Transaction view'], [viewKeys.list, 'List view'],
+  ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
   ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'], ['Alt+L', 'Lock'],
   ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],
   ['C', 'Choose category'], ['E', 'Choose payee'], ['⌘1–4 / Ctrl+1–4', 'Pick top category or payee result'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo skip / approval / expense change'],
@@ -34,7 +36,7 @@ export const shortcuts = [
   ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['R', 'Sync'], [',', 'Settings'], ['L', 'Lock'], ['?', 'Help & shortcuts'],
 ] as const
 
-export const menuKeys = { transaction: 'T', list: 'V', sync: 'R', undo: 'U', business: 'B', help: 'H', settings: 'S', lock: 'L' } as const
+export const menuKeys = { sync: 'R', undo: 'U', business: 'B', help: 'H', settings: 'S', lock: 'L' } as const
 export function altShortcutLabel(key: string) {
   return `${isMac() ? '⌥' : 'Alt+'}${key}`
 }
