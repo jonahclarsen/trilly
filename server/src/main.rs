@@ -190,11 +190,39 @@ fn snapshot(d: &Data) -> Value {
         "amazon_targets": d.transactions.iter().filter(|t| !t.deleted && !t.approved && t.transfer_account_id.is_none() && !d.pending.iter().any(|p| p.change.id == t.id && !p.change.memo_only && p.change.approved && !p.conflict)).collect::<Vec<_>>(),
         "review_rows": review_rows, "queue": queue, "pending": d.pending.len(), "conflicts": d.pending.iter().filter(|p| p.conflict).count(),
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
+        "unsynced_reviews": unsynced_reviews(d),
         "business_expenses": d.business_expenses,
         "can_undo_business": !d.business_undo.is_empty() || !d.business_archive_undo.is_empty(),
         "can_undo_archive": matches!(d.business_undo.last(), Some(BusinessUndo::Archived { .. })) || (d.business_undo.is_empty() && !d.business_archive_undo.is_empty()),
         "can_undo": !d.undo.is_empty(), "synced_at": d.synced_at,
         "history_count": d.transactions.iter().filter(|t| t.approved && !t.deleted).count()})
+}
+
+// Reviews that can still be reopened, as they will look once reopened.
+fn unsynced_reviews(d: &Data) -> Vec<Value> {
+    d.pending
+        .iter()
+        .filter(|p| {
+            p.change.approved
+                && !p.change.memo_only
+                && !p.conflict
+                && p.before.account_id == d.account_id
+        })
+        .map(|p| {
+            let mut t = p.before.clone();
+            let described = p
+                .change
+                .memo
+                .as_ref()
+                .is_some_and(|memo| t.memo.as_deref().unwrap_or("") != memo);
+            if described {
+                t.memo = p.change.memo.clone();
+            }
+            let mut value = json!(t);
+            value["description_pending"] = json!(described);
+            value
+        })
+        .collect()
 }
 
 async fn status(State(state): State<Shared>) -> Result<Json<Value>> {
@@ -464,6 +492,9 @@ enum Action {
         name: String,
     },
     Undo,
+    Reopen {
+        id: String,
+    },
     DiscardConflicts,
     Sync {
         #[serde(default)]
@@ -722,6 +753,7 @@ async fn action(
         }
         Action::RenamePayee { id, name } => app.ynab.rename_payee(&mut next, &id, &name).await?,
         Action::Undo => undo(&mut next)?,
+        Action::Reopen { id } => reopen(&mut next, &id)?,
         Action::DiscardConflicts => {
             let ids: Vec<_> = next
                 .pending
@@ -1151,6 +1183,35 @@ fn undo(data: &mut Data) -> Result<()> {
         conflict: false,
     });
     data.undo.pop();
+    Ok(())
+}
+
+// Take an unsynced review back out of the sync queue so it can be edited. A
+// description written with the review stays queued as a description edit. A
+// review that a sync already sent is left alone.
+fn reopen(data: &mut Data, id: &str) -> Result<()> {
+    let Some(index) = data
+        .pending
+        .iter()
+        .position(|p| p.change.id == id && p.change.approved && !p.change.memo_only && !p.conflict)
+    else {
+        return Ok(());
+    };
+    let pending = data.pending.remove(index);
+    data.undo.retain(|p| p.change.id != id);
+    data.amazon_assignments.retain(|a| a.transaction_id != id);
+    if let Some(memo) = pending.change.memo
+        && pending.before.memo.as_deref().unwrap_or("") != memo
+    {
+        let mut change = Change::from(&pending.before);
+        change.memo = Some(memo);
+        change.memo_only = true;
+        data.pending.push(Pending {
+            before: pending.before,
+            change,
+            conflict: false,
+        });
+    }
     Ok(())
 }
 

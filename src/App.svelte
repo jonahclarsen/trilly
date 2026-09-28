@@ -371,6 +371,13 @@
     window.scrollTo({ top: row ? Math.max(0, window.scrollY + row.getBoundingClientRect().top - window.innerHeight / 4) : 0, behavior: 'instant' })
   }
   async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
+  const unsyncedReviews = $derived(new Set(data?.unsynced_reviews?.map(t => t.id)))
+  // An unsynced review leaves the sync queue so it can be edited again.
+  function reopenTransaction(id: string) {
+    if (!data || saveFailed || !unsyncedReviews.has(id)) return
+    enqueue({ body: { action: 'reopen', id } })
+    void openTransaction(id)
+  }
   let picks = $state<Suggestion[]>([])
   let picksStatus = $state<'loading' | 'ready' | 'error'>('ready')
   let payee = $state<string | null>(null)
@@ -893,7 +900,7 @@
                     <td>{transaction.category_name ?? 'Uncategorized'}</td>
                     <td>{transaction.memo ?? ''}</td>
                     <td class="table-amount">{money(transaction.amount)}</td>
-                    <td>{#if transaction.approved}<span>Reviewed</span>{:else}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => openTransaction(transaction.id)}>{skipped.includes(transaction.id) ? 'Skipped · Review' : 'Review'}</Button>{/if}</td>
+                    <td>{#if transaction.approved && unsyncedReviews.has(transaction.id)}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => reopenTransaction(transaction.id)}>Review</Button>{:else if transaction.approved}<span>Reviewed</span>{:else}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => openTransaction(transaction.id)}>{skipped.includes(transaction.id) ? 'Skipped · Review' : 'Review'}</Button>{/if}</td>
                   </tr>
                 {:else}<tr><td colspan="6" class="table-empty">All caught up. New transactions will appear here after syncing.</td></tr>{/each}
               </tbody>

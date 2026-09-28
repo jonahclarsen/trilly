@@ -64,6 +64,11 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     if (typeof event.body.amazon_payment_id === 'string') result.amazon_assignments = [...(result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.body.id), { payment_id: event.body.amazon_payment_id, transaction_id: String(event.body.id) }]
     const transaction = result.queue.find(t => t.id === event.body.id)
     if (transaction) result.undo_transactions.push(transaction)
+    const described = result.description_pending?.includes(String(event.body.id))
+    if (transaction) result.unsynced_reviews = [...(result.unsynced_reviews ?? []), {
+      ...transaction, memo: typeof event.body.memo === 'string' ? event.body.memo : transaction.memo,
+      description_pending: !!described || (typeof event.body.memo === 'string' && event.body.memo !== (transaction.memo ?? '')),
+    }]
     result.review_rows = result.review_rows.map(t => t.id !== event.body.id ? t : {
       ...t, approved: true,
       payee_name: typeof event.body.payee_name === 'string' ? event.body.payee_name : typeof event.body.amazon_marketplace === 'string' ? amazonPayee(snapshot.payees, event.body.amazon_marketplace)?.name ?? event.body.amazon_marketplace : snapshot.payees.find(p => p.id === event.body.payee_id)?.name ?? t.payee_name,
@@ -72,7 +77,6 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     })
     result.queue = result.queue.filter(t => t.id !== event.body.id)
     // An unsynced description edit is folded into the review as one pending change.
-    const described = result.description_pending?.includes(String(event.body.id))
     if (described) result.description_pending = result.description_pending!.filter(id => id !== event.body.id)
     else result.pending++
     result.can_undo = true
@@ -81,11 +85,26 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     if (event.restore) result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.restore!.id)
     result.undo_transactions.pop()
     if (event.restore) result.description_pending = (result.description_pending ?? []).filter(id => id !== event.restore!.id)
+    if (event.restore) result.unsynced_reviews = (result.unsynced_reviews ?? []).filter(t => t.id !== event.restore!.id)
     if (event.restore && event.restore.account_id === result.account_id) {
       result.review_rows = [event.restore, ...result.review_rows.filter(t => t.id !== event.restore!.id)]
       result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
     }
     result.pending = Math.max(0, result.pending - 1)
+    result.can_undo = result.undo_transactions.length > 0
+  } else if (event.body.action === 'reopen') {
+    // Take an unsynced review back out of the sync queue; a description written with it stays queued.
+    const review = result.unsynced_reviews?.find(t => t.id === event.body.id)
+    if (!review) return result
+    const { description_pending: described, ...transaction } = review
+    result.unsynced_reviews = result.unsynced_reviews!.filter(t => t.id !== transaction.id)
+    result.undo_transactions = result.undo_transactions.filter(t => t.id !== transaction.id)
+    result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== transaction.id)
+    if (result.amazon_targets && !transaction.transfer_account_id) result.amazon_targets = [transaction, ...result.amazon_targets.filter(t => t.id !== transaction.id)]
+    result.review_rows = result.review_rows.map(t => t.id === transaction.id ? transaction : t)
+    result.queue = [transaction, ...result.queue.filter(t => t.id !== transaction.id)]
+    if (described) result.description_pending = [...(result.description_pending ?? []), transaction.id]
+    else result.pending = Math.max(0, result.pending - 1)
     result.can_undo = result.undo_transactions.length > 0
   }
   return result
