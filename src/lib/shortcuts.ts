@@ -18,13 +18,14 @@ export function pickerQuickLabel(index: number) {
 }
 
 export const merchantLinkKey = 'F'
+export const ynabAccountKey = merchantLinkKey
 export const googlePayeeKey = 'G'
 export const amazonOrderKey = 'A'
 export const paypalActivityKey = 'P'
 export const viewKeys = { transaction: 'T', list: 'V' } as const
 
 export const shortcuts = [
-  [merchantLinkKey, 'Open first merchant link in a new tab'],
+  [merchantLinkKey, 'Open first merchant link / account in YNAB (list view)'],
   [viewKeys.transaction, 'Transaction view'], [viewKeys.list, 'List view'],
   ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
   ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'], ['Alt+L', 'Lock'],

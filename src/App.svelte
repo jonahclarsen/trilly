@@ -47,7 +47,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys, viewKeys, merchantLinkKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, viewKeys, merchantLinkKey, ynabAccountKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -405,6 +405,7 @@
   const displayedMemo = $derived(amazonDraft ?? paypalDraft ?? current?.memo ?? '')
   const searchPayee = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? current?.import_payee_name_original ?? current?.import_payee_name ?? '')
   let googlePayee = $state<{ open: () => void }>()
+  let ynabAccountAction = $state<HTMLAnchorElement>()
   let amazonOrderAction = $state<{ open: () => void }>()
   let paypalActivity = $state<{ open: () => void }>()
   const paypalTransaction = $derived(!!current && isPaypal(payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name))
@@ -715,6 +716,9 @@
     if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoBusiness(); return }
     if (modal) return
     if (typing) return
+    if (view === 'list' && event.key.toLowerCase() === ynabAccountKey.toLowerCase()) {
+      event.preventDefault(); ynabAccountAction?.click(); return
+    }
     if (view === 'list' && !['t', 'v', 'u', 'r', 'a', ',', 'l', '?'].includes(event.key.toLowerCase())) return
     const index = suggestionIndex(event)
     if (index !== undefined) {
@@ -864,7 +868,7 @@
         <section class="empty-state"><h1>{data.connected ? 'Choose your plan' : 'Connect YNAB'}</h1><Button primary onclick={() => modal = 'settings'}>{data.connected ? 'Choose plan' : 'Connect'}</Button></section>
       {:else if view === 'list'}
         <section aria-label="Transaction list">
-          <div class="list-note"><p class="field-note">Current review batch · {remaining} to review · {reviewRows.filter(t => t.approved).length} reviewed</p>{#if ynabAccountLink}<a class="ynab-account-link" href={ynabAccountLink} target="_blank" rel="noopener noreferrer" title="Open account in YNAB (new tab)">{currentAccount?.name ?? 'Account'} in YNAB<Icon name="external" /></a>{/if}</div>
+          <div class="list-note"><p class="field-note">Current review batch · {remaining} to review · {reviewRows.filter(t => t.approved).length} reviewed</p>{#if ynabAccountLink}<a bind:this={ynabAccountAction} class="ynab-account-link" href={ynabAccountLink} target="_blank" rel="noopener noreferrer" aria-keyshortcuts={ynabAccountKey} title={`Open account in YNAB (new tab) · ${ynabAccountKey}`}>{currentAccount?.name ?? 'Account'} in YNAB<Icon name="external" /><kbd>{ynabAccountKey}</kbd></a>{/if}</div>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll the table horizontally.) -->
           <div class="transaction-table" tabindex="0" role="region" aria-label="Review batch table">
             <table>
