@@ -4,7 +4,7 @@
 </script>
 
 <section class="settings-section">
-  <h3>Mail and Calendar links</h3>
+  <h3>Mail and Calendar links open in</h3>
   <div class="providers" role="group" aria-label="Mail and Calendar links">
     {#each LOOKUP_PROVIDERS as provider (provider.id)}
       <button class="provider" class:chosen={value === provider.id} aria-pressed={value === provider.id} title={`${provider.mail} and ${provider.calendar}`} onclick={() => onchange(provider.id)}>
