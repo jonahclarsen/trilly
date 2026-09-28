@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 import { mockApp, suggestions, synthetic } from './fixtures'
 import { amazonState, amazonRecords } from './amazon-fixture'
 
-test('native unlock opens automatically without a browser password and lock revokes access', async ({ page }) => {
+test('native unlock opens automatically without a browser password and idle lock revokes access', async ({ page }) => {
+  await page.clock.install()
   const unlockRequests: unknown[] = []
   page.on('request', request => { if (request.url().endsWith('/api/unlock')) unlockRequests.push(request.postDataJSON()) })
   await page.goto('/')
@@ -10,7 +11,7 @@ test('native unlock opens automatically without a browser password and lock revo
   await expect(page.getByLabel('Passphrase', { exact: true })).toHaveCount(0)
   expect(unlockRequests[0]).toEqual({})
   await page.getByRole('button', { name: 'Close', exact: true }).click()
-  await page.getByRole('button', { name: 'Lock', exact: true }).click()
+  await page.clock.fastForward('06:00:10')
   await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
   const privateRead = await page.request.get('/api/state', { headers: { 'x-trilly': '1' } })
   expect(privateRead.status()).toBe(401)
@@ -375,7 +376,7 @@ test('navigation uses visible icon buttons and centers the sync status', async (
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
   const nav = page.getByRole('navigation', { name: 'App controls' })
   const status = await nav.locator('.sync-state').boundingBox()
-  for (const name of ['Sync', 'Undo', 'Help', 'Settings', 'Lock']) {
+  for (const name of ['Sync', 'Undo', 'Help', 'Settings']) {
     const button = nav.getByRole('button', { name, exact: true })
     await expect(button.locator('svg')).toBeVisible()
     await expect(button).toContainText(name)

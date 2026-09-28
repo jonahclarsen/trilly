@@ -132,7 +132,6 @@ clients; run `pnpm start` when you do not need hot updates.
 | A | Choose account |
 | R | Refresh metadata and sync |
 | , | Settings |
-| L | Lock |
 | ? | Shortcut reference |
 
 Approvals are saved locally before advancing. After three seconds without a new

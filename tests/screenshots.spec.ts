@@ -102,7 +102,7 @@ test('publish synthetic light and dark WebP screenshots', async ({ page }) => {
     }
   } finally { release() }
   await expect(page.getByRole('button', { name: 'Sync', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: 'Lock', exact: true }).click()
+  await page.clock.fastForward('06:00:10')
   await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
   for (const mode of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: mode })

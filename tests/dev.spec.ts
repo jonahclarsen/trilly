@@ -18,7 +18,8 @@ test('development proxy blocks foreign origins, hosts, and unmarked API requests
   expect(await fetchStatus(`${baseURL}/api/state`, { 'x-trilly': '1' })).toBe(401)
 })
 
-test('component hot updates preserve the session and explicit lock without another unlock', async ({ page }) => {
+test('component hot updates preserve the session and idle lock without another unlock', async ({ page }) => {
+  await page.clock.install()
   let unlocks = 0
   page.on('request', request => { if (request.url().endsWith('/api/unlock')) unlocks++ })
   await page.goto('/')
@@ -33,7 +34,7 @@ test('component hot updates preserve the session and explicit lock without anoth
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
     expect(unlocks).toBe(1)
     await page.getByRole('button', { name: 'Close', exact: true }).click()
-    await page.getByRole('button', { name: 'Lock', exact: true }).click()
+    await page.clock.fastForward('06:00:10')
     await expect(page.getByRole('heading', { name: 'Locked', exact: true })).toBeVisible()
     await expect(page.getByText('Synthetic hot update one.')).toBeVisible()
     await writeFile(source, original.replace('Open your saved vault.', 'Synthetic hot update two.'))

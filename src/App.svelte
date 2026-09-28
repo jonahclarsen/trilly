@@ -753,7 +753,6 @@
           [menuKeys.undo]: undo,
           [menuKeys.business]: openBusiness,
           [menuKeys.help]: () => modal = 'shortcuts',
-          [menuKeys.lock]: () => void lock(),
         } : {}),
       }
       // Option changes event.key on macOS, so use the physical letter key.
@@ -798,7 +797,7 @@
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
       [amazonOrderKey.toLowerCase()]: () => { if (amazonOrderLink) amazonOrderAction?.open() }, r: () => void sync(),
       [paypalActivityKey.toLowerCase()]: () => paypalActivity?.open(),
-      ',': () => modal = 'settings', l: () => void lock(), '?': () => modal = 'shortcuts',
+      ',': () => modal = 'settings', '?': () => modal = 'shortcuts',
     }
     // Native focused buttons retain Enter/Space activation.
     if (key === 'enter' && (event.target as HTMLElement)?.closest('button, a')) return
@@ -846,7 +845,6 @@
           <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>
         {/if}
         <Button icon="settings" label="Settings" altKey={menuKeys.settings} onclick={() => modal = 'settings'}>Settings</Button>
-        {#if data}<Button icon="lock" label="Lock" altKey={menuKeys.lock} onclick={() => void lock()}>Lock</Button>{/if}
       </nav>
     {/if}
   </header>
