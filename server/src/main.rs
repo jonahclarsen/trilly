@@ -255,8 +255,8 @@ fn snapshot(d: &Data) -> Value {
         "history_count": d.transactions.iter().filter(|t| t.approved && !t.deleted).count()})
 }
 
-// Reviews that can still be reopened, as they will look once reopened.
-fn unsynced_reviews(d: &Data) -> Vec<Value> {
+// Reviews that can still be reopened, as they were before review.
+fn unsynced_reviews(d: &Data) -> Vec<&Transaction> {
     d.pending
         .iter()
         .filter(|p| {
@@ -265,20 +265,7 @@ fn unsynced_reviews(d: &Data) -> Vec<Value> {
                 && !p.conflict
                 && p.before.account_id == d.account_id
         })
-        .map(|p| {
-            let mut t = p.before.clone();
-            let described = p
-                .change
-                .memo
-                .as_ref()
-                .is_some_and(|memo| t.memo.as_deref().unwrap_or("") != memo);
-            if described {
-                t.memo = p.change.memo.clone();
-            }
-            let mut value = json!(t);
-            value["description_pending"] = json!(described);
-            value
-        })
+        .map(|p| &p.before)
         .collect()
 }
 
@@ -1252,32 +1239,20 @@ fn undo(data: &mut Data) -> Result<()> {
     Ok(())
 }
 
-// Take an unsynced review back out of the sync queue so it can be edited. A
-// description written with the review stays queued as a description edit. A
-// review that a sync already sent is left alone.
+// Take an unsynced review back out of the sync queue so it can be reviewed
+// again. Every queued change to it, including a description edit, is dropped;
+// saving the review queues them again. A review a sync already sent is left alone.
 fn reopen(data: &mut Data, id: &str) -> Result<()> {
-    let Some(index) = data
+    if !data
         .pending
         .iter()
-        .position(|p| p.change.id == id && p.change.approved && !p.change.memo_only && !p.conflict)
-    else {
+        .any(|p| p.change.id == id && p.change.approved && !p.change.memo_only && !p.conflict)
+    {
         return Ok(());
-    };
-    let pending = data.pending.remove(index);
+    }
+    data.pending.retain(|p| p.change.id != id);
     data.undo.retain(|p| p.change.id != id);
     data.amazon_assignments.retain(|a| a.transaction_id != id);
-    if let Some(memo) = pending.change.memo
-        && pending.before.memo.as_deref().unwrap_or("") != memo
-    {
-        let mut change = Change::from(&pending.before);
-        change.memo = Some(memo);
-        change.memo_only = true;
-        data.pending.push(Pending {
-            before: pending.before,
-            change,
-            conflict: false,
-        });
-    }
     Ok(())
 }
 

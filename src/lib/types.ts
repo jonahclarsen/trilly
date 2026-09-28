@@ -26,7 +26,7 @@ export type Snapshot = {
   categories: { id: string; name: string; category_group_name: string }[];
   payees: Option[]; queue: Transaction[]; pending: number; conflicts: number;
   undo_transactions?: Transaction[];
-  unsynced_reviews?: (Transaction & { description_pending?: boolean })[];
+  unsynced_reviews?: Transaction[];
   can_undo: boolean; synced_at: string | null; history_count: number; sync_error?: string; ynab_retry_at?: string | null;
 }
 export function special(t: Transaction) {
