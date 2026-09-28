@@ -1,4 +1,5 @@
 <script lang="ts">
+  import protonLogo from '../assets/proton/calendar.svg'
   import LookupLink from './LookupLink.svelte'
   import { calendarWeekKey } from './shortcuts'
   import { calendarWeekUrl, LOOKUP_PROVIDERS, type LookupProvider } from './lookup'
@@ -11,13 +12,7 @@
 
 <LookupLink bind:this={link} href={calendarWeekUrl(provider, date)} label={`Open ${name} on ${date}`} shortcut={calendarWeekKey}>
   {#if provider === 'proton'}
-    <svg class="logo" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
-      <path fill="#6D4AFF" d="M5 17h38v19a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5Z" />
-      <path fill="#B7A6FF" d="M10 9h28a5 5 0 0 1 5 5v5H5v-5a5 5 0 0 1 5-5Z" />
-      <rect fill="#6D4AFF" x="14" y="5" width="4" height="9" rx="2" />
-      <rect fill="#6D4AFF" x="30" y="5" width="4" height="9" rx="2" />
-      <g fill="#fff"><circle cx="15" cy="26" r="2.4" /><circle cx="24" cy="26" r="2.4" /><circle cx="33" cy="26" r="2.4" /><circle cx="15" cy="34" r="2.4" /><circle cx="24" cy="34" r="2.4" /></g>
-    </svg>
+    <img class="logo" src={protonLogo} width="20" height="20" alt="" aria-hidden="true" />
   {:else}
     <svg class="logo" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
       <path fill="#fff" d="M12 12h24v24H12Z" />

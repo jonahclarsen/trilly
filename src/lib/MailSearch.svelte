@@ -1,4 +1,5 @@
 <script lang="ts">
+  import protonLogo from '../assets/proton/mail.svg'
   import LookupLink from './LookupLink.svelte'
   import { mailSearchKey } from './shortcuts'
   import { mailSearchUrl, LOOKUP_PROVIDERS, type LookupProvider } from './lookup'
@@ -12,11 +13,7 @@
 {#if payee.trim()}
   <LookupLink bind:this={link} href={mailSearchUrl(provider, payee)} label={`Search ${name} for ${payee}`} shortcut={mailSearchKey}>
     {#if provider === 'proton'}
-      <svg class="logo" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
-        <path fill="#6D4AFF" d="M4 13v23a4 4 0 0 0 4 4h32a4 4 0 0 0 4-4V13L27 26.5a5 5 0 0 1-6 0Z" />
-        <path fill="#B7A6FF" d="M4 13v23a4 4 0 0 0 4 4h19L4 17Z" />
-        <path fill="#8D73FF" d="M5.3 9.6 22.2 23a3 3 0 0 0 3.6 0L42.7 9.6A4 4 0 0 0 40 8.5H8a4 4 0 0 0-2.7 1.1Z" />
-      </svg>
+      <img class="logo" src={protonLogo} width="20" height="20" alt="" aria-hidden="true" />
     {:else}
       <svg class="logo" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
         <path fill="#4285F4" d="M7 40h7V23L4 15.5V37a3 3 0 0 0 3 3Z" />
