@@ -310,7 +310,8 @@
   }
   async function archiveExpenses() {
     if (await act({ action: 'archive_business_expenses' })) {
-      businessMessage = 'Archived current expenses.'
+      const message = businessMessage = 'Archived current expenses.'
+      setTimeout(() => { if (businessMessage === message) businessMessage = '' }, 4000)
       expenseDrafts = expenses.map(expense => ({ ...expense, amount: expense.amount / 1000 }))
     }
   }
@@ -1074,6 +1075,7 @@
     </div>
     <p class="field-note">Copy current rows: description, date (yyyy-mm-dd), amount, account, note. Expenses are positive; refunds are negative.</p>
     {#if businessMessage}<p role="status">{businessMessage}</p>{/if}
+    {#if showArchived}<h2 class="archived-heading">Archived</h2>{/if}
     <EditableTable minWidth={1040}><table class="business-table">
       <colgroup><col class="expense-index" /><col class="expense-description" /><col class="expense-date" /><col class="expense-amount" /><col class="expense-account" /><col class="expense-note" /><col class="expense-actions" /></colgroup>
       <thead><tr><th><span class="sr-only">Row</span></th><th>Description</th><th>Date</th><th>Amount</th><th>Account</th><th>Note</th><th><span class="sr-only">Actions</span></th></tr></thead>

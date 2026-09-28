@@ -327,6 +327,7 @@ textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px;
 .business-table .expense-row-actions { display: flex; align-items: center; gap: 6px; }
 
 .business-actions + .field-note { margin: 16px 0; }
+.archived-heading { margin: 8px 0 12px; font-size: 28px; font-weight: 700; }
 dialog form { display: grid; gap: 16px; }
 .review-actions { gap: 8px; flex-wrap: wrap; }
 textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offset: 3px; }
