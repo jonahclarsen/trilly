@@ -1072,10 +1072,11 @@
     <p class="field-note">Copy current rows: description, date (yyyy-mm-dd), amount, account, note. Expenses are positive; refunds are negative.</p>
     {#if businessMessage}<p role="status">{businessMessage}</p>{/if}
     <EditableTable minWidth={1040}><table class="business-table">
-      <colgroup><col class="expense-description" /><col class="expense-date" /><col class="expense-amount" /><col class="expense-account" /><col class="expense-note" /><col class="expense-actions" /></colgroup>
-      <thead><tr><th>Description</th><th>Date</th><th>Amount</th><th>Account</th><th>Note</th><th><span class="sr-only">Actions</span></th></tr></thead>
-      <tbody>{#each expenseDrafts.filter(e => e.archived === showArchived) as expense (`${expense.plan_id}:${expenseKey(expense)}`)}
+      <colgroup><col class="expense-index" /><col class="expense-description" /><col class="expense-date" /><col class="expense-amount" /><col class="expense-account" /><col class="expense-note" /><col class="expense-actions" /></colgroup>
+      <thead><tr><th><span class="sr-only">Row</span></th><th>Description</th><th>Date</th><th>Amount</th><th>Account</th><th>Note</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>{#each expenseDrafts.filter(e => e.archived === showArchived) as expense, index (`${expense.plan_id}:${expenseKey(expense)}`)}
         <tr>
+          <td class="expense-number">{index + 1}</td>
           <td><textarea aria-label={`Description for ${expense.date}`} required maxlength="10000" rows="2" bind:value={expense.description}></textarea></td>
           <td><input aria-label={`Date for ${expense.description}`} type="date" required bind:value={expense.date} /></td>
           <td><input aria-label={`Amount for ${expense.description}`} type="number" required step="0.001" bind:value={expense.amount} /></td>
@@ -1086,7 +1087,7 @@
               <Button icon="close" label={`Remove expense: ${expense.description}`} disabled={busy || !!saving || saveFailed} onclick={() => void removeExpense(expense.plan_id, expenseKey(expense))} />
           </div></td>
         </tr>
-      {:else}<tr><td colspan="6">{showArchived ? 'No archived expenses.' : 'No current expenses. Press B while reviewing a transaction to add one.'}</td></tr>{/each}</tbody>
+      {:else}<tr><td colspan="7">{showArchived ? 'No archived expenses.' : 'No current expenses. Press B while reviewing a transaction to add one.'}</td></tr>{/each}</tbody>
     </table></EditableTable>
   </Modal>
 {:else if modal === 'shortcuts'}

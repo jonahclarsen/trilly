@@ -316,6 +316,8 @@ input.hue-slider { appearance: none; height: 9px; border: 0; background: linear-
 
 textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
 .business-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.business-table .expense-index { width: 32px; }
+.business-table .expense-number { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 .business-table .expense-description { width: 25%; }
 .business-table .expense-date { width: 138px; }
 .business-table .expense-amount { width: 110px; }
