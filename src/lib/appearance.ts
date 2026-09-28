@@ -13,7 +13,7 @@ export function iridescentHueShift(now = new Date()): number {
   let hash = 2166136261
   for (const char of localDate(day)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
   hash = Math.imul(hash ^ hash >>> 16, 0x85ebca6b); hash = Math.imul(hash ^ hash >>> 13, 0xc2b2ae35); hash ^= hash >>> 16
-  return Math.round((hash >>> 0) / 2 ** 32 * 60) - 30
+  return Math.floor((hash >>> 0) / 2 ** 32 * 360)
 }
 export function readPreferences(): { theme: ThemeId; appearance: Appearance; randomStart: string } {
   try {
