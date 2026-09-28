@@ -66,10 +66,6 @@ persists across reloads, defaulting to `#56c2f0` in both appearances. Reset logo
 has a subtle outline and is disabled when the color matches its default.
 Use text labels with SVG icons, transparent backgrounds, and subtle outlines for the top navigation.
 
-Whenever a requested change alters the UI, regenerate the README screenshots
-with pnpm screenshots. Review the resulting WebP files in docs/screenshots,
-update the README image references or captions as needed, and commit and push
-the screenshots and README with the UI change so GitHub shows the current UI.
 All published screenshots must be WebP and use only synthetic fixtures. Never
 capture the user's running browser or unlocked app. The screenshot command
 serves a separate static build with mocked API calls; it must not use a real vault.
@@ -79,8 +75,7 @@ serves a separate static build with mocked API calls; it must not use a real vau
 Do not run tests or screenshot workflows that launch/control browsers, access the
 system clipboard, interact with Keychain, or display native UI without fresh,
 explicit user authorization. These have disrupted the user's work. This restriction
-overrides the browser, screenshot, and native-test requirements elsewhere in this
-file. Use non-interactive static checks and builds; report any skipped verification.
+overrides the browser and native-test requirements elsewhere in this file. Use non-interactive static checks and builds; report any skipped verification.
 
 Don't run any tests; trust your own code.
 
