@@ -11,7 +11,7 @@
     orders: AmazonOrder[]; store: AmazonStore; currency?: string; disabled: boolean;
     onsave: (rows: BusinessExpenseInput[]) => void;
   } = $props()
-  type Row = Omit<BusinessExpenseInput, 'amount'> & { amount: number | undefined; included: boolean; reason: string }
+  type Row = Omit<BusinessExpenseInput, 'amount' | 'auto_description' | 'auto_note'> & { amount: number | undefined; included: boolean; reason: string }
   let referenceOrders = $state<AmazonOrder[]>(untrack(() => orders))
   let orderChoice = $state('')
   const products = $derived(referenceOrders.flatMap(order => order.items.map(item => ({
@@ -33,15 +33,20 @@
       }
     })
   }
+  // The single row seeded from the transaction; its unedited text is refreshed on each open.
+  let autofilledId: string | null = null
   const combinedExpense = untrack(() => products.length > 1 && saved.length === 1 && !saved[0]?.product_key ? saved[0] : undefined)
   function initialRows(): Row[] {
     if (products.length > 1 && (!saved.length || combinedExpense)) {
       return productRows().map(row => ({ ...row, note: combinedExpense?.note ?? '' }))
     }
     if (saved.length) {
+      const refresh = saved.length === 1 && !saved[0]!.product_key
+      if (refresh) autofilledId = saved[0]!.expense_id ?? ''
       const restored = saved.map(e => ({
-        expense_id: e.expense_id ?? '', product_key: e.product_key ?? '', description: e.description,
-        amount: e.amount / 1000, note: e.note, included: true, reason: e.archived ? 'Archived expense' : '',
+        expense_id: e.expense_id ?? '', product_key: e.product_key ?? '',
+        description: refresh && e.auto_description ? description : e.description,
+        amount: e.amount / 1000, note: refresh && e.auto_note ? note : e.note, included: true, reason: e.archived ? 'Archived expense' : '',
       }))
       const omitted = saved.every(e => e.product_key)
         ? productRows().filter(row => !saved.some(e => e.product_key === row.product_key)).map(row => ({ ...row, included: false }))
@@ -49,8 +54,9 @@
       return [...restored, ...omitted]
     }
     const refunded = isRefunded(products[0]?.item.status ?? '')
+    autofilledId = crypto.randomUUID()
     return [{
-      expense_id: crypto.randomUUID(), product_key: products[0]?.key ?? '', description, note,
+      expense_id: autofilledId, product_key: products[0]?.key ?? '', description, note,
       amount: -transaction.amount / 1000, included: transaction.amount <= 0 && !refunded,
       reason: transaction.amount > 0 ? 'Refund transaction; unchecked by default.'
         : refunded ? 'Refund confirmed by product status; unchecked by default.' : '',
@@ -83,8 +89,10 @@
   }
   function save() {
     if (disabled || !valid || (!selected.length && !saved.length)) return
-    onsave(selected.map(({ expense_id, product_key, description, amount, note }) => ({
-      expense_id, product_key, description, amount: Math.round(amount! * 1000), note,
+    onsave(selected.map(({ expense_id, product_key, description: rowDescription, amount, note: rowNote }) => ({
+      expense_id, product_key, description: rowDescription, amount: Math.round(amount! * 1000), note: rowNote,
+      auto_description: expense_id === autofilledId && rowDescription === description,
+      auto_note: expense_id === autofilledId && rowNote === note,
     })))
   }
 </script>

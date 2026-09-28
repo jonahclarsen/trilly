@@ -55,6 +55,8 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     result.business_expenses = (result.business_expenses ?? []).map(expense =>
       expense.plan_id === event.body.plan_id && expenseKey(expense) === event.body.id ? {
         ...expense,
+        auto_description: !!expense.auto_description && expense.description === String(event.body.description).trim(),
+        auto_note: !!expense.auto_note && expense.note === String(event.body.note ?? ''),
         description: String(event.body.description).trim(), date: String(event.body.date),
         amount: Number(event.body.amount), account: String(event.body.account).trim(), note: String(event.body.note ?? ''),
       } : expense)

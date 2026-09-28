@@ -174,6 +174,11 @@ pub struct BusinessExpense {
     pub account: String,
     pub note: String,
     pub archived: bool,
+    // Autofilled text is refreshed from the transaction until the user edits it.
+    #[serde(default)]
+    pub auto_description: bool,
+    #[serde(default)]
+    pub auto_note: bool,
 }
 
 impl BusinessExpense {

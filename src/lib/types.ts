@@ -1,4 +1,4 @@
-export type BusinessExpense = { expense_id?: string; product_key?: string; plan_id: string; transaction_id: string; description: string; date: string; amount: number; account: string; note: string; archived: boolean }
+export type BusinessExpense = { expense_id?: string; product_key?: string; plan_id: string; transaction_id: string; description: string; date: string; amount: number; account: string; note: string; archived: boolean; auto_description?: boolean; auto_note?: boolean }
 export type Option = { id: string; name: string; detail?: string; transactionCount?: number }
 export type Transaction = {
   id: string; account_id: string; date: string; amount: number; memo: string | null;
@@ -16,7 +16,8 @@ export type Snapshot = {
   amazon_cleared?: boolean;
   amazon_targets?: Transaction[];
   amazon_assignments?: { payment_id: string; transaction_id: string }[];
-  business_expenses?: BusinessExpense[]; can_undo_archive?: boolean; can_undo_business?: boolean;
+  business_expenses?: BusinessExpense[];
+  business_categories?: { default: string | null; likely: string[] }; can_undo_archive?: boolean; can_undo_business?: boolean;
   description_pending?: string[];
   connected: boolean;
   plans: { id: string; name: string; currency_format: { iso_code: string } | null }[];

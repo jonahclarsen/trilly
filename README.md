@@ -378,6 +378,15 @@ Each checked row becomes a separate business expense with an editable descriptio
 price, and optional note. **Add expense** adds a manual row. Enter saves;
 Shift+Enter adds a line in text fields. Reopening preserves saved prices.
 Unchecking a saved row removes it on save; undo restores the entire previous selection.
+A single expense's description and note refill from the current payee and
+description on each open until you edit them.
+
+Saving an expense sets the category to your most common business category (latest
+wins ties) unless you already chose one. The **Business expense** button grays out
+once an expense exists. Categories that are business expenses at least 65% of the
+time, with at least two expenses, make the button shimmer. Approving such a
+transaction without an expense, including with 1 / 2 / 3, asks first: **Go back**
+or **Continue without adding** by mouse, or **Add business expense** by mouse or B.
 
 For a linked Amazon order with multiple products, the business expense modal
 defaults to separate product rows, including when editing an existing combined

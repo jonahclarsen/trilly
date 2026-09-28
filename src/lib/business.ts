@@ -10,4 +10,4 @@ export function businessRows(expenses: BusinessExpense[]) {
 }
 
 export const expenseKey = (expense: Pick<BusinessExpense, 'expense_id' | 'transaction_id'>) => expense.expense_id || expense.transaction_id
-export type BusinessExpenseInput = { expense_id: string; product_key: string; description: string; amount: number; note: string }
+export type BusinessExpenseInput = { expense_id: string; product_key: string; description: string; amount: number; note: string; auto_description: boolean; auto_note: boolean }

@@ -246,7 +246,7 @@
   let error = $state('')
   // Background save and YNAB sync problems belong on the main page, not in modals.
   let syncError = $state('')
-  let modal = $state<'rules' | 'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'description' | null>(null)
+  let modal = $state<'rules' | 'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'business-prompt' | 'description' | null>(null)
   let memoDraft = $state('')
   // Keep the caret after an untouched PayPal prefix so typing continues it.
   let memoCaretEnd = $state(false)
@@ -270,15 +270,13 @@
     expenseDrafts = expenses.map(expense => ({ ...expense, amount: expense.amount / 1000 }))
     modal = 'business'
   }
+  const businessDefault = $derived(data?.business_categories?.default ?? null)
+  const businessLikely = $derived(new Set(data?.business_categories?.likely ?? []))
+  // Approval waiting on the business expense reminder; null means none.
+  let businessPrompt = $state<{ suggestion?: Suggestion; category: string } | null>(null)
+  // Saved expense rows restore their own text; unedited autofill is refreshed from this draft.
   function openExpense() {
     if (!current || busy || saveFailed) return
-    if (currentExpense) {
-      expenseId = current.id
-      description = currentExpense.description
-      expenseNote = currentExpense.note
-      modal = 'expense'
-      return
-    }
     const expensePayee = newPayee ?? data?.payees.find(p => p.id === payee)?.name ?? current.payee_name ?? ''
     const separator = displayedMemo.indexOf('. ')
     const expenseSummary = (separator === -1 ? displayedMemo : displayedMemo.slice(0, separator)).trim()
@@ -304,6 +302,10 @@
   async function saveExpense(rows: BusinessExpenseInput[]) {
     if (!data || busy || saveFailed || !expenseId) return
     enqueue({ body: { action: 'replace_business_expenses', id: expenseId, expenses: rows } })
+    // Business expenses usually share one category; use it unless the user chose one.
+    if (rows.length && current?.id === expenseId && !special(current) && !categoryFixed && businessDefault && data.categories.some(c => c.id === businessDefault)) {
+      category = businessDefault; categoryFixed = true; edited = true
+    }
     modal = null; description = ''; expenseNote = ''; expenseId = ''; await tick(); reviewElement?.focus()
   }
   async function copyExpenses() {
@@ -422,6 +424,7 @@
   let paypalActivity = $state<{ open: () => void }>()
   const paypalTransaction = $derived(!!current && isPaypal(payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name))
   const ynabAccountLink = $derived(data?.plan_id && data.account_id ? `https://app.ynab.com/${data.plan_id}/accounts/${data.account_id}` : '')
+  const businessHint = $derived(!!current && !special(current) && !currentExpenses.length && !!category && businessLikely.has(category))
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
   $effect(() => { saveLogo(logo) })
@@ -636,16 +639,41 @@
     clearTimeout(syncTimer); syncDueBy = 0
     enqueue({ body: { action: 'sync', full } })
   }
-  function approve(suggestion?: Suggestion) {
+  function approve(suggestion?: Suggestion, withoutExpense = false) {
     if (!current || busy || saveFailed || !data) return
     const { payee: selectedPayee, newPayee: selectedNewPayee, category: selectedCategory } = reviewSelection(
       { payee, newPayee, category }, { payee: payeeFixed || !!amazonMarket, category: categoryFixed }, suggestion,
     )
     if (!special(current) && ((!selectedPayee && !amazonMarket && !selectedNewPayee) || !selectedCategory)) return
+    if (!withoutExpense && !special(current) && !currentExpenses.length && selectedCategory && businessLikely.has(selectedCategory)) {
+      businessPrompt = { suggestion, category: selectedCategory }; modal = 'business-prompt'
+      return
+    }
     const selectedName = selectedNewPayee ?? data.payees.find(p => p.id === selectedPayee)?.name
     const reviewMemo = amazonDraft !== null ? amazonDraft.toLowerCase() : paypalDraft ?? (descriptionFixed ? null : paypalDescription(current.memo, selectedName))
     enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(reviewMemo !== null ? { memo: reviewMemo } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
+  }
+  // The reminder accepts mouse clicks only (detail 0 is keyboard activation); B adds the expense.
+  function promptClick(action: () => void) {
+    return (event: MouseEvent) => { if (event.detail > 0) action() }
+  }
+  async function closeBusinessPrompt() {
+    businessPrompt = null; modal = null; await tick(); reviewElement?.focus()
+  }
+  function addPromptExpense() {
+    const suggestion = businessPrompt?.suggestion
+    if (suggestion) {
+      // Keep the chosen suggestion so approving after the expense matches it.
+      const selection = reviewSelection({ payee, newPayee, category }, { payee: payeeFixed || !!amazonMarket, category: categoryFixed }, suggestion)
+      if (!payeeFixed && !amazonMarket) { payee = selection.payee; newPayee = selection.newPayee; payeeFixed = true }
+      category = selection.category; categoryFixed = true; edited = true
+    }
+    businessPrompt = null; modal = null; openExpense()
+  }
+  function continueWithoutExpense() {
+    const suggestion = businessPrompt?.suggestion
+    void closeBusinessPrompt(); approve(suggestion, true)
   }
   function undo() {
     if (!data || busy || saveFailed) return
@@ -738,6 +766,11 @@
       if (event.key === 'Enter' && !modal && ready && !busy && unlockMode === 'macos') {
         event.preventDefault(); void unlock()
       }
+      return
+    }
+    if (modal === 'business-prompt') {
+      event.preventDefault()
+      if (event.key.toLowerCase() === 'b') addPromptExpense()
       return
     }
     if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoBusiness(); return }
@@ -986,7 +1019,7 @@
           {/if}
 
           <div class="review-actions">
-            <Button icon="business" shortcut="B" disabled={busy || saveFailed} onclick={openExpense}>Business expense</Button>
+            <Button icon="business" shortcut="B" class={currentExpenses.length ? 'business-added' : businessHint ? 'business-hint' : ''} disabled={busy || saveFailed} onclick={openExpense}>Business expense</Button>
             <Button icon="skip" shortcut="S" disabled={saveFailed || (busy && !syncing)} onclick={skip}>Skip</Button>
             <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && ((!payee && !amazonMarket && !newPayee) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
@@ -1090,6 +1123,15 @@
     {#if current}
       <BusinessExpenseEditor transaction={current} saved={currentExpenses} {description} note={expenseNote} orders={amazonExpenseOrders} store={amazon} {currency} disabled={busy || saveFailed} onsave={(rows) => void saveExpense(rows)} />
     {/if}
+  </Modal>
+{:else if modal === 'business-prompt'}
+  <Modal title="Business expense?" dismissible={false} onclose={() => {}}>
+    <p class="business-prompt-message" tabindex="-1" data-modal-focus>{data?.categories.find(c => c.id === businessPrompt?.category)?.name ?? 'This category'} is usually a business expense, and none has been added for this transaction.</p>
+    <div class="business-prompt-actions">
+      <Button onclick={promptClick(() => void closeBusinessPrompt())}>Go back</Button>
+      <Button onclick={promptClick(continueWithoutExpense)}>Continue without adding</Button>
+      <Button primary icon="business" shortcut="B" onclick={promptClick(addPromptExpense)}>Add business expense</Button>
+    </div>
   </Modal>
 {:else if modal === 'business'}
   <Modal title="Business expenses" width={1240} onclose={() => modal = null}>

@@ -365,6 +365,20 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 .field-button.field-fixed { background: color-mix(in srgb, var(--muted) 7%, var(--paper)); }
 .field-button.field-fixed strong { color: var(--muted); }
 .suggestion-copy .suggestion-unused { color: var(--muted); text-decoration: line-through; }
+.review-actions button.business-added { background: color-mix(in srgb, var(--muted) 7%, var(--paper)); color: var(--muted); }
+/* Mostly-business category without an expense yet. */
+.review-actions button.business-hint {
+  border-color: color-mix(in srgb, var(--line) 50%, #b07cd8);
+  background: linear-gradient(110deg, #f6c6e2, #c9d6fb, #bdeeee, #fbe2b8, #f6c6e2) 0 0 / 300% 100%;
+  color: #2b2233;
+  animation: business-shimmer 6s linear infinite;
+}
+.review-actions button.business-hint:hover:not(:disabled) { background: linear-gradient(110deg, #f2b3d8, #b8c9f8, #a9e7e8, #f8d6a0, #f2b3d8) 0 0 / 300% 100%; border-color: #9a68c4; }
+.review-actions button.business-hint kbd { color: inherit; background: rgb(255 255 255 / .45); border-color: rgb(43 34 51 / .2); }
+@keyframes business-shimmer { to { background-position: 150% 0; } }
+@media (prefers-reduced-motion: reduce) { .review-actions button.business-hint { animation: none; } }
+.business-prompt-message { margin: 0 0 20px; outline: none; }
+.business-prompt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 /* Amazon evidence sits beside the review card when there is room for both. */
 .amazon-workspace { width: min(1280px, 100%); }

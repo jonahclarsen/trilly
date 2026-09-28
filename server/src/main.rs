@@ -114,6 +114,62 @@ fn category_transaction_counts(d: &Data) -> std::collections::HashMap<&str, usiz
     counts
 }
 
+// The usual business category and the categories that are mostly business expenses.
+fn business_categories(d: &Data) -> Value {
+    use std::collections::{HashMap, HashSet};
+    let business: HashSet<&str> = d
+        .business_expenses
+        .iter()
+        .filter(|e| e.plan_id == d.plan_id)
+        .map(|e| e.transaction_id.as_str())
+        .collect();
+    // (reviewed transactions, business transactions, latest business date)
+    let mut totals: HashMap<&str, (usize, usize, &str)> = HashMap::new();
+    for t in d.transactions.iter().filter(|t| !t.deleted) {
+        let change = d
+            .pending
+            .iter()
+            .find(|p| p.change.id == t.id && !p.change.memo_only)
+            .map(|p| &p.change);
+        let is_business = business.contains(t.id.as_str());
+        if !is_business && !change.map_or(t.approved, |c| c.approved) {
+            continue;
+        }
+        let Some(category) = change.map_or(t.category_id.as_deref(), |c| c.category_id.as_deref())
+        else {
+            continue;
+        };
+        let entry = totals.entry(category).or_insert((0, 0, ""));
+        entry.0 += 1;
+        if is_business {
+            entry.1 += 1;
+            entry.2 = entry.2.max(t.date.as_str());
+        }
+    }
+    totals.retain(|id, _| {
+        d.categories
+            .iter()
+            .any(|c| c.id == *id && !c.hidden && !c.deleted)
+    });
+    let default = totals
+        .iter()
+        .filter(|(_, v)| v.1 > 0)
+        .max_by(|a, b| {
+            a.1.1
+                .cmp(&b.1.1)
+                .then_with(|| a.1.2.cmp(b.1.2))
+                .then_with(|| b.0.cmp(a.0))
+        })
+        .map(|(id, _)| *id);
+    // Require two business expenses so a single purchase does not flag a category.
+    let likely: Vec<&str> = totals
+        .iter()
+        .filter(|(_, v)| v.1 >= 2 && v.1 * 100 >= v.0 * 65)
+        .map(|(id, _)| *id)
+        .collect();
+    json!({"default": default, "likely": likely})
+}
+
 fn snapshot(d: &Data) -> Value {
     let mut queue: Vec<_> = d
         .transactions
@@ -192,6 +248,7 @@ fn snapshot(d: &Data) -> Value {
         "undo_transactions": d.undo.iter().map(|p| &p.before).collect::<Vec<_>>(),
         "unsynced_reviews": unsynced_reviews(d),
         "business_expenses": d.business_expenses,
+        "business_categories": business_categories(d),
         "can_undo_business": !d.business_undo.is_empty() || !d.business_archive_undo.is_empty(),
         "can_undo_archive": matches!(d.business_undo.last(), Some(BusinessUndo::Archived { .. })) || (d.business_undo.is_empty() && !d.business_archive_undo.is_empty()),
         "can_undo": !d.undo.is_empty(), "synced_at": d.synced_at,
@@ -429,6 +486,10 @@ struct BusinessExpenseInput {
     description: String,
     amount: i64,
     note: String,
+    #[serde(default)]
+    auto_description: bool,
+    #[serde(default)]
+    auto_note: bool,
 }
 
 #[derive(Deserialize)]
@@ -896,6 +957,7 @@ fn save_business_expense(
         account: account.name.clone(),
         note,
         archived: false,
+        ..Default::default()
     };
     remember_business(
         data,
@@ -978,6 +1040,8 @@ fn replace_business_expenses(
         expense.description = row.description.trim().into();
         expense.amount = row.amount;
         expense.note = row.note;
+        expense.auto_description = row.auto_description;
+        expense.auto_note = row.auto_note;
         updated.push(expense);
     }
     let plan_id = data.plan_id.clone();
@@ -1022,6 +1086,8 @@ fn edit_business_expense(
         .ok_or("Business expense not found")?;
     let previous = data.business_expenses[index].clone();
     let expense = &mut data.business_expenses[index];
+    expense.auto_description &= expense.description == description.trim();
+    expense.auto_note &= expense.note == note;
     expense.description = description.trim().into();
     expense.date = date;
     expense.amount = amount;

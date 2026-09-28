@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
   import Button from './Button.svelte'
-  let { title, onclose, children, wide = false, subtitle, width }: { title: string; onclose: () => void; children: Snippet; wide?: boolean; subtitle?: string; width?: number } = $props()
+  let { title, onclose, children, wide = false, subtitle, width, dismissible = true }: { title: string; onclose: () => void; children: Snippet; wide?: boolean; subtitle?: string; width?: number; dismissible?: boolean } = $props()
   function open(node: HTMLDialogElement) {
     window.addEventListener('keydown', keydown, true)
     node.showModal()
@@ -11,7 +11,7 @@
       const input = node.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-modal-focus]')
       input?.focus()
       if (input?.hasAttribute('data-modal-caret-end')) input.setSelectionRange(input.value.length, input.value.length)
-      else input?.select()
+      else if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) input.select()
     })
     return { destroy() { window.removeEventListener('keydown', keydown, true); node.close() } }
   }
@@ -19,7 +19,7 @@
     if (event.key !== 'Escape' || event.isComposing) return
     event.preventDefault()
     event.stopPropagation()
-    onclose()
+    if (dismissible) onclose()
   }
   let outsidePress = false
   function outside(event: PointerEvent | MouseEvent) {
@@ -28,8 +28,8 @@
     return event.target === node && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)
   }
 </script>
-<dialog style:width={width ? `min(${width}px, calc(100vw - 32px))` : undefined} onpointerdown={(event) => outsidePress = outside(event)} onclick={(event) => { if (outsidePress && outside(event)) onclose(); outsidePress = false }} use:open class:wide oncancel={(event) => { event.preventDefault(); onclose() }} aria-label={title}>
-  <div class="modal-heading" class:with-subtitle={!!subtitle}><h2>{title}</h2><Button icon="close" label="Close" shortcut="Esc" onclick={onclose} /></div>
+<dialog style:width={width ? `min(${width}px, calc(100vw - 32px))` : undefined} onpointerdown={(event) => outsidePress = outside(event)} onclick={(event) => { if (dismissible && outsidePress && outside(event)) onclose(); outsidePress = false }} use:open class:wide oncancel={(event) => { event.preventDefault(); if (dismissible) onclose() }} aria-label={title}>
+  <div class="modal-heading" class:with-subtitle={!!subtitle}><h2>{title}</h2>{#if dismissible}<Button icon="close" label="Close" shortcut="Esc" onclick={onclose} />{/if}</div>
   {#if subtitle}<p class="modal-subtitle muted">{subtitle}</p>{/if}
   {@render children()}
 </dialog>
