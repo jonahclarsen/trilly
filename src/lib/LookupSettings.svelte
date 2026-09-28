@@ -1,4 +1,5 @@
 <script lang="ts">
+  import protonLogo from '../assets/proton/proton.svg'
   import { LOOKUP_PROVIDERS, type LookupProvider } from './lookup'
   let { value, onchange }: { value: LookupProvider; onchange: (value: LookupProvider) => void } = $props()
 </script>
@@ -16,10 +17,7 @@
             <path fill="#EA4335" d="M24 12.13c3.01 0 5.69 1.04 7.82 3.09l5.86-5.86C34.12 6.04 29.51 4 24 4A20 20 0 0 0 5.72 15.26l6.82 5.3c1.62-4.84 6.14-8.43 11.46-8.43Z" />
           </svg>
         {:else}
-          <svg width="60" height="60" viewBox="0 0 48 48" aria-hidden="true">
-            <path fill="#A995FF" d="M10 16A12 12 0 0 1 22 4h8a12 12 0 0 1 0 24H18v-8h12a4 4 0 0 0 0-8h-8a4 4 0 0 0-4 4Z" />
-            <path fill="#6D4AFF" d="M10 16h8v24a4 4 0 0 1-4 4h-4Z" />
-          </svg>
+          <img src={protonLogo} width="60" height="60" alt="" aria-hidden="true" />
         {/if}
         <span>{provider.name}</span>
       </button>
@@ -32,6 +30,6 @@
   .provider { display: grid; justify-items: center; gap: 12px; min-width: 173px; padding: 21px 27px 16px; border: 1px solid var(--line); border-radius: 16px; background: transparent; color: var(--ink); }
   .provider:hover { border-color: var(--line-strong); }
   .provider.chosen { border-color: var(--theme-checkbox); box-shadow: 0 0 0 1px var(--theme-checkbox); }
-  .provider svg { width: 60px; height: 60px; }
+  .provider svg, .provider img { width: 60px; height: 60px; }
   .provider span { font-size: 19.5px; font-weight: 600; }
 </style>

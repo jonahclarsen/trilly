@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+<path
+    fill="url(#proton-a)"
+    d="M3.78 26.584v9.36h6.57V26.99a3.285 3.285 0 0 1 3.284-3.285h6.737a11.852 11.852 0 0 0 11.851-11.852A11.851 11.851 0 0 0 20.371 0H3.779v11.7h6.57V6.183h9.577a5.608 5.608 0 1 1 0 11.215h-6.963a9.18 9.18 0 0 0-9.184 9.186z"
+/>
+<path
+    fill="url(#proton-b)"
+    d="M13.633 23.704a9.853 9.853 0 0 0-9.854 9.853v2.386h6.57V26.99a3.285 3.285 0 0 1 3.284-3.285z"
+/>
+<defs>
+    <radialGradient
+        id="proton-a"
+        cx="0"
+        cy="0"
+        r="1"
+        gradientTransform="translate(32.323 -4.99) scale(36.1773)"
+        gradientUnits="userSpaceOnUse"
+    >
+        <stop stop-color="#A995FF" />
+        <stop offset="1" stop-color="#6652F5" />
+    </radialGradient>
+    <linearGradient
+        id="proton-b"
+        x1="8.706"
+        x2="8.706"
+        y1="34.173"
+        y2="20.419"
+        gradientUnits="userSpaceOnUse"
+    >
+        <stop stop-color="#6D4BFD" />
+        <stop offset="1" stop-color="#1C0554" />
+    </linearGradient>
+</defs>
+</svg>
