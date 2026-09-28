@@ -1200,7 +1200,7 @@
               <Button icon="close" label={`Remove expense: ${expense.description}`} disabled={busy || !!saving || saveFailed} onclick={() => void removeExpense(expense.plan_id, expenseKey(expense))} />
           </div></td>
         </tr>
-      {:else}<tr><td colspan="7">{showArchived ? 'No archived expenses.' : 'No current expenses. Press B while reviewing a transaction to add one.'}</td></tr>{/each}</tbody>
+      {:else}<tr><td colspan="7">{showArchived ? 'No archived expenses.' : 'No current expenses.'}</td></tr>{/each}</tbody>
     </table></EditableTable>
   </Modal>
 {:else if modal === 'shortcuts'}
