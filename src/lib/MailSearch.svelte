@@ -1,10 +1,10 @@
 <script lang="ts">
   import LookupLink from './LookupLink.svelte'
   import { mailSearchKey } from './shortcuts'
-  import { mailSearchUrl, MAIL_PROVIDERS, type MailProvider } from './lookup'
+  import { mailSearchUrl, LOOKUP_PROVIDERS, type LookupProvider } from './lookup'
 
-  let { provider, payee }: { provider: MailProvider; payee: string } = $props()
-  const name = $derived(MAIL_PROVIDERS.find(p => p.id === provider)?.name ?? 'mail')
+  let { provider, payee }: { provider: LookupProvider; payee: string } = $props()
+  const name = $derived(LOOKUP_PROVIDERS.find(p => p.id === provider)?.mail ?? 'mail')
   let link = $state<{ open: () => void }>()
   export function open() { link?.open() }
 </script>

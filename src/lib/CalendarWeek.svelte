@@ -1,10 +1,10 @@
 <script lang="ts">
   import LookupLink from './LookupLink.svelte'
   import { calendarWeekKey } from './shortcuts'
-  import { calendarWeekUrl, CALENDAR_PROVIDERS, type CalendarProvider } from './lookup'
+  import { calendarWeekUrl, LOOKUP_PROVIDERS, type LookupProvider } from './lookup'
 
-  let { provider, date }: { provider: CalendarProvider; date: string } = $props()
-  const name = $derived(CALENDAR_PROVIDERS.find(p => p.id === provider)?.name ?? 'calendar')
+  let { provider, date }: { provider: LookupProvider; date: string } = $props()
+  const name = $derived(LOOKUP_PROVIDERS.find(p => p.id === provider)?.calendar ?? 'calendar')
   let link = $state<{ open: () => void }>()
   export function open() { link?.open() }
 </script>

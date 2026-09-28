@@ -29,7 +29,8 @@
   import GooglePayee from './lib/GooglePayee.svelte'
   import MailSearch from './lib/MailSearch.svelte'
   import CalendarWeek from './lib/CalendarWeek.svelte'
-  import { readLookup, saveLookup, MAIL_PROVIDERS, CALENDAR_PROVIDERS, type MailProvider, type CalendarProvider } from './lib/lookup'
+  import { readLookup, saveLookup } from './lib/lookup'
+  import LookupSettings from './lib/LookupSettings.svelte'
   import PaypalActivity from './lib/PaypalActivity.svelte'
   import AmazonOrderLink from './lib/AmazonOrderLink.svelte'
   import CopyAddress from './lib/CopyAddress.svelte'
@@ -1000,7 +1001,7 @@
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
-            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<div class="lookup-actions">{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={googleQuery} />{/if}<MailSearch bind:this={mailSearch} provider={lookup.mail} payee={searchPayee} /><CalendarWeek bind:this={calendarWeek} provider={lookup.calendar} date={current.date} />{#if paypalTransaction}<PaypalActivity bind:this={paypalActivity} />{/if}<PurchaseHistory rules={devRules ?? data.purchase_history_rules} payee={payeeName} query={searchPayee} /></div></div>
+            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<div class="lookup-actions">{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={googleQuery} />{/if}<MailSearch bind:this={mailSearch} provider={lookup} payee={searchPayee} /><CalendarWeek bind:this={calendarWeek} provider={lookup} date={current.date} />{#if paypalTransaction}<PaypalActivity bind:this={paypalActivity} />{/if}<PurchaseHistory rules={devRules ?? data.purchase_history_rules} payee={payeeName} query={searchPayee} /></div></div>
           </div>
           <div class="amount">{money(current.amount)}</div>
           <div class="payee-detail">
@@ -1113,11 +1114,7 @@
       </div>
     </section>
     <LogoSettings value={logo} onchange={(value) => logo = value} />
-    <section class="settings-section">
-      <h3>Lookups</h3>
-      <label class="setting-row">Mail<select value={lookup.mail} onchange={(event) => lookup = { ...lookup, mail: event.currentTarget.value as MailProvider }}>{#each MAIL_PROVIDERS as provider}<option value={provider.id}>{provider.name}</option>{/each}</select></label>
-      <label class="setting-row">Calendar<select value={lookup.calendar} onchange={(event) => lookup = { ...lookup, calendar: event.currentTarget.value as CalendarProvider }}>{#each CALENDAR_PROVIDERS as provider}<option value={provider.id}>{provider.name}</option>{/each}</select></label>
-    </section>
+    <LookupSettings value={lookup} onchange={(value) => lookup = value} />
     {#if import.meta.env.DEV && devRules !== null}
       <section class="settings-section">
         <h3>Development</h3>
