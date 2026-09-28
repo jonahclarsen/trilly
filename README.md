@@ -413,7 +413,7 @@ Date and account come from the transaction; existing rows retain their saved dat
 account, and archive state. Saving does not approve or modify the YNAB transaction.
 The header's **Business** count opens the saved table.
 
-**Copy to sheet** copies current rows without headers in this order: description,
+**Copy all to sheet** copies current rows without headers in this order: description,
 `yyyy-mm-dd` date, amount, account, note. Paste into the first destination cell.
 Amounts reverse the YNAB sign: expenses are positive and refunds negative, with
 up to three decimal places preserved. Excel's destination format and regional

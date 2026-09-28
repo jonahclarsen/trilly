@@ -1177,7 +1177,7 @@
   <Modal title="Business expenses" width={1240} onclose={() => modal = null}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <div class="business-actions">
-      <Button primary shortcut={modShortcutLabel(businessKeys.copy)} disabled={!activeExpenses.length} onclick={() => void copyExpenses()}>{copied ? 'Copied!' : 'Copy to sheet'}</Button>
+      <Button primary shortcut={modShortcutLabel(businessKeys.copy)} disabled={!activeExpenses.length} onclick={() => void copyExpenses()}>{copied ? 'Copied!' : 'Copy all to sheet'}</Button>
       <Button disabled={busy || !!saving || saveFailed || !activeExpenses.length} onclick={() => void archiveExpenses()}>Archive all</Button>
       <Button altKey={businessKeys.archived} label={showArchived ? 'Show current' : 'Show archived'} onclick={() => showArchived = !showArchived}>{showArchived ? 'Show current' : 'Show archived'}</Button>
     </div>

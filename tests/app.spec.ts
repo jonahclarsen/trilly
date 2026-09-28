@@ -578,7 +578,7 @@ test('business expense keyboard entry, editing, copy, reload, archive and undo',
   await page.getByLabel('Description for 2026-09-08').fill('Office equipment')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByLabel('Description for 2026-09-08')).toHaveValue('Office equipment')
-  await page.getByRole('button', { name: 'Copy to sheet', exact: true }).click()
+  await page.getByRole('button', { name: 'Copy all to sheet', exact: true }).click()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Office equipment\t2026-09-08\t84.27\tEveryday card\tReceipt filed')
   await page.getByRole('button', { name: 'Archive all', exact: true }).click()
   await page.reload()
