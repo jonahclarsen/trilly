@@ -47,7 +47,7 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
-  import { shortcuts, suggestionIndex, menuKeys, viewKeys, merchantLinkKey, ynabAccountKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, googlePayeeKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -257,6 +257,8 @@
   let amazonExpenseOrders = $state<AmazonOrder[]>([])
   let businessMessage = $state('')
   let showArchived = $state(false)
+  let copied = $state(false)
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined
   type ExpenseDraft = Omit<BusinessExpense, 'amount'> & { amount: number | undefined }
   let expenseDrafts = $state<ExpenseDraft[]>([])
   const expenses = $derived(data?.business_expenses ?? [])
@@ -264,7 +266,7 @@
   const currentExpenses = $derived(expenses.filter(e => e.plan_id === data?.plan_id && e.transaction_id === currentId))
   const currentExpense = $derived(currentExpenses[0])
   function openBusiness() {
-    businessMessage = ''; showArchived = false
+    businessMessage = ''; showArchived = false; copied = false
     expenseDrafts = expenses.map(expense => ({ ...expense, amount: expense.amount / 1000 }))
     modal = 'business'
   }
@@ -305,8 +307,10 @@
     modal = null; description = ''; expenseNote = ''; expenseId = ''; await tick(); reviewElement?.focus()
   }
   async function copyExpenses() {
-    try { await navigator.clipboard.writeText(businessRows(activeExpenses)); businessMessage = 'Copied. Paste into your sheet.' }
-    catch { businessMessage = 'Copy failed. Allow clipboard access and try again.' }
+    try {
+      await navigator.clipboard.writeText(businessRows(activeExpenses))
+      copied = true; clearTimeout(copiedTimer); copiedTimer = setTimeout(() => copied = false, 2000)
+    } catch { businessMessage = 'Copy failed. Allow clipboard access and try again.' }
   }
   async function archiveExpenses() {
     if (await act({ action: 'archive_business_expenses' })) {
@@ -691,12 +695,27 @@
     modal = null; await tick(); reviewElement?.focus()
   }
   function openPicker(kind: 'category' | 'payee') { if (current && !special(current) && !busy) modal = kind }
+  function textSelected() {
+    const field = document.activeElement
+    if ((field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && field.selectionStart !== field.selectionEnd) return true
+    const selection = window.getSelection()
+    return !!selection && !selection.isCollapsed && selection.toString() !== ''
+  }
   function keydown(event: KeyboardEvent) {
     lastActivity = Date.now()
     if (event.repeat || event.isComposing || startupLoading) return
     const typing = (event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')
     if (data && (!modal || modal === 'business') && !typing && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
       event.preventDefault(); undo(); return
+    }
+    if (modal === 'business' && !event.shiftKey) {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === businessKeys.copy.toLowerCase() && !textSelected()) {
+        event.preventDefault(); if (activeExpenses.length) void copyExpenses(); return
+      }
+      // Option changes event.key on macOS, so use the physical letter key.
+      if (event.altKey && !event.metaKey && !event.ctrlKey && event.code === `Key${businessKeys.archived}`) {
+        event.preventDefault(); showArchived = !showArchived; return
+      }
     }
     if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && !modal) {
       const actions: Record<string, () => void> = {
@@ -1076,9 +1095,9 @@
   <Modal title="Business expenses" width={1240} onclose={() => modal = null}>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <div class="business-actions">
-      <Button primary disabled={!activeExpenses.length} onclick={() => void copyExpenses()}>Copy to sheet</Button>
+      <Button primary shortcut={modShortcutLabel(businessKeys.copy)} disabled={!activeExpenses.length} onclick={() => void copyExpenses()}>{copied ? 'Copied!' : 'Copy to sheet'}</Button>
       <Button disabled={busy || !!saving || saveFailed || !activeExpenses.length} onclick={() => void archiveExpenses()}>Archive all</Button>
-      <Button onclick={() => showArchived = !showArchived}>{showArchived ? 'Show current' : 'Show archived'}</Button>
+      <Button altKey={businessKeys.archived} label={showArchived ? 'Show current' : 'Show archived'} onclick={() => showArchived = !showArchived}>{showArchived ? 'Show current' : 'Show archived'}</Button>
     </div>
     <p class="field-note">Copy current rows: description, date (yyyy-mm-dd), amount, account, note. Expenses are positive; refunds are negative.</p>
     {#if businessMessage}<p role="status">{businessMessage}</p>{/if}

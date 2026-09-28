@@ -13,8 +13,11 @@ export function pickerQuickIndex(event: KeyboardEvent): number | undefined {
   if (event.altKey || event.shiftKey || !(isMac() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return undefined
   return suggestionIndex(event, pickerQuickCount)
 }
+export function modShortcutLabel(key: string) {
+  return `${isMac() ? '⌘' : 'Ctrl+'}${key}`
+}
 export function pickerQuickLabel(index: number) {
-  return `${isMac() ? '⌘' : 'Ctrl+'}${index + 1}`
+  return modShortcutLabel(String(index + 1))
 }
 
 export const merchantLinkKey = 'F'
@@ -34,9 +37,11 @@ export const shortcuts = [
   [googlePayeeKey, 'Search payee on Google'],
   [amazonOrderKey, 'Open Amazon order when available'],
   [paypalActivityKey, 'Open PayPal activity for PayPal transactions'],
+  ['⌘C / Ctrl+C', 'Copy business expenses to sheet (no text selected)'], ['Alt+A', 'Show archived / current business expenses'],
   ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['R', 'Sync'], [',', 'Settings'], ['L', 'Lock'], ['?', 'Help & shortcuts'],
 ] as const
 
+export const businessKeys = { copy: 'C', archived: 'A' } as const
 export const menuKeys = { sync: 'R', undo: 'U', business: 'B', help: 'H', settings: 'S', lock: 'L' } as const
 export function altShortcutLabel(key: string) {
   return `${isMac() ? '⌥' : 'Alt+'}${key}`
