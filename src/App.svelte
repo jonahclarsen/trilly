@@ -244,6 +244,8 @@
     return request
   }
   let error = $state('')
+  // Background save and YNAB sync problems belong on the main page, not in modals.
+  let syncError = $state('')
   let modal = $state<'rules' | 'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'description' | null>(null)
   let memoDraft = $state('')
   // Keep the caret after an untouched PayPal prefix so typing continues it.
@@ -379,6 +381,11 @@
   let descriptionFixed = $state(false)
   let sessionEpoch = 0
   let syncTimer: ReturnType<typeof setTimeout>
+  // YNAB allows 200 requests an hour. Batch pending edits: sync after a pause in
+  // editing, at most a couple of minutes after the first unsynced change.
+  const SYNC_IDLE_MS = 30_000
+  const SYNC_MAX_WAIT_MS = 120_000
+  let syncDueBy = 0
   let lastActivity = Date.now()
   let reviewElement = $state<HTMLElement>()
   const current = $derived(reviewQueue.find(t => t.id === selectedId) ?? reviewQueue.find(t => !skipped.includes(t.id)))
@@ -488,7 +495,7 @@
     amazonExpenseOrders = []; stopAmazon(); amazonGeneration++; amazonScope = ''; amazon = emptyAmazon(); amazonHTML = ''; amazonOrderURL = ''; amazonDraft = null; amazonMarket = null; amazonPayment = undefined; amazonMessage = ''; amazonPackets.clear(); amazonSetup = false
     sessionEpoch++; setSession(''); data = null; workspaceReady = false; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
-    events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; suggestionCache.clear()
+    events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; syncError = ''; syncDueBy = 0; suggestionCache.clear()
     picks = []; clearSkipped(); payee = null; newPayee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
@@ -534,9 +541,17 @@
     suggestionCache.clear(); suggestionVersion++
     return data.payees.find(p => p.id === id)?.name ?? name
   }
-  function scheduleSync(delay = 3000) {
+  function scheduleSync(delay = SYNC_IDLE_MS) {
     clearTimeout(syncTimer)
-    syncTimer = setTimeout(() => { if (busy) scheduleSync(500); else void sync(false) }, delay)
+    const now = Date.now()
+    if (!syncDueBy) syncDueBy = now + SYNC_MAX_WAIT_MS
+    const retryAt = data?.ynab_retry_at ? Date.parse(data.ynab_retry_at) + 1000 : 0
+    const at = Math.max(Math.min(now + delay, syncDueBy), retryAt)
+    syncTimer = setTimeout(() => { if (busy) scheduleSync(500); else void sync(false) }, at - now)
+  }
+  function showSyncError(result: Snapshot) {
+    const retry = result.ynab_retry_at ? ` Next try at ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(result.ynab_retry_at))}.` : ''
+    syncError = result.sync_error ? result.sync_error + retry : ''
   }
   function enqueue(event: QueuedAction) {
     if (!data || saveFailed) return
@@ -550,48 +565,37 @@
     if (draining) return
     draining = true
     let changed = false
-    let descriptionChanged = false
     const epoch = sessionEpoch
     try {
       while (events.length) {
         const event = events[0]!
         syncing = event.body.action === 'sync'
         changed ||= !syncing
-        descriptionChanged ||= event.body.action === 'description'
-        // The backend requires memo-only edits to sync before another edit of that row.
-        // Wait here, while the UI continues to project all queued actions immediately.
-        if ((event.body.action === 'review' || event.body.action === 'description') &&
-            confirmed?.description_pending?.includes(String(event.body.id))) {
-          const synced = await api<Snapshot>('action', { action: 'sync', full: false })
-          if (epoch !== sessionEpoch) return
-          confirmed = synced
-          if (synced.sync_error) throw new Error(synced.sync_error)
-          data = events.reduce(project, synced)
-        }
         let result = await api<Snapshot>('action', event.body)
         if (epoch !== sessionEpoch) return
         // Undo writes a durable reverse edit. Keep its optimistic transaction
         // visible until that reverse is confirmed, before sending another review.
+        // A failed sync leaves the undo saved locally; it syncs on a later attempt.
         if (event.body.action === 'undo' && result.pending) {
           confirmed = result
           result = await api<Snapshot>('action', { action: 'sync', full: false })
           if (epoch !== sessionEpoch) return
-          if (result.sync_error) throw new Error(result.sync_error)
+          showSyncError(result)
         }
         confirmed = result; events.shift(); saving = events.length
         data = events.reduce(project, result)
-        if (result.sync_error) error = result.sync_error
         if (event.body.action === 'sync') {
+          showSyncError(result)
           suggestionCache.clear(); suggestionVersion++
         }
       }
-      if (changed) scheduleSync(descriptionChanged ? 0 : 3000)
+      if (changed || data?.ynab_retry_at) scheduleSync()
     } catch (e) {
       if (epoch !== sessionEpoch) return
       events = []; saving = 0; saveFailed = true
       data = confirmed
       handleError(e)
-      if (data) error = `Save could not be confirmed. Queued actions stopped. Reload saved state before continuing. ${error}`
+      if (data) { syncError = `Save could not be confirmed. Queued actions stopped. Reload saved state before continuing. ${error}`; error = '' }
     } finally {
       if (epoch === sessionEpoch) { draining = false; syncing = false }
     }
@@ -603,7 +607,7 @@
     try {
       const result = await api<Snapshot>('state')
       if (epoch !== sessionEpoch) return
-      data = result; confirmed = result; saveFailed = false; error = ''; clearSkipped()
+      data = result; confirmed = result; saveFailed = false; error = ''; syncError = ''; clearSkipped()
       suggestionCache.clear(); suggestionVersion++
       if (result.pending) scheduleSync()
     } catch (e) { if (epoch === sessionEpoch) handleError(e) }
@@ -611,7 +615,7 @@
   }
   async function sync(full = true) {
     if (busy || saving || saveFailed || !data?.plan_id || (!full && !data.pending)) return
-    clearTimeout(syncTimer)
+    clearTimeout(syncTimer); syncDueBy = 0
     enqueue({ body: { action: 'sync', full } })
   }
   function approve(suggestion?: Suggestion) {
@@ -780,6 +784,7 @@
   </header>
 
   {#if error}<div class="error" role="alert"><span>{error}</span><Button icon="close" label="Dismiss error" onclick={() => error = ''} /></div>{/if}
+  {#if syncError}<div class="error" role="alert"><span>{syncError}</span><Button icon="close" label="Dismiss error" onclick={() => syncError = ''} /></div>{/if}
 
   {#if saveFailed && data}<div class="error" role="status"><span>Review paused until saved state is checked.</span><Button disabled={busy} onclick={() => void recover()}>Reload saved state</Button></div>{/if}
 
@@ -1040,7 +1045,6 @@
   <PurchaseHistoryEditor onclose={() => modal = 'settings'} onsaved={(rules) => devRules = rules} oncommitted={closeSettings} />
 {:else if modal === 'description'}
   <Modal title="Description" subtitle={`${current?.date ?? ''} · ${payeeName}`} onclose={() => { modal = null; memoDraft = ''; memoId = '' }}>
-    {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <form onsubmit={(event) => { event.preventDefault(); void saveDescription() }}>
       <label>Description<textarea data-modal-focus data-modal-caret-end={memoCaretEnd || undefined} bind:value={memoDraft} maxlength="500" rows="3" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void saveDescription() } }}></textarea></label>
       <Button type="submit" primary shortcut="Enter" disabled={busy || saveFailed}>Save description</Button>
@@ -1048,7 +1052,6 @@
   </Modal>
 {:else if modal === 'expense'}
   <Modal width={800} title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseId = '' }}>
-    {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     {#if current}
       <BusinessExpenseEditor transaction={current} saved={currentExpenses} {description} note={expenseNote} orders={amazonExpenseOrders} store={amazon} {currency} disabled={busy || saveFailed} onsave={(rows) => void saveExpense(rows)} />
     {/if}

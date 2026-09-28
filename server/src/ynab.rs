@@ -1,11 +1,24 @@
 use crate::model::*;
+use chrono::{DateTime, Utc};
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::{sync::Mutex, time::Duration};
+
+pub const RATE_LIMITED: &str =
+    "YNAB's hourly request limit was reached. Changes are saved and will sync automatically.";
+
+/// YNAB allows 200 requests per rolling hour and sends no retry time. After a
+/// 429, stop calling YNAB for a while so retries cannot extend the limit.
+#[derive(Default)]
+struct Cooldown {
+    until: Option<DateTime<Utc>>,
+    strikes: u32,
+}
 
 pub struct Ynab {
     client: Client,
     base: String,
+    cooldown: Mutex<Cooldown>,
 }
 impl Ynab {
     pub fn new() -> Self {
@@ -16,7 +29,16 @@ impl Ynab {
                 .build()
                 .unwrap(),
             base: "https://api.ynab.com/v1".into(),
+            cooldown: Mutex::default(),
         }
+    }
+    /// When YNAB may be called again after reaching its hourly limit.
+    pub fn retry_at(&self) -> Option<DateTime<Utc>> {
+        self.cooldown
+            .lock()
+            .unwrap()
+            .until
+            .filter(|until| *until > Utc::now())
     }
     async fn request(
         &self,
@@ -25,6 +47,9 @@ impl Ynab {
         path: &str,
         body: Option<Value>,
     ) -> Result<Value, String> {
+        if self.retry_at().is_some() {
+            return Err(RATE_LIMITED.into());
+        }
         let mut req = self
             .client
             .request(method, format!("{}{path}", self.base))
@@ -37,12 +62,15 @@ impl Ynab {
             .await
             .map_err(|_| "Could not reach YNAB. Changes remain saved locally.")?;
         match response.status().as_u16() {
-            200..=299 => {}
+            200..=299 => self.cooldown.lock().unwrap().strikes = 0,
             401 | 403 => return Err("YNAB access denied. Update your token in Settings.".into()),
             429 => {
-                return Err(
-                    "YNAB's hourly limit was reached. Changes are saved; try syncing later.".into(),
-                );
+                let mut cooldown = self.cooldown.lock().unwrap();
+                // Wait 5, 10, 20, then 30 minutes between attempts.
+                let minutes = (5i64 << cooldown.strikes.min(3)).min(30);
+                cooldown.strikes += 1;
+                cooldown.until = Some(Utc::now() + chrono::Duration::minutes(minutes));
+                return Err(RATE_LIMITED.into());
             }
             400 | 409 => {
                 return Err(
@@ -78,7 +106,13 @@ impl Ynab {
                 None,
             )
             .await
-            .map_err(|_| "Could not check current YNAB payees. Rename was not sent. Try again.")?;
+            .map_err(|error| {
+                if error == RATE_LIMITED {
+                    "YNAB's hourly request limit was reached. Rename was not sent; try again later."
+                } else {
+                    "Could not check current YNAB payees. Rename was not sent. Try again."
+                }
+            })?;
         let mut payees: Vec<Payee> = parse(&response["payees"])?;
         let index = rename_payee_index(&payees, id, name)?;
         let response = self.request(&data.token, Method::PATCH,
@@ -212,7 +246,17 @@ impl Ynab {
                     }
                 }
             }
-            if !current.is_some_and(|t| t.same_editable_state(&pending.before)) {
+            // A memo that already has the value being written is not a conflict. This
+            // covers a description edit, merged into a review, whose earlier write
+            // was applied without a confirmed response.
+            let memo_applied = |t: &Transaction| {
+                pending.change.memo.as_deref().is_some_and(|memo| {
+                    let mut expected = pending.before.clone();
+                    expected.memo = t.memo.clone();
+                    t.memo.as_deref().unwrap_or("") == memo && t.same_editable_state(&expected)
+                })
+            };
+            if !current.is_some_and(|t| t.same_editable_state(&pending.before) || memo_applied(t)) {
                 pending.conflict = true;
                 continue;
             }
@@ -577,6 +621,7 @@ mod tests {
             Ynab {
                 client: Client::new(),
                 base,
+                cooldown: std::sync::Mutex::default(),
             },
             mock,
             data,

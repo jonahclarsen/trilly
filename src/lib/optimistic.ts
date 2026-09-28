@@ -71,7 +71,11 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
       memo: typeof event.body.memo === 'string' ? event.body.memo : t.memo,
     })
     result.queue = result.queue.filter(t => t.id !== event.body.id)
-    result.pending++; result.can_undo = true
+    // An unsynced description edit is folded into the review as one pending change.
+    const described = result.description_pending?.includes(String(event.body.id))
+    if (described) result.description_pending = result.description_pending!.filter(id => id !== event.body.id)
+    else result.pending++
+    result.can_undo = true
   } else if (event.body.action === 'undo') {
     if (event.restore && result.amazon_targets && !event.restore.approved && !event.restore.transfer_account_id) result.amazon_targets = [event.restore, ...result.amazon_targets.filter(t => t.id !== event.restore!.id)]
     if (event.restore) result.amazon_assignments = (result.amazon_assignments ?? []).filter(a => a.transaction_id !== event.restore!.id)

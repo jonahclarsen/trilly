@@ -297,7 +297,9 @@ async fn unlock(State(state): State<Shared>, Json(body): Json<Unlock>) -> Result
 
 async fn state_view(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<Value>> {
     let mut app = state.lock().await;
-    Ok(Json(snapshot(&authorize(&mut app, &headers)?.vault.data)))
+    let mut result = snapshot(&authorize(&mut app, &headers)?.vault.data);
+    result["ynab_retry_at"] = json!(app.ynab.retry_at());
+    Ok(Json(result))
 }
 async fn suggestions(
     State(state): State<Shared>,
@@ -643,9 +645,27 @@ async fn action(
                     t.id == id && t.account_id == next.account_id && !t.deleted && !t.approved
                 })
                 .ok_or("Transaction is no longer awaiting approval")?;
-            if next.pending.iter().any(|p| p.change.id == id) {
+            // Fold an unsynced description edit into this review so reviewing never
+            // waits for YNAB. Undoing the review also reverts that description.
+            let description = next
+                .pending
+                .iter()
+                .position(|p| p.change.id == id && p.change.memo_only && !p.conflict);
+            if next
+                .pending
+                .iter()
+                .enumerate()
+                .any(|(index, p)| p.change.id == id && Some(index) != description)
+            {
                 return Err("Transaction already queued".into());
             }
+            let (before, memo) = match description {
+                Some(index) => (
+                    next.pending[index].before.clone(),
+                    memo.or_else(|| next.pending[index].change.memo.clone()),
+                ),
+                None => (t.clone(), memo),
+            };
             if t.special()
                 && (payee_name.is_some() || t.payee_id != payee_id || t.category_id != category_id)
             {
@@ -671,8 +691,11 @@ async fn action(
                     return Err("Choose a payee".into());
                 }
             }
+            if let Some(index) = description {
+                next.pending.remove(index);
+            }
             let pending = Pending {
-                before: t.clone(),
+                before,
                 change: Change {
                     payee_name,
                     memo,
@@ -738,6 +761,7 @@ async fn action(
     app.session.as_mut().unwrap().vault.commit(next)?;
     let mut result = snapshot(&app.session.as_ref().unwrap().vault.data);
     result["amazon_cleared"] = json!(amazon_cleared);
+    result["ynab_retry_at"] = json!(app.ynab.retry_at());
     if let Some(error) = sync_error {
         result["sync_error"] = json!(error);
     }
@@ -748,8 +772,22 @@ fn save_description(data: &mut Data, id: &str, description: String) -> Result<()
     if description.chars().count() > 500 {
         return Err("Description must be 500 characters or fewer".into());
     }
-    if data.pending.iter().any(|p| p.change.id == id) {
-        return Err("Sync the pending change before editing this description".into());
+    if let Some(index) = data.pending.iter().position(|p| p.change.id == id) {
+        // Replace an unsynced description instead of waiting for YNAB.
+        let pending = &mut data.pending[index];
+        if !pending.change.memo_only || pending.conflict {
+            return Err("Sync the pending change before editing this description".into());
+        }
+        if pending.change.memo.as_deref() == Some(description.as_str()) {
+            return Ok(());
+        }
+        pending.change.memo = Some(description);
+        let edited = pending.clone();
+        data.undo.push(edited);
+        if data.undo.len() > 100 {
+            data.undo.remove(0);
+        }
+        return Ok(());
     }
     let before = data
         .transactions

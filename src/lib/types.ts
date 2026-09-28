@@ -25,7 +25,7 @@ export type Snapshot = {
   categories: { id: string; name: string; category_group_name: string }[];
   payees: Option[]; queue: Transaction[]; pending: number; conflicts: number;
   undo_transactions?: Transaction[];
-  can_undo: boolean; synced_at: string | null; history_count: number; sync_error?: string;
+  can_undo: boolean; synced_at: string | null; history_count: number; sync_error?: string; ynab_retry_at?: string | null;
 }
 export function special(t: Transaction) {
   return !!(t.subtransactions.length || t.transfer_account_id || t.debt_transaction_type || t.cleared === 'reconciled')
