@@ -181,13 +181,15 @@ impl Ynab {
                 .await?;
             data.payees = parse(&payees["payees"])?;
         }
-        let query = if data.knowledge > 0 {
+        // A full sync rereads every transaction instead of using the delta cursor.
+        let full = metadata || data.knowledge <= 0;
+        let query = if full {
+            "?since_date=2000-01-01".to_string()
+        } else {
             format!(
                 "?since_date=2000-01-01&last_knowledge_of_server={}",
                 data.knowledge
             )
-        } else {
-            "?since_date=2000-01-01".to_string()
         };
         let response = self
             .request(
@@ -204,6 +206,12 @@ impl Ynab {
                 .into_iter()
                 .map(|t| (t.id.clone(), t))
                 .collect();
+        if full {
+            // A full list omits deleted transactions, and delta responses do not
+            // report an imported transaction that YNAB hid by matching it to an
+            // existing one. Tombstone whatever the full list no longer includes.
+            merged.values_mut().for_each(|t| t.deleted = true);
+        }
         for transaction in transactions {
             merged.insert(transaction.id.clone(), transaction);
         }
