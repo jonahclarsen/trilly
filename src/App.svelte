@@ -307,6 +307,7 @@
   async function saveExpense(rows: BusinessExpenseInput[]) {
     if (!data || busy || saveFailed || !expenseId) return
     enqueue({ body: { action: 'replace_business_expenses', id: expenseId, expenses: rows } })
+    reviewHistory = [...activeReviewHistory, { type: 'business' }]
     // Business expenses usually share one category; use it unless the user chose one.
     if (rows.length && current?.id === expenseId && !special(current) && !categoryFixed && businessDefault && data.categories.some(c => c.id === businessDefault)) {
       category = businessDefault; categoryFixed = true; edited = true
@@ -356,8 +357,10 @@
   let selectedId = $state<string | null>(null)
   let skipped = $state<string[]>([])
   // Local skips share ordering with persisted edits, but never change backend data.
-  let reviewHistory = $state<({ type: 'skip'; id: string } | { type: 'edit' })[]>([])
-  const activeReviewHistory = $derived(reviewHistory.filter(event => event.type === 'edit' ||
+  // Business expense undo history persists separately, so only expenses saved while
+  // reviewing join this order; older ones are undone from the business view.
+  let reviewHistory = $state<({ type: 'skip'; id: string } | { type: 'edit' } | { type: 'business' })[]>([])
+  const activeReviewHistory = $derived(reviewHistory.filter(event => event.type !== 'skip' ||
     (skipped.includes(event.id) && data?.queue.some(t => t.id === event.id))))
   const canUndoSkip = $derived(activeReviewHistory.at(-1)?.type === 'skip')
   function clearSkipped() { skipped = []; reviewHistory = []; selectedId = null }
@@ -722,17 +725,22 @@
   }
   function undo() {
     if (!data || busy || saveFailed) return
-    if (modal !== 'business' && canUndoSkip) {
-      const previous = activeReviewHistory.at(-1)!
-      if (previous.type === 'skip') {
-        reviewHistory = activeReviewHistory.slice(0, -1)
-        skipped = skipped.filter(id => id !== previous.id)
-        selectedId = previous.id; reviewElement?.focus()
-      }
+    if (modal === 'business') { void undoBusiness(); return }
+    const previous = activeReviewHistory.at(-1)
+    if (previous?.type === 'skip') {
+      reviewHistory = activeReviewHistory.slice(0, -1)
+      skipped = skipped.filter(id => id !== previous.id)
+      selectedId = previous.id; reviewElement?.focus()
       return
     }
-    if (data.can_undo_business || data.can_undo_archive) { void undoBusiness(); return }
-    if (modal === 'business' || !data.can_undo) return
+    if (previous?.type === 'business' || (!previous && !data.can_undo)) {
+      if (!data.can_undo_business && !data.can_undo_archive) return
+      // Queued so it follows the expense save it reverses.
+      reviewHistory = activeReviewHistory.slice(0, -1)
+      enqueue({ body: { action: 'undo_business_expense' } })
+      return
+    }
+    if (!data.can_undo) return
     const restore = data.undo_transactions?.at(-1)
     reviewHistory = activeReviewHistory.slice(0, -1)
     enqueue({ body: { action: 'undo' }, restore })
