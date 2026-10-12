@@ -41,7 +41,8 @@
       return productRows().map(row => ({ ...row, note: combinedExpense?.note ?? '' }))
     }
     if (saved.length) {
-      const refresh = saved.length === 1 && !saved[0]!.product_key
+      // A single-product order autofills its one row with that product's key.
+      const refresh = saved.length === 1 && (!saved[0]!.product_key || products.length <= 1)
       if (refresh) autofilledId = saved[0]!.expense_id ?? ''
       const restored = saved.map(e => ({
         expense_id: e.expense_id ?? '', product_key: e.product_key ?? '',
