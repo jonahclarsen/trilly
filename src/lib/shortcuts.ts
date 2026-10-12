@@ -13,6 +13,10 @@ export function pickerQuickIndex(event: KeyboardEvent): number | undefined {
   if (event.altKey || event.shiftKey || !(isMac() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return undefined
   return suggestionIndex(event, pickerQuickCount)
 }
+// Cmd+Enter on macOS, Ctrl+Enter elsewhere; plain Enter stays approve.
+export function isModEnter(event: KeyboardEvent) {
+  return event.key === 'Enter' && !event.altKey && !event.shiftKey && (isMac() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
+}
 export function modShortcutLabel(key: string) {
   return `${isMac() ? '⌘' : 'Ctrl+'}${key}`
 }
@@ -37,7 +41,7 @@ export const shortcuts = [
   [viewKeys.transaction, 'Transaction view'], [viewKeys.list, 'List view'], [nextReviewKey, 'Open next to review (list view)'],
   ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
   ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'],
-  ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],
+  ['Enter', 'Approve / save description or expense'], ['⌘Enter / Ctrl+Enter', 'Apply repeated choice to all like it'], ['Esc', 'Dismiss repeated choice'], ['1 / 2 / 3', 'Use suggestion & approve'],
   ['C', 'Choose category'], ['E', 'Choose payee'], ['⌘1–4 / Ctrl+1–4', 'Pick top category or payee result'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo skip / approval / expense change'],
   [googlePayeeKey, 'Search original bank payee on Google'],
   [mailSearchKey, 'Search payee in mail'],

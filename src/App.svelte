@@ -51,8 +51,10 @@
   import { applyAppearance, readPreferences, localDate, tomorrow, type Appearance } from './lib/appearance'
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
+  import { lookOf, repeatKey, repeatThreshold, type RepeatChoice } from './lib/repeat-choice'
+  import RepeatChoicePopup from './lib/RepeatChoice.svelte'
   import { pageFromPath, pagePath, type Page } from './lib/route'
-  import { shortcuts, suggestionIndex, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, nextReviewKey, businessPromptKeys, googlePayeeKey, mailSearchKey, calendarWeekKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, isModEnter, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, nextReviewKey, businessPromptKeys, googlePayeeKey, mailSearchKey, calendarWeekKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -419,6 +421,7 @@
   function reopenTransaction(id: string) {
     const row = reviewRows.find(t => t.id === id)
     if (!data || saveFailed || !row || !editable(row)) return
+    forgetRepeat(id)
     enqueue({ body: { action: 'reopen', id } })
     void openTransaction(id)
   }
@@ -470,6 +473,46 @@
   let paypalActivity = $state<{ open: () => void }>()
   const paypalTransaction = $derived(!!current && isPaypal(payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name))
   const ynabAccountLink = $derived(data?.plan_id && data.account_id ? `https://app.ynab.com/${data.plan_id}/accounts/${data.account_id}` : '')
+  // Approved transaction ids per identical choice this session. Dismissing an offer
+  // forgets its count, so it returns only after the same choice is made three more times.
+  const repeatedChoices = new Map<string, string[]>()
+  let repeatOffer = $state<{ key: string; choice: RepeatChoice } | null>(null)
+  let repeatPopup = $state<{ dismiss: () => void }>()
+  const repeatMatches = $derived(repeatOffer ? reviewQueue.filter(t => !special(t) && !isAmazon(t) && lookOf(t) === repeatOffer!.choice.look) : [])
+  const repeatVisible = $derived(view === 'transaction' && !!current && repeatMatches.length > 0)
+  const repeatSummary = $derived(repeatOffer ? [
+    repeatOffer.choice.payee_name ?? data?.payees.find(p => p.id === repeatOffer!.choice.payee_id)?.name ?? 'Payee',
+    data?.categories.find(c => c.id === repeatOffer!.choice.category_id)?.name ?? 'Category',
+    repeatOffer.choice.memo || 'No description',
+  ].join(' · ') : '')
+  function recordRepeat(choice: RepeatChoice, id: string) {
+    const key = repeatKey(choice)
+    const ids = [...(repeatedChoices.get(key) ?? []).filter(value => value !== id), id]
+    repeatedChoices.set(key, ids)
+    if (ids.length >= repeatThreshold) repeatOffer = { key, choice }
+  }
+  // An undone or reopened review no longer counts toward its choice.
+  function forgetRepeat(id: string) {
+    for (const [key, ids] of repeatedChoices) {
+      if (!ids.includes(id)) continue
+      const rest = ids.filter(value => value !== id)
+      repeatedChoices.set(key, rest)
+      if (repeatOffer?.key === key && rest.length < repeatThreshold) repeatOffer = null
+    }
+  }
+  function dismissRepeat() {
+    if (!repeatOffer) return
+    repeatedChoices.delete(repeatOffer.key); repeatOffer = null
+    reviewElement?.focus()
+  }
+  function applyRepeat() {
+    if (!repeatOffer || !repeatVisible || !data || busy || saveFailed) return
+    const { key, choice } = repeatOffer
+    const targets = [...repeatMatches]
+    repeatedChoices.delete(key); repeatOffer = null
+    for (const t of targets) enqueue({ body: { action: 'review', id: t.id, ...(choice.payee_name ? { payee_name: choice.payee_name } : {}), payee_id: choice.payee_id, category_id: choice.category_id, memo: choice.memo } })
+    reviewElement?.focus()
+  }
   const businessHint = $derived(!!current && !special(current) && !currentExpenses.length && !!category && businessLikely.has(category))
 
   $effect(() => { applyAppearance(theme, appearance, randomStart) })
@@ -573,6 +616,7 @@
     sessionEpoch++; setSession(''); data = null; routed = false; workspaceReady = false; legacyPassphrase = ''; token = ''; replacingToken = false; modal = null
     description = ''; expenseNote = ''; expenseId = ''; memoDraft = ''; memoId = ''; businessMessage = ''; showArchived = false
     events = []; saving = 0; draining = false; confirmed = null; saveFailed = false; syncError = ''; syncDueBy = 0; suggestionCache.clear()
+    repeatedChoices.clear(); repeatOffer = null
     picks = []; clearSkipped(); payee = null; newPayee = null; category = null; clearTimeout(syncTimer); busy = false; syncing = false
   }
   function handleError(e: unknown) {
@@ -707,6 +751,11 @@
     }
     const selectedName = selectedNewPayee ?? data.payees.find(p => p.id === selectedPayee)?.name
     const reviewMemo = amazonDraft !== null ? amazonDraft.toLowerCase() : paypalDraft ?? draftMemo ?? (descriptionFixed ? null : paypalDescription(current.memo, selectedName))
+    // Amazon orders and business expenses need per-transaction details, so they are never batched.
+    const look = lookOf(current)
+    if (look && selectedCategory && !special(current) && !isAmazon(current) && !amazonMarket && !businessLikely.has(selectedCategory)) {
+      recordRepeat({ look, payee_id: selectedNewPayee ? null : selectedPayee, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), category_id: selectedCategory, memo: reviewMemo ?? current.memo ?? '' }, current.id)
+    }
     enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(reviewMemo !== null ? { memo: reviewMemo } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
   }
@@ -752,6 +801,7 @@
     if (!data.can_undo) return
     const restore = data.undo_transactions?.at(-1)
     reviewHistory = activeReviewHistory.slice(0, -1)
+    if (restore) forgetRepeat(restore.id)
     enqueue({ body: { action: 'undo' }, restore })
     selectedId = restore?.id ?? null; reviewElement?.focus()
   }
@@ -822,6 +872,7 @@
       if (action) { event.preventDefault(); action() }
       return
     }
+    if (data && !modal && !typing && repeatVisible && isModEnter(event)) { event.preventDefault(); applyRepeat(); return }
     if (event.metaKey || event.ctrlKey || event.altKey) return
     if (!data) {
       if (event.key === 'Enter' && !modal && ready && !busy && unlockMode === 'macos') {
@@ -868,6 +919,7 @@
       [amazonOrderKey.toLowerCase()]: () => { if (amazonOrderLink) amazonOrderAction?.open() }, r: () => void sync(),
       [paypalActivityKey.toLowerCase()]: () => paypalActivity?.open(),
       ',': () => modal = 'settings', '?': () => modal = 'shortcuts',
+      ...(repeatVisible ? { escape: () => repeatPopup?.dismiss() } : {}),
     }
     // Native focused buttons retain Enter/Space activation.
     if (key === 'enter' && (event.target as HTMLElement)?.closest('button, a')) return
@@ -1029,6 +1081,7 @@
         </section>
       {:else if current}
         <div class="transaction-layout" class:with-amazon={isAmazon(current)}>
+        <div class="review-card">
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
@@ -1091,6 +1144,8 @@
             <Button primary icon="check" shortcut="Enter" disabled={busy || saveFailed || (!special(current) && ((!payee && !amazonMarket && !newPayee) || !category))} onclick={() => void approve()}>{edited ? 'Save & approve' : 'Approve'}</Button>
           </div>
         </article>
+          {#if repeatVisible && repeatOffer}{#key repeatOffer.key}<RepeatChoicePopup bind:this={repeatPopup} look={repeatOffer.choice.look} summary={repeatSummary} matches={repeatMatches} {money} date={dateLabel} disabled={busy || saveFailed} onapply={applyRepeat} ondismiss={dismissRepeat} />{/key}{/if}
+        </div>
           {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} onorders={(orders) => amazonExpenseOrders = orders} />{/key}{/if}
         </div>
       {:else}

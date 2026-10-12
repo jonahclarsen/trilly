@@ -400,3 +400,25 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
   overflow-wrap: anywhere;
   line-height: 1.5;
 }
+
+/* Repeated choice: a small tray that slides out from under the review card. */
+.review-card { position: relative; }
+.review-card > .transaction { position: relative; z-index: 1; }
+.repeat-choice { position: relative; margin: -1px 18px 0; padding: 14px 16px 12px; display: grid; gap: 8px; font-size: 12px; background: color-mix(in srgb, var(--paper-strong) 94%, var(--accent)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-top: 0; border-radius: 0 0 12px 12px; box-shadow: 0 6px 18px rgb(0 0 0 / .04); animation: repeat-choice-out .28s cubic-bezier(.2, .8, .2, 1); }
+@keyframes repeat-choice-out { from { transform: translateY(-100%); opacity: 0; } }
+.repeat-choice-heading { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.repeat-choice-heading strong { font-weight: 600; font-size: 13px; color: var(--accent-strong); white-space: nowrap; }
+.repeat-choice-look { font-family: var(--font-mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.repeat-choice-summary { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.repeat-choice-list { list-style: none; margin: 0; padding: 0; max-height: 116px; overflow-y: auto; border-top: 1px solid var(--line); }
+.repeat-choice-list li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 2px; color: var(--muted); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); font-variant-numeric: tabular-nums; }
+.repeat-choice-list li:last-child { border-bottom: 0; }
+.repeat-choice-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.repeat-choice-actions button { padding: 6px 10px; gap: 7px; font-size: 12px; }
+.repeat-choice-actions button kbd { padding: 1px 5px; font-size: 10px; }
+.repeat-choice-actions button svg { width: 15px; height: 15px; }
+/* Dismiss unlocks once its fill has wiped across. */
+.repeat-dismiss { position: relative; overflow: hidden; isolation: isolate; background: transparent; }
+.repeat-dismiss:disabled { opacity: 1; color: var(--muted); }
+.repeat-dismiss:disabled::before { content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in srgb, var(--accent) 16%, transparent); transform: scaleX(0); transform-origin: left; animation: repeat-dismiss-wipe var(--repeat-dismiss-delay, 3s) linear forwards; }
+@keyframes repeat-dismiss-wipe { to { transform: scaleX(1); } }
