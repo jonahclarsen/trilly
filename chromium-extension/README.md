@@ -43,6 +43,12 @@ transferred as bounded raster data URLs; Trilly does not load remote images.
 Raw HTML, scripts, address blocks and Amazon account credentials are not stored.
 Marketplace pages and thumbnails still make ordinary requests to Amazon.
 
+Amazon 2.0 (infinite scroll for orders and transactions) may be installed
+alongside this extension. Collector-owned tabs set `data-amazon2-off` on the
+page's `<html>` element, which makes Amazon 2.0 leave the page unmodified or
+undo what it already added. The parser also ignores rows Amazon 2.0 marks with
+`data-amazon2`, so each payments page contains only Amazon's own rows.
+
 The parser extends the working `bank-to-csv` payment card selectors and supports
 the `data-component` order-detail layout on the supplied local references.
 Localized layouts, changed markup, unsupported payment types, and missing

@@ -55,7 +55,8 @@
   function payments(doc, url) {
     const marketplace = market(url); if (!marketplace) throw new Error('Unsupported Amazon marketplace');
     const occurrences = new Map();
-    const rows = [...doc.querySelectorAll('.apx-transactions-line-item-component-container')];
+    // Ignore rows another extension (Amazon 2.0) appended from later pages.
+    const rows = [...doc.querySelectorAll('.apx-transactions-line-item-component-container')].filter(row => !row.closest('[data-amazon2]'));
     const records = rows.flatMap(container => {
       const amountText = text(container.querySelector('.a-size-base-plus.a-text-bold'));
       const amount = money(amountText); if (amount === null || !amount) return [];
@@ -84,7 +85,7 @@
     });
     const nextControl = [...doc.querySelectorAll('a, button, input, [role=button], .a-button')].find(el =>
       [text(el), el.getAttribute('aria-label'), el.getAttribute('value'), el.getAttribute('title')].some(label => /^(next(?: page)?|older(?: transactions)?|suivant)\s*[›»→]?$/i.test(label || '')) &&
-      !el.disabled && el.getAttribute('aria-disabled') !== 'true' && !el.closest('.a-disabled, .a-button-disabled'));
+      !el.disabled && el.getAttribute('aria-disabled') !== 'true' && !el.closest('.a-disabled, .a-button-disabled, [data-amazon2]'));
     const next = nextControl?.querySelector('input, button, a') || nextControl;
     return { payments: records, rowCount: rows.length, next: next || null };
   }

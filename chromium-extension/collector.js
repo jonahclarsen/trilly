@@ -41,8 +41,14 @@
     }
     schedule();
   }
+  // Amazon 2.0 appends later payment pages and hides Next Page; this attribute
+  // tells it to leave collector-owned tabs exactly as Amazon rendered them.
+  function claim() {
+    if (document.documentElement) document.documentElement.setAttribute('data-amazon2-off', '');
+    else document.addEventListener('readystatechange', claim, { once: true });
+  }
   function begin(value) {
-    task = value; sent = false; last = ''; stable = 0; deadline = Date.now() + 60000;
+    claim(); task = value; sent = false; last = ''; stable = 0; deadline = Date.now() + 60000;
     stop(); observer = new MutationObserver(schedule); observer.observe(document, { childList: true, subtree: true }); schedule();
   }
   chrome.runtime.onMessage.addListener((message, _sender, reply) => {

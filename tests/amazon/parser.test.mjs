@@ -49,6 +49,14 @@ test('payments reuse the working bank-to-csv selector and distinguish refunds wi
   assert.equal(result.next.tagName, 'BUTTON');
   assert.deepEqual(p.payments(dom(html), url).payments, result.payments);
 });
+test('rows and controls appended by Amazon 2.0 are ignored', () => {
+  const html = `<h3>September 2, 2026</h3>${paymentHTML('$30.00')}<span class="a-button"><input type="submit" value="Next Page"></span>
+    <div data-amazon2>Page 2</div><div data-amazon2>${paymentHTML('$40.00')}</div><div data-amazon2><button>Next page</button></div>`;
+  const result = p.payments(dom(html), url);
+  assert.equal(result.rowCount, 1);
+  assert.deepEqual(result.payments.map(payment => payment.amount), [-30000]);
+  assert.equal(result.next.tagName, 'INPUT');
+});
 test('same-value payment occurrences stay distinct; marketplace and currency are retained', () => {
   const result = p.payments(dom(`<h3>Sep 2, 2026</h3>${paymentHTML('US$30.00')}${paymentHTML('US$30.00')}`), url);
   assert.notEqual(result.payments[0].id, result.payments[1].id);
