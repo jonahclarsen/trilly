@@ -24,6 +24,7 @@ export type Snapshot = {
   plans: { id: string; name: string; currency_format: { iso_code: string } | null }[];
   plan_id: string; account_id: string; accounts: Option[];
   category_transaction_counts?: Record<string, number>;
+  payee_transaction_counts?: Record<string, number>;
   categories: { id: string; name: string; category_group_name: string }[];
   payees: Option[]; queue: Transaction[]; pending: number; conflicts: number;
   undo_transactions?: Transaction[];

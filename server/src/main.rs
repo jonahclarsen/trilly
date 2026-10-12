@@ -114,6 +114,19 @@ fn category_transaction_counts(d: &Data) -> std::collections::HashMap<&str, usiz
     counts
 }
 
+fn payee_transaction_counts(d: &Data) -> std::collections::HashMap<&str, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for payee in d
+        .transactions
+        .iter()
+        .filter(|t| !t.deleted)
+        .filter_map(|t| t.payee_id.as_deref())
+    {
+        *counts.entry(payee).or_insert(0) += 1;
+    }
+    counts
+}
+
 // The usual business category and the categories that are mostly business expenses.
 fn business_categories(d: &Data) -> Value {
     use std::collections::{HashMap, HashSet};
@@ -245,6 +258,7 @@ fn snapshot(d: &Data) -> Value {
     json!({"connected": !d.token.is_empty(), "plans": d.plans, "plan_id": d.plan_id,
         "account_id": d.account_id, "accounts": d.accounts.iter().filter(|a| !a.deleted && !a.closed).collect::<Vec<_>>(),
         "category_transaction_counts": category_transaction_counts(d),
+        "payee_transaction_counts": payee_transaction_counts(d),
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
         "purchase_history_rules": purchase_history::rules(),
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),

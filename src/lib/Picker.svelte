@@ -5,7 +5,7 @@
   import { pickerResults } from './picker-search'
   import { pickerQuickIndex, pickerQuickLabel, pickerQuickCount } from './shortcuts'
   import type { Option } from './types'
-  let { title, options, initialQuery = '', rankCategories = false, matchPayees = false, onpick, onclose, oncreate, onrename, renameFailed = false }: { title: string; options: Option[]; initialQuery?: string; rankCategories?: boolean; matchPayees?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void; onrename?: (id: string, name: string) => Promise<string>; renameFailed?: boolean } = $props()
+  let { title, options, initialQuery = '', rankCategories = false, matchPayees = false, showCounts = false, onpick, onclose, oncreate, onrename, renameFailed = false }: { title: string; options: Option[]; initialQuery?: string; rankCategories?: boolean; matchPayees?: boolean; showCounts?: boolean; onpick: (id: string) => void; onclose: () => void; oncreate?: (name: string) => void; onrename?: (id: string, name: string) => Promise<string>; renameFailed?: boolean } = $props()
   let query = $state(untrack(() => initialQuery))
   let selected = $state(0)
   let menu = $state<{ option: Option; x: number; y: number; trigger: HTMLButtonElement } | null>(null)
@@ -67,6 +67,7 @@
   function dismissMenu(event: PointerEvent) {
     if (menu && !(event.target as Element).closest('.payee-context')) menu = null
   }
+  const transactionLabel = (count: number) => `${count.toLocaleString()} transaction${count === 1 ? '' : 's'}`
   let results = $derived(pickerResults(options, query.trim(), rankCategories, matchPayees))
   const newName = $derived(query.trim())
   const canCreate = $derived(!!oncreate && !!newName && [...newName].length <= 200 && !options.some(o => o.name.toLowerCase() === newName.toLowerCase()))
@@ -107,7 +108,7 @@
       {:else}
       <button disabled={renaming} oncontextmenu={(event) => context(event, option)} id={`choice-${i}`} type="button" role="option" aria-selected={i === selected} class:selected={i === selected} onclick={() => { if (!renaming) onpick(option.id) }} onpointermove={() => selected = i}>
         <span>{option.name}{#if option.detail}<small>{option.detail}</small>{/if}</span>
-        {#if i === selected || i < pickerQuickCount}<span class="choice-keys">{#if i === selected}<kbd>Enter</kbd>{/if}{#if i < pickerQuickCount}<kbd>{pickerQuickLabel(i)}</kbd>{/if}</span>{/if}
+        {#if showCounts || i === selected || i < pickerQuickCount}<span class="choice-keys">{#if showCounts}<small class="choice-count" title={transactionLabel(option.transactionCount ?? 0)} aria-label={transactionLabel(option.transactionCount ?? 0)}>{(option.transactionCount ?? 0).toLocaleString()}</small>{/if}{#if i === selected}<kbd>Enter</kbd>{/if}{#if i < pickerQuickCount}<kbd>{pickerQuickLabel(i)}</kbd>{/if}</span>{/if}
       </button>
       {/if}
     {/each}
@@ -132,5 +133,6 @@
   .payee-rename { padding: 6px 8px; display: grid; gap: 8px; }
   .rename-status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .rename-error { color: var(--danger); }
-  .choice-keys { display: flex; gap: 6px; flex-shrink: 0; }
+  .choice-keys { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .choice-count { min-width: 3ch; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 </style>

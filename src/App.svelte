@@ -761,7 +761,7 @@
   function pickerOptions(): Option[] {
     if (!data) return []
     if (modal === 'category') return data.categories.map(c => ({ id: c.id, name: c.name, detail: c.category_group_name, transactionCount: data?.category_transaction_counts?.[c.id] ?? 0 }))
-    if (modal === 'payee') return data.payees
+    if (modal === 'payee') return data.payees.map(p => ({ ...p, transactionCount: data?.payee_transaction_counts?.[p.id] ?? 0 }))
     if (modal === 'account') return data.accounts
     return []
   }
@@ -1221,5 +1221,5 @@
     <div class="shortcut-list">{#each shortcuts as [key, label]}<div><span>{label}</span><kbd>{key}</kbd></div>{/each}</div>
   </Modal>
 {:else if modal}
-  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} matchPayees={modal === 'payee'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? renamePayee : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
+  <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} matchPayees={modal === 'payee'} showCounts={modal === 'payee'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? renamePayee : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}
