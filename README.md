@@ -382,10 +382,12 @@ description on each open until you edit them.
 
 Saving an expense sets the category to your most common business category (latest
 wins ties) unless you already chose one. The **Business expense** button grays out
-once an expense exists. Categories that are business expenses at least 65% of the
-time, with at least two expenses, make the button shimmer. Approving such a
-transaction without an expense, including with 1 / 2 / 3, asks first: **Go back**
-or **Continue without adding** by mouse, or **Add business expense** by mouse or B.
+once an expense exists. Your most common business category, and categories that
+are business expenses at least 65% of the time with at least two expenses, make
+the button shimmer. Approving such a transaction without an expense, including
+with 1 / 2 / 3, asks first: **Add business expense** (B), **Save & approve** (A),
+or **Go back** (Esc). Enter and Space do not answer the reminder, so a repeated
+approval key cannot skip it.
 
 For a linked Amazon order with multiple products, the business expense modal
 defaults to separate product rows, including when editing an existing combined
@@ -613,8 +615,12 @@ Switching to List scrolls the current transaction a quarter of the way down the
 window, or as close as the page's scroll limits allow. Above the table, the batch
 heading shows the counts to review and reviewed.
 Sorting defaults to date ascending and lasts for the browser session. Choose
-**Review** on a row to open it in Transaction view. Approved rows stay gray,
-including after sync and restart. Once the batch is complete, newly arriving
+**Review** on a row to open it in Transaction view. The row Transaction view
+would show next carries an **N** badge; press N to open it. Approved rows stay
+gray, including after sync and restart. Choose **Reviewed · Edit** on a synced
+row to reopen it with its YNAB values; it stays approved in YNAB, and approving
+it again queues the edit for the next sync. Rows with a conflict or a pending
+undo cannot be edited until they sync or are discarded. Once the batch is complete, newly arriving
 unreviewed transactions start the next batch. Skipping does not count as approval.
 Undo reopens a reviewed transaction in its batch. Review batches are stored in
 the encrypted vault; no transaction data is stored in browser storage.

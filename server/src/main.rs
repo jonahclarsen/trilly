@@ -188,8 +188,9 @@ fn snapshot(d: &Data) -> Value {
         .transactions
         .iter()
         .filter(|t| {
+            // A reopened synced review stays approved in YNAB until it is approved again.
             t.account_id == d.account_id
-                && !t.approved
+                && (!t.approved || d.review_drafts.iter().any(|r| r.id == t.id))
                 && !t.deleted
                 && !d
                     .pending
@@ -262,6 +263,7 @@ fn snapshot(d: &Data) -> Value {
         "categories": d.categories.iter().filter(|c| !c.hidden && !c.deleted).collect::<Vec<_>>(),
         "purchase_history_rules": purchase_history::rules(),
         "payees": d.payees.iter().filter(|p| !p.deleted && p.transfer_account_id.is_none()).collect::<Vec<_>>(),
+        "pending_ids": d.pending.iter().map(|p| &p.change.id).collect::<Vec<_>>(),
         "description_pending": d.pending.iter().filter(|p| p.change.memo_only).map(|p| &p.change.id).collect::<Vec<_>>(),
         "amazon_assignments": d.amazon_assignments,
         "amazon_targets": d.transactions.iter().filter(|t| !t.deleted && !t.approved && t.transfer_account_id.is_none() && !d.pending.iter().any(|p| p.change.id == t.id && !p.change.memo_only && p.change.approved && !p.conflict)).collect::<Vec<_>>(),
@@ -743,7 +745,10 @@ async fn action(
                 .transactions
                 .iter()
                 .find(|t| {
-                    t.id == id && t.account_id == next.account_id && !t.deleted && !t.approved
+                    t.id == id
+                        && t.account_id == next.account_id
+                        && !t.deleted
+                        && (!t.approved || next.review_drafts.iter().any(|d| d.id == id))
                 })
                 .ok_or("Transaction is no longer awaiting approval")?;
             // Fold an unsynced description edit into this review so reviewing never
@@ -1270,15 +1275,29 @@ fn undo(data: &mut Data) -> Result<()> {
 // Take an unsynced review back out of the sync queue so it can be edited. Every
 // queued change to it is dropped and the review is kept as an unapproved draft;
 // approving it queues the changes again. The Amazon payment match is kept. A
-// review a sync already sent is left alone.
+// synced review reopens as a draft of its YNAB values; it stays approved there
+// until approving the draft queues the edit for the next sync.
 fn reopen(data: &mut Data, id: &str) -> Result<()> {
-    let Some(review) = data
+    let review = match data
         .pending
         .iter()
         .find(|p| p.change.id == id && p.change.approved && !p.change.memo_only && !p.conflict)
-        .map(|p| p.change.clone())
-    else {
-        return Ok(());
+    {
+        Some(pending) => pending.change.clone(),
+        None => {
+            let Some(t) = data.transactions.iter().find(|t| {
+                t.id == id && t.account_id == data.account_id && t.approved && !t.deleted
+            }) else {
+                return Ok(());
+            };
+            // Conflicts and undo writes must sync or be discarded first.
+            if data.pending.iter().any(|p| p.change.id == id) {
+                return Ok(());
+            }
+            let mut change = Change::from(t);
+            change.memo = Some(t.memo.clone().unwrap_or_default());
+            change
+        }
     };
     data.pending.retain(|p| p.change.id != id);
     data.undo.retain(|p| p.change.id != id);

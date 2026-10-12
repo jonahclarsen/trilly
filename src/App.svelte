@@ -52,7 +52,7 @@
   import { THEME_OPTIONS, type ThemeId } from './lib/themes'
   import { reviewSelection } from './lib/review-selection'
   import { pageFromPath, pagePath, type Page } from './lib/route'
-  import { shortcuts, suggestionIndex, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, googlePayeeKey, mailSearchKey, calendarWeekKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
+  import { shortcuts, suggestionIndex, menuKeys, businessKeys, modShortcutLabel, viewKeys, merchantLinkKey, ynabAccountKey, nextReviewKey, businessPromptKeys, googlePayeeKey, mailSearchKey, calendarWeekKey, amazonOrderKey, paypalActivityKey } from './lib/shortcuts'
   import { special, type Snapshot, type Suggestion, type Option, type Transaction } from './lib/types'
 
   let amazon = $state<AmazonStore>(emptyAmazon())
@@ -276,7 +276,8 @@
     modal = 'business'
   }
   const businessDefault = $derived(data?.business_categories?.default ?? null)
-  const businessLikely = $derived(new Set(data?.business_categories?.likely ?? []))
+  // The usual business category and mostly-business categories prompt for an expense before approval.
+  const businessLikely = $derived(new Set([...(data?.business_categories?.likely ?? []), ...(businessDefault ? [businessDefault] : [])]))
   // Approval waiting on the business expense reminder; null means none.
   let businessPrompt = $state<{ suggestion?: Suggestion; category: string } | null>(null)
   // Saved expense rows restore their own text; unedited autofill is refreshed from this draft.
@@ -410,9 +411,14 @@
   })
   async function openTransaction(id: string) { selectedId = id; skipped = skipped.filter(value => value !== id); view = 'transaction'; await tick(); reviewElement?.focus() }
   const unsyncedReviews = $derived(new Set(data?.unsynced_reviews?.map(r => r.before.id)))
-  // An unsynced review leaves the sync queue and reopens with its saved choices.
+  const pendingIds = $derived(new Set(data?.pending_ids))
+  // Conflicts and undo writes must sync before a reviewed transaction can be edited.
+  const editable = (t: Transaction) => t.approved && (unsyncedReviews.has(t.id) || !pendingIds.has(t.id))
+  // An unsynced review leaves the sync queue and reopens with its saved choices; a
+  // synced one reopens with its YNAB values and its edit syncs after approval.
   function reopenTransaction(id: string) {
-    if (!data || saveFailed || !unsyncedReviews.has(id)) return
+    const row = reviewRows.find(t => t.id === id)
+    if (!data || saveFailed || !row || !editable(row)) return
     enqueue({ body: { action: 'reopen', id } })
     void openTransaction(id)
   }
@@ -437,6 +443,8 @@
   const current = $derived(reviewQueue.find(t => t.id === selectedId) ?? reviewQueue.find(t => !skipped.includes(t.id)))
   const amazonTargets = $derived((data?.amazon_targets ?? data?.queue ?? []).filter(isAmazon))
   const currentId = $derived(current?.id)
+  // The transaction N opens from the list: the current one, or the first skipped one.
+  const nextId = $derived(currentId ?? reviewQueue[0]?.id)
   const descriptionPending = $derived(!!current && !!data?.description_pending?.includes(current.id))
   const remaining = $derived(data?.queue.filter(t => !skipped.includes(t.id)).length ?? 0)
   const currentAccount = $derived(data?.accounts.find(a => a.id === data?.account_id))
@@ -702,7 +710,8 @@
     enqueue({ body: { action: 'review', id: current.id, ...(selectedNewPayee ? { payee_name: selectedNewPayee } : {}), payee_id: selectedPayee, category_id: selectedCategory, ...(amazonPayment ? { amazon_payment_id: amazonPayment } : {}), ...(reviewMemo !== null ? { memo: reviewMemo } : {}), ...(amazonMarket && !special(current) ? { amazon_marketplace: amazonMarket } : {}) } })
     reviewElement?.focus()
   }
-  // The reminder accepts mouse clicks only (detail 0 is keyboard activation); B adds the expense.
+  // The reminder ignores Enter and Space on its buttons (detail 0 is keyboard activation), so
+  // a repeated approval key cannot dismiss it; its letter shortcuts and Esc choose instead.
   function promptClick(action: () => void) {
     return (event: MouseEvent) => { if (event.detail > 0) action() }
   }
@@ -822,7 +831,10 @@
     }
     if (modal === 'business-prompt') {
       event.preventDefault()
-      if (event.key.toLowerCase() === 'b') addPromptExpense()
+      const key = event.key.toLowerCase()
+      if (key === businessPromptKeys.expense.toLowerCase()) addPromptExpense()
+      else if (key === businessPromptKeys.approve.toLowerCase()) continueWithoutExpense()
+      else if (key === 'escape') void closeBusinessPrompt()
       return
     }
     if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoBusiness(); return }
@@ -830,6 +842,9 @@
     if (typing) return
     if (view === 'list' && event.key.toLowerCase() === ynabAccountKey.toLowerCase()) {
       event.preventDefault(); ynabAccountAction?.click(); return
+    }
+    if (view === 'list' && event.key.toLowerCase() === nextReviewKey.toLowerCase()) {
+      event.preventDefault(); if (nextId) void openTransaction(nextId); return
     }
     if (view === 'list' && !['t', 'v', 'u', 'r', 'a', ',', 'l', '?'].includes(event.key.toLowerCase())) return
     const index = suggestionIndex(event)
@@ -1005,7 +1020,7 @@
                     <td>{transaction.category_name ?? 'Uncategorized'}</td>
                     <td>{transaction.memo ?? ''}</td>
                     <td class="table-amount">{money(transaction.amount)}</td>
-                    <td>{#if transaction.approved && unsyncedReviews.has(transaction.id)}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => reopenTransaction(transaction.id)}>Review</Button>{:else if transaction.approved}<span>Reviewed</span>{:else}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => openTransaction(transaction.id)}>{skipped.includes(transaction.id) ? 'Skipped · Review' : 'Review'}</Button>{/if}</td>
+                    <td>{#if transaction.approved && unsyncedReviews.has(transaction.id)}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => reopenTransaction(transaction.id)}>Review</Button>{:else if editable(transaction)}<Button icon="transaction" disabled={busy || saveFailed} onclick={() => reopenTransaction(transaction.id)}>Reviewed · Edit</Button>{:else if transaction.approved}<span>Reviewed</span>{:else}<Button icon="transaction" shortcut={transaction.id === nextId ? nextReviewKey : undefined} disabled={busy || saveFailed} onclick={() => openTransaction(transaction.id)}>{skipped.includes(transaction.id) ? 'Skipped · Review' : 'Review'}</Button>{/if}</td>
                   </tr>
                 {:else}<tr><td colspan="6" class="table-empty">All caught up. New transactions will appear here after syncing.</td></tr>{/each}
               </tbody>
@@ -1179,11 +1194,11 @@
   </Modal>
 {:else if modal === 'business-prompt'}
   <Modal title="Business expense?" dismissible={false} onclose={() => {}}>
-    <p class="business-prompt-message" tabindex="-1" data-modal-focus>{data?.categories.find(c => c.id === businessPrompt?.category)?.name ?? 'This category'} is usually a business expense, and none has been added for this transaction.</p>
+    <p class="business-prompt-message" tabindex="-1" data-modal-focus>{data?.categories.find(c => c.id === businessPrompt?.category)?.name ?? 'This category'} is usually a business expense, and none has been added for this transaction. Add one before approving?</p>
     <div class="business-prompt-actions">
-      <Button onclick={promptClick(() => void closeBusinessPrompt())}>Go back</Button>
-      <Button onclick={promptClick(continueWithoutExpense)}>Continue without adding</Button>
-      <Button primary icon="business" shortcut="B" onclick={promptClick(addPromptExpense)}>Add business expense</Button>
+      <Button shortcut="Esc" onclick={promptClick(() => void closeBusinessPrompt())}>Go back</Button>
+      <Button icon="check" shortcut={businessPromptKeys.approve} onclick={promptClick(continueWithoutExpense)}>Save & approve</Button>
+      <Button primary icon="business" shortcut={businessPromptKeys.expense} onclick={promptClick(addPromptExpense)}>Add business expense</Button>
     </div>
   </Modal>
 {:else if modal === 'business'}

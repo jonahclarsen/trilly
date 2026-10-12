@@ -102,14 +102,23 @@ export function project(snapshot: Snapshot, event: QueuedAction): Snapshot {
     if (event.restore) result.unsynced_reviews = (result.unsynced_reviews ?? []).filter(r => r.before.id !== event.restore!.id)
     if (event.restore && event.restore.account_id === result.account_id) {
       result.review_rows = [event.restore, ...result.review_rows.filter(t => t.id !== event.restore!.id)]
-      result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
+      // Undoing an edit to a synced review restores its approved YNAB values.
+      if (!event.restore.approved) result.queue = [event.restore, ...result.queue.filter(t => t.id !== event.restore!.id)]
     }
     result.pending = Math.max(0, result.pending - 1)
     result.can_undo = result.undo_transactions.length > 0
   } else if (event.body.action === 'reopen') {
     // Take an unsynced review out of the sync queue and keep it as an unapproved draft.
     const review = result.unsynced_reviews?.find(r => r.before.id === event.body.id)
-    if (!review) return result
+    if (!review) {
+      // A synced review reopens as a draft of its YNAB values; it stays approved there until approved again.
+      const row = result.review_rows.find(t => t.id === event.body.id && t.approved)
+      if (!row || result.pending_ids?.includes(row.id)) return result
+      result.review_drafts = [...(result.review_drafts ?? []).filter(d => d.id !== row.id), { id: row.id, approved: true, payee_id: row.payee_id, category_id: row.category_id, memo: row.memo ?? '' }]
+      result.review_rows = result.review_rows.map(t => t.id === row.id ? { ...t, approved: false } : t)
+      result.queue = [row, ...result.queue.filter(t => t.id !== row.id)]
+      return result
+    }
     const { before, change } = review
     result.unsynced_reviews = result.unsynced_reviews!.filter(r => r !== review)
     result.review_drafts = [...(result.review_drafts ?? []).filter(d => d.id !== before.id), change]

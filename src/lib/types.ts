@@ -20,6 +20,7 @@ export type Snapshot = {
   business_expenses?: BusinessExpense[];
   business_categories?: { default: string | null; likely: string[] }; can_undo_archive?: boolean; can_undo_business?: boolean;
   description_pending?: string[];
+  pending_ids?: string[];
   connected: boolean;
   plans: { id: string; name: string; currency_format: { iso_code: string } | null }[];
   plan_id: string; account_id: string; accounts: Option[];

@@ -28,10 +28,13 @@ export const calendarWeekKey = 'K'
 export const amazonOrderKey = 'A'
 export const paypalActivityKey = 'P'
 export const viewKeys = { transaction: 'T', list: 'V' } as const
+export const nextReviewKey = 'N'
+// Letters, not Enter, so a repeated approval key cannot skip the reminder.
+export const businessPromptKeys = { expense: 'B', approve: 'A' } as const
 
 export const shortcuts = [
   [merchantLinkKey, 'Open first merchant link / account in YNAB (list view)'],
-  [viewKeys.transaction, 'Transaction view'], [viewKeys.list, 'List view'],
+  [viewKeys.transaction, 'Transaction view'], [viewKeys.list, 'List view'], [nextReviewKey, 'Open next to review (list view)'],
   ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
   ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'],
   ['Enter', 'Approve / save description or expense'], ['1 / 2 / 3', 'Use suggestion & approve'],
@@ -42,7 +45,7 @@ export const shortcuts = [
   [amazonOrderKey, 'Open Amazon order when available'],
   [paypalActivityKey, 'Open PayPal activity for PayPal transactions'],
   ['⌘C / Ctrl+C', 'Copy business expenses to sheet (no text selected)'], ['Alt+A', 'Show archived / current business expenses'],
-  ['D', 'Edit transaction description'], ['B', 'Add business expense'], ['R', 'Sync'], [',', 'Settings'], ['?', 'Help & shortcuts'],
+  ['D', 'Edit transaction description'], ['B', 'Add business expense'], [`${businessPromptKeys.approve} / ${businessPromptKeys.expense} / Esc`, 'Business reminder: approve / add expense / go back'], ['R', 'Sync'], [',', 'Settings'], ['?', 'Help & shortcuts'],
 ] as const
 
 export const businessKeys = { copy: 'C', archived: 'A' } as const
