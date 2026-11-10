@@ -36,7 +36,7 @@
   import CopyAddress from './lib/CopyAddress.svelte'
   import BusinessExpenseEditor from './lib/BusinessExpenseEditor.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
-  import { amazonLinkSummary, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonOrder, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { amazonCandidates, amazonLinkSummary, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonOrder, type AmazonStore, type AmazonStatus } from './lib/amazon'
   import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
@@ -445,6 +445,8 @@
   let reviewElement = $state<HTMLElement>()
   const current = $derived(reviewQueue.find(t => t.id === selectedId) ?? reviewQueue.find(t => !skipped.includes(t.id)))
   const amazonTargets = $derived((data?.amazon_targets ?? data?.queue ?? []).filter(isAmazon))
+  // A finished fetch can predate a charge's Amazon payment; keep offering a fetch until it matches.
+  const amazonNeedsFetch = $derived(amazonTargets.some(t => !amazonCollectedTargets.includes(t.id) || !amazonCandidates(amazon, t, undefined, amazonTargets, data?.amazon_assignments ?? []).length))
   const currentId = $derived(current?.id)
   // The transaction N opens from the list: the current one, or the first skipped one.
   const nextId = $derived(currentId ?? reviewQueue[0]?.id)
@@ -1016,7 +1018,7 @@
         {#if data.plan_id && view === 'transaction'}<span class="count">{remaining} to review</span>{/if}
       </div>
 
-      {#if amazonTargets.some(t => !amazonCollectedTargets.includes(t.id)) || amazonStatus.running || amazonMessage || amazonVersionWarning}
+      {#if amazonNeedsFetch || amazonStatus.running || amazonMessage || amazonVersionWarning}
         <section class="amazon-toolbar" aria-label="Amazon collection">
           <div><strong>Amazon</strong><span>{amazonLinkSummary(amazonTargets, data.amazon_assignments ?? [])}</span></div>
           <div class="amazon-toolbar-actions">
