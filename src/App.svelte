@@ -532,6 +532,11 @@
   const currentAccount = $derived(data?.accounts.find(a => a.id === data?.account_id))
   const currentPlan = $derived(data?.plans.find(p => p.id === data?.plan_id))
   const currency = $derived(currentPlan?.currency_format?.iso_code)
+  const showImport = $derived(currency === 'CAD' && !!data?.accounts.length)
+  const canImport = $derived(showImport && !busy && !saving && !saveFailed)
+  function openImport() {
+    if (canImport) modal = 'wealthsimple'
+  }
   const categoryName = $derived(data?.categories.find(c => c.id === category)?.name ?? current?.category_name ?? 'Choose category')
   const amazonPayeeName = $derived(amazonMarket ? amazonPayee(data?.payees ?? [], amazonMarket)?.name ?? amazonMarket : null)
   const payeeName = $derived(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? 'Choose payee')
@@ -970,6 +975,7 @@
           [menuKeys.sync]: () => { if (!busy && !saving && !saveFailed && data?.plan_id) void sync() },
           [menuKeys.undo]: undo,
           [menuKeys.business]: openBusiness,
+          ...(canImport ? { [menuKeys.import]: openImport } : {}),
           [menuKeys.help]: () => modal = 'shortcuts',
         } : {}),
       }
@@ -1074,8 +1080,8 @@
           <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
           <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!canUndoSkip && !data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
           <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={openBusiness}>Business</Button>
-          {#if currency === 'CAD' && data.accounts.length}
-            <Button icon="transaction" disabled={busy || !!saving || saveFailed} onclick={() => modal = 'wealthsimple'}>Import</Button>
+          {#if showImport}
+            <Button icon="transaction" label="Import" altKey={menuKeys.import} disabled={!canImport} onclick={openImport}>Import</Button>
           {/if}
           <span class="nav-divider"></span>
           <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>

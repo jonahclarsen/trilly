@@ -36,11 +36,13 @@ export const nextReviewKey = 'N'
 // Letters, not Enter, so a repeated approval key cannot skip the reminder.
 export const businessPromptKeys = { expense: 'B', approve: 'A' } as const
 
+export const menuKeys = { sync: 'R', undo: 'U', business: 'B', import: 'I', help: 'H', settings: 'S' } as const
+
 export const shortcuts = [
   [merchantLinkKey, 'Open first merchant link / account in YNAB (list view)'],
   [viewKeys.transaction, 'Transaction view'], [viewKeys.list, 'List view'], [nextReviewKey, 'Open next to review (list view)'],
   ['Alt+R', 'Sync'], ['Alt+U', 'Undo'],
-  ['Alt+B', 'Business expenses'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'],
+  ['Alt+B', 'Business expenses'], [`Alt+${menuKeys.import}`, 'Import Wealthsimple'], ['Alt+H', 'Help'], ['Alt+S', 'Settings'],
   ['Enter', 'Approve / save description or expense'], ['⌘Enter / Ctrl+Enter', 'Apply repeated choice to all like it'], ['Esc', 'Dismiss repeated choice'], ['1 / 2 / 3', 'Use suggestion & approve'],
   ['C', 'Choose category'], ['E', 'Choose payee'], ['⌘1–4 / Ctrl+1–4', 'Pick top category or payee result'], ['S', 'Skip'], ['⌘Z / Ctrl+Z / U', 'Undo skip / approval / expense change'],
   [googlePayeeKey, 'Search original bank payee on Google'],
@@ -53,7 +55,6 @@ export const shortcuts = [
 ] as const
 
 export const businessKeys = { copy: 'C', archived: 'A' } as const
-export const menuKeys = { sync: 'R', undo: 'U', business: 'B', help: 'H', settings: 'S' } as const
 export function altShortcutLabel(key: string) {
   return `${isMac() ? '⌥' : 'Alt+'}${key}`
 }
