@@ -36,7 +36,7 @@
   import CopyAddress from './lib/CopyAddress.svelte'
   import BusinessExpenseEditor from './lib/BusinessExpenseEditor.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
-  import { amazonCandidates, amazonLinkSummary, conversionBands, type Rates, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonOrder, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { linksOrder, amazonCandidates, amazonLinkSummary, conversionBands, type Rates, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonOrder, type AmazonStore, type AmazonStatus } from './lib/amazon'
   import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
@@ -274,6 +274,7 @@
   let description = $state('')
   let expenseNote = $state('')
   let amazonExpenseOrders = $state<AmazonOrder[]>([])
+  const amazonOrderInPanel = $derived(amazonExpenseOrders.some(order => linksOrder(amazonOrderLink, order)))
   let businessMessage = $state('')
   let showArchived = $state(false)
   let copied = $state(false)
@@ -483,7 +484,6 @@
   let mailSearch = $state<{ open: () => void }>()
   let calendarWeek = $state<{ open: () => void }>()
   let lookup = $state(readLookup())
-  let amazonOrderAction = $state<{ open: () => void }>()
   let paypalActivity = $state<{ open: () => void }>()
   const paypalTransaction = $derived(!!current && isPaypal(payeeName, current.payee_name, current.import_payee_name_original, current.import_payee_name))
   const ynabAccountLink = $derived(data?.plan_id && data.account_id ? `https://app.ynab.com/${data.plan_id}/accounts/${data.account_id}` : '')
@@ -903,6 +903,11 @@
       return
     }
     if (modal === 'business' && !typing && event.key.toLowerCase() === 'u') { event.preventDefault(); void undoBusiness(); return }
+    if (!typing && event.key.toLowerCase() === amazonOrderKey.toLowerCase()) {
+      const scope = modal === 'expense' ? document.querySelector('dialog[open]') : !modal && view === 'transaction' ? reviewElement : undefined
+      const order = scope?.querySelector<HTMLAnchorElement>(`a[aria-keyshortcuts="${amazonOrderKey}"]`)
+      if (order) { event.preventDefault(); order.click(); return }
+    }
     if (modal) return
     if (typing) return
     if (view === 'list' && event.key.toLowerCase() === ynabAccountKey.toLowerCase()) {
@@ -930,7 +935,7 @@
       [mailSearchKey.toLowerCase()]: () => mailSearch?.open(),
       [calendarWeekKey.toLowerCase()]: () => calendarWeek?.open(),
       d: openDescription, b: openExpense, c: () => openPicker('category'), e: () => openPicker('payee'), s: skip, u: () => void undo(),
-      [amazonOrderKey.toLowerCase()]: () => { if (amazonOrderLink) amazonOrderAction?.open() }, r: () => void sync(),
+      r: () => void sync(),
       [paypalActivityKey.toLowerCase()]: () => paypalActivity?.open(),
       ',': () => modal = 'settings', '?': () => modal = 'shortcuts',
       ...(repeatVisible ? { escape: () => repeatPopup?.dismiss() } : {}),
@@ -1099,7 +1104,18 @@
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
             <time datetime={current.date}>{dateLabel(current.date)}</time>
-            <div class="transaction-top-actions">{#if !currency}<span>Currency unavailable</span>{/if}<div class="lookup-actions">{#if amazonOrderLink}<AmazonOrderLink bind:this={amazonOrderAction} href={amazonOrderLink} />{:else}<GooglePayee bind:this={googlePayee} payee={googleQuery} />{/if}<MailSearch bind:this={mailSearch} provider={lookup} payee={searchPayee} /><CalendarWeek bind:this={calendarWeek} provider={lookup} date={current.date} />{#if paypalTransaction}<PaypalActivity bind:this={paypalActivity} />{/if}<PurchaseHistory rules={devRules ?? data.purchase_history_rules} payee={payeeName} query={searchPayee} /></div></div>
+            <div class="lookup-actions">
+              {#if !currency}<span>Currency unavailable</span>{/if}
+              {#if amazonOrderLink && !amazonOrderInPanel}
+                <AmazonOrderLink href={amazonOrderLink} />
+              {:else}
+                <GooglePayee bind:this={googlePayee} payee={googleQuery} />
+              {/if}
+              <MailSearch bind:this={mailSearch} provider={lookup} payee={searchPayee} />
+              <CalendarWeek bind:this={calendarWeek} provider={lookup} date={current.date} />
+              {#if paypalTransaction}<PaypalActivity bind:this={paypalActivity} />{/if}
+              <PurchaseHistory rules={devRules ?? data.purchase_history_rules} payee={payeeName} query={searchPayee} />
+            </div>
           </div>
           <div class="amount">{money(current.amount)}</div>
           <div class="payee-detail">
@@ -1258,7 +1274,7 @@
 {:else if modal === 'expense'}
   <Modal width={amazonExpenseOrders.length || amazon.orders.length ? 1240 : 800} title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseId = '' }}>
     {#if current}
-      <BusinessExpenseEditor transaction={current} saved={currentExpenses} {description} note={expenseNote} orders={amazonExpenseOrders} store={amazon} paymentId={amazonPayment} {currency} disabled={busy || saveFailed} onsave={(rows) => void saveExpense(rows)} />
+      <BusinessExpenseEditor transaction={current} saved={currentExpenses} {description} note={expenseNote} orders={amazonExpenseOrders} store={amazon} orderLinkTarget={amazonOrderLink} paymentId={amazonPayment} {currency} disabled={busy || saveFailed} onsave={(rows) => void saveExpense(rows)} />
     {/if}
   </Modal>
 {:else if modal === 'business-prompt'}

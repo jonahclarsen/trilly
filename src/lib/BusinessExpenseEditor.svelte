@@ -2,17 +2,18 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { paymentHasOrder, isRefunded, orderRefunded, type AmazonOrder, type AmazonStore } from './amazon'
+  import { linksOrder, orderLink, paymentHasOrder, isRefunded, orderRefunded, type AmazonOrder, type AmazonStore } from './amazon'
   import type { BusinessExpense, Transaction } from './types'
   import type { BusinessExpenseInput } from './business'
 
-  let { transaction, saved, description, note, orders, store, paymentId, currency, disabled, onsave }: {
+  let { transaction, saved, description, note, orders, store, orderLinkTarget, paymentId, currency, disabled, onsave }: {
     transaction: Transaction; saved: BusinessExpense[]; description: string; note: string;
-    orders: AmazonOrder[]; store: AmazonStore; paymentId?: string; currency?: string; disabled: boolean;
+    orders: AmazonOrder[]; store: AmazonStore; orderLinkTarget: string; paymentId?: string; currency?: string; disabled: boolean;
     onsave: (rows: BusinessExpenseInput[]) => void;
   } = $props()
   type Row = Omit<BusinessExpenseInput, 'amount' | 'auto_description' | 'auto_note'> & { amount: number | undefined; included: boolean; reason: string }
   let referenceOrders = $state<AmazonOrder[]>(untrack(() => orders))
+  const shortcutOrder = $derived(referenceOrders.find(order => linksOrder(orderLinkTarget, order)) ?? referenceOrders.find(order => orderLink(order)))
   let orderChoice = $state('')
   const products = $derived(referenceOrders.flatMap(order => order.items.map(item => ({
     key: JSON.stringify([order.marketplace, order.id, item.id]), item, currency: order.currency,
@@ -142,7 +143,7 @@
       <p class="field-note">Original order currencies are shown below. Orders can cover several charges and refunds; these totals may differ from this transaction.</p>
       {#each referenceOrders as order (`${order.marketplace}:${order.id}`)}
         <p class="field-note">Order currency: {order.currency}{order.total === null ? ' · Total unavailable' : ` · Order total: ${new Intl.NumberFormat(undefined, { style: 'currency', currency: order.currency }).format(order.total / 1000)}`}</p>
-        <AmazonOrderCard {order} payments={store.payments.filter(payment => paymentHasOrder(payment, order))} />
+        <AmazonOrderCard {order} shortcut={order === shortcutOrder} payments={store.payments.filter(payment => paymentHasOrder(payment, order))} />
       {/each}
     {:else if /amazon|amzn/i.test(transaction.payee_name ?? '')}
       <p class="field-note">No confirmed order details are available. Fetch details during review, or choose a collected order below. You can also add expense rows manually.</p>
