@@ -858,7 +858,7 @@
   function keydown(event: KeyboardEvent) {
     lastActivity = Date.now()
     if (event.repeat || event.isComposing || startupLoading) return
-    const typing = (event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')
+    const typing = (event.target as HTMLElement)?.closest('input:not([type=checkbox]), textarea, select, [contenteditable]')
     if (data && (!modal || modal === 'business') && !typing && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
       event.preventDefault(); undo(); return
     }
