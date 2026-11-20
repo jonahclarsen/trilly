@@ -417,8 +417,9 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
 .repeat-choice-actions button { padding: 6px 10px; gap: 7px; font-size: 12px; }
 .repeat-choice-actions button kbd { padding: 1px 5px; font-size: 10px; }
 .repeat-choice-actions button svg { width: 15px; height: 15px; }
-/* Dismiss unlocks once its fill has wiped across. */
-.repeat-dismiss { position: relative; overflow: hidden; isolation: isolate; background: transparent; }
-.repeat-dismiss:disabled { opacity: 1; color: var(--muted); }
-.repeat-dismiss:disabled::before { content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in srgb, var(--accent) 16%, transparent); transform: scaleX(0); transform-origin: left; animation: repeat-dismiss-wipe var(--repeat-dismiss-delay, 3s) linear forwards; }
-@keyframes repeat-dismiss-wipe { to { transform: scaleX(1); } }
+.repeat-choice-actions .repeat-dismiss[aria-disabled="true"] {
+  opacity: .45;
+  cursor: default;
+  background: var(--paper);
+  border-color: var(--line);
+}
