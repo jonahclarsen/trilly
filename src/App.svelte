@@ -243,6 +243,56 @@
   let legacyPassphrase = $state('')
   let token = $state('')
   let busy = $state(false)
+  let suggestionFeedback = $state<{ index: number } | null>(null)
+  let warpFilter: SVGFilterElement
+
+  function warpReview(card: HTMLElement, id: string) {
+    let stop: (() => void) | undefined
+    return {
+      update(nextId: string) {
+        if (nextId === id) return
+        id = nextId
+        stop?.()
+        if (!warpFilter || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+        const duration = 300 + Math.random() * 200
+        const turn = Math.random() < .5 ? -1 : 1
+        const noise = warpFilter.querySelector('feTurbulence')!
+        const maps = warpFilter.querySelectorAll('feDisplacementMap')
+        const hue = warpFilter.querySelector('feColorMatrix[type="hueRotate"]')!
+        noise.setAttribute('seed', String(Math.floor(Math.random() * 1000)))
+        card.style.filter = 'url(#review-warp)'
+        const motion = card.animate([
+          { transform: `perspective(700px) rotateY(${turn * 28}deg) skewX(${turn * -16}deg) scale(.82, 1.12)`, opacity: .15 },
+          { transform: `perspective(700px) rotateY(${turn * -7}deg) skewX(${turn * 5}deg) scale(1.04, .97)`, opacity: 1, offset: .55 },
+          { transform: 'none', opacity: 1 },
+        ], { duration, easing: 'cubic-bezier(.2, .7, .3, 1)' })
+        const started = performance.now()
+        let frame: number
+        const finish = () => {
+          cancelAnimationFrame(frame)
+          motion.cancel()
+          card.style.filter = ''
+          stop = undefined
+        }
+        const draw = (now: number) => {
+          const t = Math.min(1, (now - started) / duration)
+          const left = (1 - t) ** 2
+          const strength = 90 * left * (1 + .45 * Math.sin(t * Math.PI * 5))
+          noise.setAttribute('baseFrequency', `${.004 + .02 * left + .006 * Math.sin(t * 9)} ${.03 + .09 * left}`)
+          maps[0]!.setAttribute('scale', String(strength))
+          maps[1]!.setAttribute('scale', String(-strength * .7))
+          maps[2]!.setAttribute('scale', String(strength * 1.5))
+          hue.setAttribute('values', String(turn * 220 * left))
+          if (t < 1) frame = requestAnimationFrame(draw)
+          else finish()
+        }
+        stop = finish
+        draw(started)
+      },
+      destroy() { stop?.() },
+    }
+  }
   const startupLoading = $derived(!workspaceReady && unlockMode === 'macos' && (!ready || busy || !!data))
   let syncing = $state(false)
   // Replay pending edits over each server response so older responses cannot erase newer edits.
@@ -753,8 +803,8 @@
     clearTimeout(syncTimer); syncDueBy = 0
     enqueue({ body: { action: 'sync', full } })
   }
-  function approve(suggestion?: Suggestion, withoutExpense = false) {
-    if (!current || busy || saveFailed || !data) return
+  async function approve(suggestion?: Suggestion, withoutExpense = false) {
+    if (!current || busy || saveFailed || !data || suggestionFeedback) return
     const { payee: selectedPayee, newPayee: selectedNewPayee, category: selectedCategory } = reviewSelection(
       { payee, newPayee, category }, { payee: payeeFixed || !!amazonMarket, category: categoryFixed }, suggestion,
     )
@@ -762,6 +812,15 @@
     if (!withoutExpense && !special(current) && !currentExpenses.length && selectedCategory && businessLikely.has(selectedCategory)) {
       businessPrompt = { suggestion, category: selectedCategory }; modal = 'business-prompt'
       return
+    }
+    const index = suggestion ? picks.indexOf(suggestion) : -1
+    if (index >= 0) {
+      const id = current.id
+      const epoch = sessionEpoch
+      suggestionFeedback = { index }
+      await new Promise<void>(resolve => setTimeout(resolve, 120))
+      suggestionFeedback = null
+      if (sessionEpoch !== epoch || current?.id !== id || !data || busy || saveFailed) return
     }
     const selectedName = selectedNewPayee ?? data.payees.find(p => p.id === selectedPayee)?.name
     const reviewMemo = amazonDraft !== null ? amazonDraft.toLowerCase() : paypalDraft ?? draftMemo ?? (descriptionFixed ? null : paypalDescription(current.memo, selectedName))
@@ -857,6 +916,7 @@
   }
   function keydown(event: KeyboardEvent) {
     lastActivity = Date.now()
+    if (suggestionFeedback) { event.preventDefault(); return }
     if (event.repeat || event.isComposing || startupLoading) return
     const typing = (event.target as HTMLElement)?.closest('input:not([type=checkbox]), textarea, select, [contenteditable]')
     if (data && (!modal || modal === 'business') && !typing && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
@@ -1099,7 +1159,7 @@
           </div>
         </section>
       {:else if current}
-        <div class="transaction-layout" class:with-amazon={isAmazon(current)}>
+        <div class="transaction-layout" class:with-amazon={isAmazon(current)} use:warpReview={current.id} inert={!!suggestionFeedback}>
         <div class="review-card">
         <article class="transaction" aria-label="Transaction to review">
           <div class="transaction-top">
@@ -1161,7 +1221,7 @@
                 <p class="muted" role="status">Suggestions unavailable. Sync to try again.</p>
               {/if}
               {#each picks as suggestion, i}
-                <button class="suggestion" disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
+                <button class="suggestion" class:suggestion-chosen={suggestionFeedback?.index === i} disabled={busy || saveFailed} onclick={() => void approve(suggestion)}>
                   <kbd>{i + 1}</kbd><span class="suggestion-copy"><strong class:suggestion-unused={categoryFixed} aria-label={categoryFixed ? `${suggestion.category} — not applied; category fixed` : undefined}>{suggestion.category}</strong><span class:suggestion-unused={payeeFixed} aria-label={payeeFixed ? `${suggestion.payee} — not applied; payee fixed` : undefined}>{amazonMarket ? payeeName : suggestion.payee}</span></span><small>{suggestion.reason}</small><Icon name="check" />
                 </button>
               {/each}
@@ -1323,3 +1383,17 @@
 {:else if modal}
   <Picker initialQuery={modal === 'payee' ? titleCase(newPayee ?? amazonPayeeName ?? data?.payees.find(p => p.id === payee)?.name ?? current?.payee_name ?? '') : ''} rankCategories={modal === 'category'} matchPayees={modal === 'payee'} showCounts={modal === 'payee'} title={modal === 'category' ? 'Category' : modal === 'payee' ? 'Payee' : 'Account'} options={pickerOptions()} renameFailed={modal === 'payee' && saveFailed} onrename={modal === 'payee' && !saveFailed ? renamePayee : undefined} oncreate={modal === 'payee' ? createPayee : undefined} onpick={(id) => void pick(id)} onclose={() => modal = null} />
 {/if}
+
+<svg class="review-warp" aria-hidden="true" width="0" height="0">
+  <filter id="review-warp" bind:this={warpFilter} x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.01 0.05" numOctaves="2" result="noise" />
+    <!-- Each colour channel is displaced by its own amount, then recombined. -->
+    {#each ['1 0 0 0 0  0 0 0 0 0  0 0 0 0 0', '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0'] as channel, i (i)}
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G" />
+      <feColorMatrix type="matrix" values={`${channel}  0 0 0 1 0`} result={`channel-${i}`} />
+    {/each}
+    <feBlend in="channel-0" in2="channel-1" mode="screen" result="red-green" />
+    <feBlend in="red-green" in2="channel-2" mode="screen" />
+    <feColorMatrix type="hueRotate" values="0" />
+  </filter>
+</svg>

@@ -30,7 +30,7 @@
   </div>
   {#if order.totals.length}<dl class="amazon-totals">{#each order.totals as total}<div><dt>{total.label}</dt><dd>{total.value}</dd></div>{/each}</dl>{/if}
   {#if payments.length}
-    <div class="amazon-payments"><strong>Payments and refunds found for this order</strong>
+    <div class="amazon-payments"><strong>Transactions found for this order</strong>
       {#each payments as payment}<div><span>{payment.refund ? 'Refund' : 'Charge'} · {payment.date || 'Date unavailable'}<small>{payment.payment_method}</small></span><span>{money(payment.amount, payment.currency)} {payment.currency}</span></div>{/each}
     </div>
   {/if}

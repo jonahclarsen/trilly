@@ -423,3 +423,6 @@ textarea:focus-visible { outline: 2px solid var(--theme-checkbox); outline-offse
   background: var(--paper);
   border-color: var(--line);
 }
+
+.review-warp { position: absolute; overflow: hidden; pointer-events: none; }
+.suggestion.suggestion-chosen { background: color-mix(in srgb, var(--muted) 18%, transparent); transition: none; }
