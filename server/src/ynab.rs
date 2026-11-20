@@ -15,6 +15,14 @@ struct Cooldown {
     strikes: u32,
 }
 
+#[derive(serde::Deserialize)]
+pub struct ImportedTransaction {
+    pub date: chrono::NaiveDate,
+    pub payee: String,
+    pub memo: String,
+    pub amount: i64,
+}
+
 pub struct Ynab {
     client: Client,
     base: String,
@@ -87,6 +95,75 @@ impl Ynab {
             .get("data")
             .cloned()
             .ok_or_else(|| "Invalid response from YNAB".into())
+    }
+    pub async fn import_wealthsimple(
+        &self,
+        data: &Data,
+        account: &str,
+        rows: Vec<ImportedTransaction>,
+    ) -> Result<Value, String> {
+        if rows.is_empty() || rows.len() > 500 {
+            return Err("Import 1 to 500 transactions at a time.".into());
+        }
+
+        // YNAB scopes import IDs to an account. Number equal amounts on the same
+        // day as YNAB does for matching file and direct imports.
+        let mut occurrences = std::collections::HashMap::new();
+        let mut transactions = Vec::with_capacity(rows.len());
+        for row in rows {
+            if row.date < chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap()
+                || row.date > chrono::Local::now().date_naive()
+                || row.amount.unsigned_abs() > 999_999_999_990
+                || row.amount % 10 != 0
+                || row.payee.trim().is_empty()
+                || row.payee.chars().count() > 200
+                || row.memo.chars().count() > 500
+            {
+                return Err("A transaction has an invalid date, amount, payee or memo.".into());
+            }
+            let occurrence = occurrences.entry((row.date, row.amount)).or_insert(0);
+            *occurrence += 1;
+            transactions.push(json!({
+                "account_id": account,
+                "date": row.date,
+                "amount": row.amount,
+                "payee_name": row.payee,
+                "memo": row.memo,
+                "cleared": "cleared",
+                "approved": false,
+                "import_id": format!("YNAB:{}:{}:{}", row.amount, row.date, occurrence),
+            }));
+        }
+
+        let response = self
+            .request(
+                &data.token,
+                Method::POST,
+                &format!("/plans/{}/transactions", data.plan_id),
+                Some(json!({ "transactions": transactions })),
+            )
+            .await
+            .map_err(|error| {
+                if error == RATE_LIMITED {
+                    "YNAB's hourly limit was reached. Retry the same import later.".into()
+                } else if error.starts_with("YNAB access denied") {
+                    error
+                } else if error.starts_with("YNAB rejected") {
+                    "YNAB rejected the transactions. Check the amounts and destination account."
+                        .into()
+                } else {
+                    "Could not confirm the import. Retry the same transactions.".into()
+                }
+            })?;
+
+        let added = response["transaction_ids"].as_array().map_or(0, Vec::len);
+        let duplicates = response["duplicate_import_ids"]
+            .as_array()
+            .map_or(0, Vec::len);
+        if added + duplicates != transactions.len() {
+            return Err("YNAB did not confirm every row. Retry the same transactions.".into());
+        }
+        Ok(json!({ "added": added, "duplicates": duplicates }))
     }
     pub async fn rename_payee(&self, data: &mut Data, id: &str, name: &str) -> Result<(), String> {
         let name = name.trim();

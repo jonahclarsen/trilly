@@ -392,6 +392,47 @@ async fn unlock(State(state): State<Shared>, Json(body): Json<Unlock>) -> Result
     Ok(Json(result))
 }
 
+#[derive(Deserialize)]
+struct WealthsimpleImport {
+    plan_id: String,
+    account_id: String,
+    transactions: Vec<ynab::ImportedTransaction>,
+}
+
+async fn wealthsimple_import(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(body): Json<WealthsimpleImport>,
+) -> Result<Json<Value>> {
+    let mut app = state.lock().await;
+    authorize(&mut app, &headers)?;
+    let data = &app.session.as_ref().unwrap().vault.data;
+    if body.plan_id.is_empty() || body.plan_id != data.plan_id {
+        return Err("The YNAB plan changed. Reopen the import.".into());
+    }
+    if !data.plans.iter().any(|plan| {
+        plan.id == data.plan_id
+            && plan
+                .currency_format
+                .as_ref()
+                .is_some_and(|c| c.iso_code == "CAD")
+    }) {
+        return Err("Wealthsimple import requires a CAD plan.".into());
+    }
+    if !data
+        .accounts
+        .iter()
+        .any(|account| account.id == body.account_id && !account.closed && !account.deleted)
+    {
+        return Err("Choose an open YNAB account.".into());
+    }
+    Ok(Json(
+        app.ynab
+            .import_wealthsimple(data, &body.account_id, body.transactions)
+            .await?,
+    ))
+}
+
 async fn state_view(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<Value>> {
     let mut app = state.lock().await;
     let mut result = snapshot(&authorize(&mut app, &headers)?.vault.data);
@@ -1372,6 +1413,10 @@ fn router(shared: Shared, origin: String, dist: PathBuf) -> Router {
             get(amazon_view)
                 .post(amazon_import)
                 .layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
+        .route(
+            "/api/wealthsimple",
+            post(wealthsimple_import).layer(DefaultBodyLimit::max(512 * 1024)),
         )
         .route("/api/fx", get(fx_rates))
         .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))

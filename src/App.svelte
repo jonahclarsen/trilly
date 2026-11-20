@@ -41,6 +41,8 @@
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
   import Modal from './lib/Modal.svelte'
+  import WealthsimpleImport from './lib/WealthsimpleImport.svelte'
+  import type { WealthsimpleRow } from './lib/wealthsimple'
   import Picker from './lib/Picker.svelte'
   import { titleCase } from './lib/title-case'
   import LogoSettings from './lib/LogoSettings.svelte'
@@ -327,7 +329,7 @@
   let error = $state('')
   // Background save and YNAB sync problems belong on the main page, not in modals.
   let syncError = $state('')
-  let modal = $state<'rules' | 'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'business-prompt' | 'description' | null>(null)
+  let modal = $state<'rules' | 'settings' | 'shortcuts' | 'category' | 'payee' | 'account' | 'business' | 'expense' | 'business-prompt' | 'description' | 'wealthsimple' | null>(null)
   let memoDraft = $state('')
   // Keep the caret after an untouched PayPal prefix so typing continues it.
   let memoCaretEnd = $state(false)
@@ -810,6 +812,24 @@
     } catch (e) { if (epoch === sessionEpoch) handleError(e) }
     finally { if (epoch === sessionEpoch) busy = false }
   }
+  async function importWealthsimple(account: string, transactions: WealthsimpleRow[]) {
+    if (!data || busy || saving || saveFailed) throw new Error('Wait for changes to finish saving, then retry.')
+    const epoch = sessionEpoch
+    busy = true
+    let imported = false
+    try {
+      const result = await api<{ added: number; duplicates: number }>('wealthsimple', {
+        plan_id: data.plan_id, account_id: account, transactions,
+      })
+      imported = true
+      return result
+    } finally {
+      if (epoch === sessionEpoch) {
+        busy = false
+        if (imported) void sync()
+      }
+    }
+  }
   async function sync(full = true) {
     if (busy || saving || saveFailed || !data?.plan_id || (!full && !data.pending)) return
     clearTimeout(syncTimer); syncDueBy = 0
@@ -1054,6 +1074,9 @@
           <Button icon="sync" label="Sync" altKey={menuKeys.sync} disabled={busy || !!saving || saveFailed || !data.plan_id} onclick={() => void sync()}>Sync</Button>
           <Button icon="undo" label="Undo" altKey={menuKeys.undo} disabled={busy || saveFailed || (!canUndoSkip && !data.can_undo && !data.can_undo_business && !data.can_undo_archive)} onclick={() => void undo()}>Undo</Button>
           <Button icon="business" altKey={menuKeys.business} label={`Business expenses (${activeExpenses.length})`} onclick={openBusiness}>Business</Button>
+          {#if currency === 'CAD' && data.accounts.length}
+            <Button icon="transaction" disabled={busy || !!saving || saveFailed} onclick={() => modal = 'wealthsimple'}>Import</Button>
+          {/if}
           <span class="nav-divider"></span>
           <Button icon="keyboard" label="Help" altKey={menuKeys.help} onclick={() => modal = 'shortcuts'}>Help</Button>
         {/if}
@@ -1283,7 +1306,9 @@
   {/if}
 </div>
 
-{#if modal === 'settings'}
+{#if modal === 'wealthsimple' && data}
+  <WealthsimpleImport accounts={data.accounts} accountId={data.account_id} onclose={() => modal = null} onimport={importWealthsimple} />
+{:else if modal === 'settings'}
   <Modal title="Settings" onclose={closeSettings} wide>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
     <section class="settings-section theme-settings">
