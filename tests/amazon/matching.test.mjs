@@ -11,7 +11,7 @@ test('unique payment and full-order total can suggest all products', () => {
   const candidate = amazonCandidates(store, t, 'CAD', [t])[0];
   assert.equal(candidate.confident, true);
   assert.deepEqual(automaticItems(candidate), [item, item2]);
-  assert.equal(amazonDescription(automaticItems(candidate), false), 'usb cable; notebook');
+  assert.equal(amazonDescription(automaticItems(candidate), false), 'two things: usb cable; notebook');
 });
 test('duplicate payments, competing bank transactions, unknown dates and foreign currency prevent automatic assignment', () => {
   for (const [source, targets] of [

@@ -327,9 +327,11 @@ that binding. These are local heuristics, not a guarantee of identity.
 
 After collection finishes, an unambiguous product match proposes a lowercase
 YNAB description and the `amazon.ca` or `amazon.com` payee. Refund descriptions
-use **refund for [product]**. Charges whose products show a refunded status, or
-whose orders have later refunds covering the charge, start with **later
-refunded:**. Full-order purchases can list multiple products;
+use **refund for [product]**. Several products start with a count, such as
+**two things: a; b**, and charges note refunded products, such as **three
+things, one refunded:** or **later refunded: [product]**. A product counts as
+refunded by its status, or with the rest of its order when later refunds cover
+the charge. Full-order purchases can list multiple products;
 partial charges and multi-product refunds require choosing the relevant items.
 Existing descriptions and manually selected payees are preserved until you
 explicitly replace them. Long generated descriptions are shortened to YNAB's

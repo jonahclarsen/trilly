@@ -1256,9 +1256,9 @@
     </form>
   </Modal>
 {:else if modal === 'expense'}
-  <Modal width={800} title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseId = '' }}>
+  <Modal width={amazonExpenseOrders.length || amazon.orders.length ? 1240 : 800} title={currentExpense ? 'Edit business expense' : 'Add business expense'} subtitle={`${current?.date ?? ''} · ${current ? money(-current.amount) : ''} · ${currentAccount?.name ?? ''}`} onclose={() => { modal = null; description = ''; expenseNote = ''; expenseId = '' }}>
     {#if current}
-      <BusinessExpenseEditor transaction={current} saved={currentExpenses} {description} note={expenseNote} orders={amazonExpenseOrders} store={amazon} {currency} disabled={busy || saveFailed} onsave={(rows) => void saveExpense(rows)} />
+      <BusinessExpenseEditor transaction={current} saved={currentExpenses} {description} note={expenseNote} orders={amazonExpenseOrders} store={amazon} paymentId={amazonPayment} {currency} disabled={busy || saveFailed} onsave={(rows) => void saveExpense(rows)} />
     {/if}
   </Modal>
 {:else if modal === 'business-prompt'}

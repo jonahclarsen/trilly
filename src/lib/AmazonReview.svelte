@@ -2,7 +2,7 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, laterRefunded, orderLink, linksOrder, itemCombinations, type AmazonStore, type AmazonOrder, type AmazonCandidate, type Rates } from './amazon'
+  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, orderRefunded, orderLink, linksOrder, itemCombinations, type AmazonStore, type AmazonOrder, type AmazonCandidate, type Rates } from './amazon'
   import type { Transaction } from './types'
   let { store, transaction, currency, targets, rates = {}, disabled, collecting = false, assignments = [], onchange, onorderlink, onorders }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; rates?: Rates; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void; onorderlink?: (link: string) => void; onorders?: (orders: AmazonOrder[]) => void } = $props()
   const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments, rates))
@@ -24,7 +24,7 @@
   // The payment's order, else the first shown order; the A shortcut opens it.
   const link = $derived((paymentDetails ? paymentOrderURL(paymentDetails.payment) : '') || orders.map(orderLink).find(Boolean) || '')
   $effect(() => { onorderlink?.(link) })
-  const describe = (found: typeof items) => amazonDescription(found, transaction.amount > 0, transaction.amount < 0 && laterRefunded(store, candidate?.payment, found))
+  const describe = (found: typeof items) => amazonDescription(found, transaction.amount > 0, transaction.amount < 0 && orderRefunded(store, candidate?.payment))
   $effect(() => {
     const found = automatic
     const market = candidate ? paymentMarketplace(candidate.payment) : null

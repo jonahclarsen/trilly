@@ -2,13 +2,13 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { paymentHasOrder, isRefunded, type AmazonOrder, type AmazonStore } from './amazon'
+  import { paymentHasOrder, isRefunded, orderRefunded, type AmazonOrder, type AmazonStore } from './amazon'
   import type { BusinessExpense, Transaction } from './types'
   import type { BusinessExpenseInput } from './business'
 
-  let { transaction, saved, description, note, orders, store, currency, disabled, onsave }: {
+  let { transaction, saved, description, note, orders, store, paymentId, currency, disabled, onsave }: {
     transaction: Transaction; saved: BusinessExpense[]; description: string; note: string;
-    orders: AmazonOrder[]; store: AmazonStore; currency?: string; disabled: boolean;
+    orders: AmazonOrder[]; store: AmazonStore; paymentId?: string; currency?: string; disabled: boolean;
     onsave: (rows: BusinessExpenseInput[]) => void;
   } = $props()
   type Row = Omit<BusinessExpenseInput, 'amount' | 'auto_description' | 'auto_note'> & { amount: number | undefined; included: boolean; reason: string }
@@ -17,15 +17,18 @@
   const products = $derived(referenceOrders.flatMap(order => order.items.map(item => ({
     key: JSON.stringify([order.marketplace, order.id, item.id]), item, currency: order.currency,
   }))))
+  // Later refunds covering the whole charge refund every product in it.
+  const refundedOrder = untrack(() => transaction.amount < 0 && orderRefunded(store, store.payments.find(p => p.id === paymentId)))
+  const refundReason = refundedOrder ? 'Order later refunded; unchecked by default.' : 'Refund confirmed by product status; unchecked by default.'
   function productRows(): Row[] {
     return products.map(({ key, item }) => {
-      // Payment-level refunds cannot identify a refunded product in a multi-item order.
-      const refunded = isRefunded(item.status)
+      // A partial order refund cannot identify which product was refunded.
+      const refunded = refundedOrder || isRefunded(item.status)
       const excluded = transaction.amount > 0 || refunded
       return {
         expense_id: crypto.randomUUID(), product_key: key, description: item.title.toLowerCase(),
         amount: undefined, note: '', included: !excluded,
-        reason: refunded ? 'Refund confirmed by product status; unchecked by default.'
+        reason: refunded ? refundReason
           : transaction.amount > 0 ? 'Refund transaction; unchecked by default.' : '',
       }
     })
@@ -51,16 +54,18 @@
         : []
       return [...restored, ...omitted]
     }
-    const refunded = isRefunded(products[0]?.item.status ?? '')
+    const refunded = refundedOrder || isRefunded(products[0]?.item.status ?? '')
     autofilledId = crypto.randomUUID()
     return [{
       expense_id: autofilledId, product_key: products[0]?.key ?? '', description, note,
       amount: -transaction.amount / 1000, included: transaction.amount <= 0 && !refunded,
       reason: transaction.amount > 0 ? 'Refund transaction; unchecked by default.'
-        : refunded ? 'Refund confirmed by product status; unchecked by default.' : '',
+        : refunded ? refundReason : '',
     }]
   }
   let rows = $state<Row[]>(untrack(initialRows))
+  // Amazon details sit in a right column beside the expense rows.
+  const reference = $derived(referenceOrders.length > 0 || store.orders.length > 0)
   const canUseProducts = $derived(products.length > 1 && (
     rows.some(row => !row.product_key) || products.some(product => !rows.some(row => row.product_key === product.key))
   ))
@@ -95,56 +100,62 @@
   }
 </script>
 
-<p class="field-note">Choose the business expenses to keep and enter the final price for each. Taxes, fees, discounts and refunds are not allocated automatically. Unchecked rows are not saved.</p>
-{#if combinedExpense}
-  <p class="field-note">Saved combined expense: {combinedExpense.description} · {money(combinedExpense.amount)}. Saving replaces it with the selected product expenses. Enter each price yourself; the saved total has not been divided.</p>
-{/if}
-{#if products.length > 1}
-  <p class="field-note">Amazon item prices are reference data only. Calculate each selected product's share yourself; prices start blank when splitting by product.</p>
-  {#if canUseProducts}
-    <Button {disabled} onclick={useProducts}>Use separate product expenses</Button>
-    <p class="field-note">This replaces combined or manual draft rows with products. Changes apply when you save.</p>
-  {/if}
-{/if}
-<form onsubmit={(event) => { event.preventDefault(); save() }}>
-  <div class="expense-entries">
-    {#each rows as row (row.expense_id)}
-      {@const product = products.find(product => product.key === row.product_key)}
-      <fieldset>
-        <label class="include-expense"><input type="checkbox" aria-label={`Include ${row.description || 'expense'}`} bind:checked={row.included} {disabled} />Include expense</label>
-        {#if row.reason}<p class="field-note">{row.reason}</p>{/if}
-        {#if product}
-          <p class="field-note">Amazon reference: quantity {product.item.quantity} · {product.item.price_text || (product.item.unit_price === null ? 'Price unavailable' : new Intl.NumberFormat(undefined, { style: 'currency', currency: product.currency }).format(product.item.unit_price / 1000))} each · {product.currency}{product.item.status ? ` · ${product.item.status}` : ''}</p>
-        {/if}
-        <label>Description<textarea onkeydown={textKeydown} data-modal-focus={row.included ? true : undefined} bind:value={row.description} required={row.included} disabled={!row.included || disabled} maxlength="10000" rows="2"></textarea></label>
-        <label>Price<input type="number" step="0.001" bind:value={row.amount} required={row.included} disabled={!row.included || disabled} placeholder="Enter your calculated amount" /></label>
-        <label>Note (optional)<textarea onkeydown={textKeydown} bind:value={row.note} disabled={!row.included || disabled} maxlength="10000" rows="2"></textarea></label>
-      </fieldset>
-    {/each}
+<div class="expense-layout" class:split={reference}>
+  <div class="expense-main">
+    <p class="field-note">Choose the business expenses to keep and enter the final price for each. Taxes, fees, discounts and refunds are not allocated automatically. Unchecked rows are not saved.</p>
+    {#if combinedExpense}
+      <p class="field-note">Saved combined expense: {combinedExpense.description} · {money(combinedExpense.amount)}. Saving replaces it with the selected product expenses. Enter each price yourself; the saved total has not been divided.</p>
+    {/if}
+    {#if products.length > 1}
+      <p class="field-note">Amazon item prices are reference data only. Calculate each selected product's share yourself; prices start blank when splitting by product.</p>
+      {#if canUseProducts}
+        <Button {disabled} onclick={useProducts}>Use separate product expenses</Button>
+        <p class="field-note">This replaces combined or manual draft rows with products. Changes apply when you save.</p>
+      {/if}
+    {/if}
+    <form onsubmit={(event) => { event.preventDefault(); save() }}>
+      <div class="expense-entries">
+        {#each rows as row (row.expense_id)}
+          {@const product = products.find(product => product.key === row.product_key)}
+          <fieldset>
+            <label class="include-expense"><input type="checkbox" aria-label={`Include ${row.description || 'expense'}`} bind:checked={row.included} {disabled} />Include expense</label>
+            {#if row.reason}<p class="field-note">{row.reason}</p>{/if}
+            {#if product}
+              <p class="field-note">Amazon reference: quantity {product.item.quantity} · {product.item.price_text || (product.item.unit_price === null ? 'Price unavailable' : new Intl.NumberFormat(undefined, { style: 'currency', currency: product.currency }).format(product.item.unit_price / 1000))} each · {product.currency}{product.item.status ? ` · ${product.item.status}` : ''}</p>
+            {/if}
+            <label>Description<textarea onkeydown={textKeydown} data-modal-focus={row.included ? true : undefined} bind:value={row.description} required={row.included} disabled={!row.included || disabled} maxlength="10000" rows="2"></textarea></label>
+            <label>Price<input type="number" step="0.001" bind:value={row.amount} required={row.included} disabled={!row.included || disabled} placeholder="Enter your calculated amount" /></label>
+            <label>Note (optional)<textarea onkeydown={textKeydown} bind:value={row.note} disabled={!row.included || disabled} maxlength="10000" rows="2"></textarea></label>
+          </fieldset>
+        {/each}
+      </div>
+      <Button {disabled} onclick={() => rows = [...rows, { expense_id: crypto.randomUUID(), product_key: '', description: '', amount: undefined, note: '', included: true, reason: '' }]}>Add expense</Button>
+      <p class="field-note">Expenses are positive; refunds are negative. A refund on an order does not identify which product was refunded. Check product status and payments in the Amazon reference.</p>
+      <p><strong>Selected total: {valid ? money(total) : 'Enter all selected prices'}</strong><br /><span class="field-note">Transaction: {money(-transaction.amount)}. Your selection can cover only part of the transaction.</span></p>
+      {#if !selected.length && saved.length}<p class="field-note">Saving with everything unchecked removes this transaction's saved expenses.</p>{/if}
+      <Button type="submit" primary shortcut="Enter" disabled={disabled || !valid || (!selected.length && !saved.length)}>Save expenses</Button>
+    </form>
   </div>
-  <Button {disabled} onclick={() => rows = [...rows, { expense_id: crypto.randomUUID(), product_key: '', description: '', amount: undefined, note: '', included: true, reason: '' }]}>Add expense</Button>
-  <p class="field-note">Expenses are positive; refunds are negative. A refund on an order does not identify which product was refunded. Check the recorded product status and payment details below.</p>
-  <p><strong>Selected total: {valid ? money(total) : 'Enter all selected prices'}</strong><br /><span class="field-note">Transaction: {money(-transaction.amount)}. Your selection can cover only part of the transaction.</span></p>
-  {#if !selected.length && saved.length}<p class="field-note">Saving with everything unchecked removes this transaction's saved expenses.</p>{/if}
-  <Button type="submit" primary shortcut="Enter" disabled={disabled || !valid || (!selected.length && !saved.length)}>Save expenses</Button>
-</form>
-{#if referenceOrders.length}
-  <h3>Amazon reference</h3>
-  <p class="field-note">Original order currencies are shown below. Orders can cover several charges and refunds; these totals may differ from this transaction.</p>
-  {#each referenceOrders as order (`${order.marketplace}:${order.id}`)}
-    <p class="field-note">Order currency: {order.currency}{order.total === null ? ' · Total unavailable' : ` · Order total: ${new Intl.NumberFormat(undefined, { style: 'currency', currency: order.currency }).format(order.total / 1000)}`}</p>
-    <AmazonOrderCard {order} payments={store.payments.filter(payment => paymentHasOrder(payment, order))} />
-  {/each}
-{:else if /amazon|amzn/i.test(transaction.payee_name ?? '')}
-  <p class="field-note">No confirmed order details are available. Fetch Amazon details during review, or choose a collected order below. You can also add expense rows manually.</p>
-{/if}
-{#if store.orders.length}
-  <details>
-    <summary>Choose another reference order</summary>
-    <label>Collected order<select bind:value={orderChoice}><option value="">Choose an order</option>{#each store.orders as order}<option value={JSON.stringify([order.marketplace, order.id])}>{order.marketplace} · {order.id} · {order.items.map(item => item.title).join('; ')}</option>{/each}</select></label>
-    <Button disabled={disabled || !orderChoice} onclick={addReference}>Show order details</Button>
-  </details>
-{/if}
+  <aside class="expense-reference">
+    {#if referenceOrders.length}
+      <h3>Amazon reference</h3>
+      <p class="field-note">Original order currencies are shown below. Orders can cover several charges and refunds; these totals may differ from this transaction.</p>
+      {#each referenceOrders as order (`${order.marketplace}:${order.id}`)}
+        <p class="field-note">Order currency: {order.currency}{order.total === null ? ' · Total unavailable' : ` · Order total: ${new Intl.NumberFormat(undefined, { style: 'currency', currency: order.currency }).format(order.total / 1000)}`}</p>
+        <AmazonOrderCard {order} payments={store.payments.filter(payment => paymentHasOrder(payment, order))} />
+      {/each}
+    {:else if /amazon|amzn/i.test(transaction.payee_name ?? '')}
+      <p class="field-note">No confirmed order details are available. Fetch details during review, or choose a collected order below. You can also add expense rows manually.</p>
+    {/if}
+    {#if store.orders.length}
+      <details>
+        <summary>Choose another reference order</summary>
+        <label>Collected order<select bind:value={orderChoice}><option value="">Choose an order</option>{#each store.orders as order}<option value={JSON.stringify([order.marketplace, order.id])}>{order.marketplace} · {order.id} · {order.items.map(item => item.title).join('; ')}</option>{/each}</select></label>
+        <Button disabled={disabled || !orderChoice} onclick={addReference}>Show order details</Button>
+      </details>
+    {/if}
+  </aside>
+</div>
 
 <style>
   .expense-entries { display: grid; gap: 16px; }
@@ -152,4 +163,12 @@
   .include-expense { display: flex; align-items: center; gap: 8px; }
   .include-expense input { width: auto; margin: 0; }
   details { margin-top: 18px; }
+  .expense-layout { display: grid; gap: 24px; }
+  .expense-main, .expense-reference { display: grid; gap: 14px; align-content: start; min-width: 0; }
+  .expense-layout.split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .split .expense-reference { position: sticky; top: 0; max-height: calc(100vh - 170px); overflow: auto; }
+  @media (max-width: 900px) {
+    .expense-layout.split { grid-template-columns: minmax(0, 1fr); }
+    .split .expense-reference { position: static; max-height: none; overflow: visible; }
+  }
 </style>

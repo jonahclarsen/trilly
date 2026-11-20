@@ -125,20 +125,30 @@ export function automaticItems(candidate: AmazonCandidate): AmazonItem[] {
 export function isRefunded(status: string) {
   return /^(?:refunded|refund (?:issued|complete|completed|processed))(?:\b|$)/i.test(status.trim())
 }
-// A charge counts as later refunded when every described product's status says
-// so, or when later refunds on its orders add up to at least the charge.
-export function laterRefunded(store: AmazonStore, payment: AmazonPayment | undefined, items: AmazonItem[]) {
-  if (payment?.refund) return false
-  if (items.length && items.every(i => isRefunded(i.status))) return true
-  if (!payment) return false
+// Later refunds on a charge's orders that add up to at least the charge.
+export function orderRefunded(store: AmazonStore, payment: AmazonPayment | undefined) {
+  if (!payment || payment.refund) return false
   const refunds = store.payments.filter(p => p.refund && p.id !== payment.id && p.currency === payment.currency &&
     (!p.date || !payment.date || p.date >= payment.date) &&
     p.order_ids.some(id => payment.order_ids.includes(id) && (p.order_marketplaces?.[id] ?? p.marketplace) === (payment.order_marketplaces?.[id] ?? payment.marketplace)))
   return refunds.reduce((n, p) => n + Math.abs(p.amount), 0) >= Math.abs(payment.amount)
 }
-export function amazonDescription(items: AmazonItem[], refund: boolean, refunded = false) {
-  const titles = [...new Set(items.map(i => i.title.replace(/\s+/g, ' ').trim().toLowerCase()))]
-  const description = titles.length ? `${refund ? 'refund for ' : refunded ? 'later refunded: ' : ''}${titles.join('; ')}` : ''
+const NUMBERS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
+const count = (n: number) => NUMBERS[n] ?? String(n)
+// "two things: a; b", "two things, one refunded: …", "later refunded: a".
+// A charge's products are refunded by their own status, or all of them when
+// the order's later refunds cover the charge.
+export function amazonDescription(items: AmazonItem[], refund: boolean, orderRefunded = false) {
+  const titleOf = (i: AmazonItem) => i.title.replace(/\s+/g, ' ').trim().toLowerCase()
+  const titles = [...new Set(items.map(titleOf))]
+  if (!titles.length) return ''
+  const refunded = refund ? 0 : orderRefunded ? titles.length
+    : titles.filter(t => items.filter(i => titleOf(i) === t).every(i => isRefunded(i.status))).length
+  const n = titles.length
+  const prefix = refund ? `refund for ${n > 1 ? `${count(n)} things: ` : ''}`
+    : n === 1 ? (refunded ? 'later refunded: ' : '')
+    : `${count(n)} things${refunded ? `, ${refunded === n ? (n === 2 ? 'both' : 'all') : count(refunded)} refunded` : ''}: `
+  const description = prefix + titles.join('; ')
   return [...description].length > 500 ? [...description].slice(0, 499).join('') + '…' : description
 }
 // Candidate combinations use ONLY recorded item prices. They are explicitly
