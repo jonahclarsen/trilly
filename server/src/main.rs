@@ -399,6 +399,51 @@ struct WealthsimpleImport {
     transactions: Vec<ynab::ImportedTransaction>,
 }
 
+#[derive(Deserialize)]
+struct WealthsimpleHistory {
+    plan_id: String,
+    account_id: String,
+}
+
+async fn wealthsimple_history(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Query(query): Query<WealthsimpleHistory>,
+) -> Result<Json<Value>> {
+    let mut app = state.lock().await;
+    let data = &authorize(&mut app, &headers)?.vault.data;
+    if query.plan_id.is_empty() || query.plan_id != data.plan_id {
+        return Err("The YNAB plan changed. Reopen the import.".into());
+    }
+    if !data
+        .accounts
+        .iter()
+        .any(|account| account.id == query.account_id && !account.closed && !account.deleted)
+    {
+        return Err("Choose an open YNAB account.".into());
+    }
+    let mut rows: Vec<_> = data
+        .transactions
+        .iter()
+        .filter(|row| row.account_id == query.account_id && !row.deleted)
+        .collect();
+    rows.sort_unstable_by(|a, b| b.date.cmp(&a.date).then_with(|| a.id.cmp(&b.id)));
+    let rows: Vec<_> = rows
+        .into_iter()
+        .take(10)
+        .map(|row| {
+            json!({
+                "date": row.date,
+                "payee": row.import_payee_name_original.as_ref()
+                    .or(row.import_payee_name.as_ref())
+                    .or(row.payee_name.as_ref()),
+                "amount": row.amount,
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "rows": rows })))
+}
+
 async fn wealthsimple_import(
     State(state): State<Shared>,
     headers: HeaderMap,
@@ -1416,7 +1461,9 @@ fn router(shared: Shared, origin: String, dist: PathBuf) -> Router {
         )
         .route(
             "/api/wealthsimple",
-            post(wealthsimple_import).layer(DefaultBodyLimit::max(512 * 1024)),
+            get(wealthsimple_history)
+                .post(wealthsimple_import)
+                .layer(DefaultBodyLimit::max(512 * 1024)),
         )
         .route("/api/fx", get(fx_rates))
         .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))

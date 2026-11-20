@@ -1,6 +1,6 @@
 export type WealthsimpleRow = { date: string; payee: string; memo: string; amount: number }
 
-export function parseWealthsimple(text: string, now = new Date()): WealthsimpleRow[] {
+export function parseWealthsimple(text: string, now = new Date()): { rows: WealthsimpleRow[]; skippedText: boolean } {
   let lines = text.trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean)
   const start = lines.indexOf('Scheduled activities')
   if (start >= 0) lines = lines.slice(start + 1)
@@ -8,13 +8,14 @@ export function parseWealthsimple(text: string, now = new Date()): WealthsimpleR
   if (end >= 0) lines = lines.slice(0, end)
 
   const rows: WealthsimpleRow[] = []
+  let skippedText = false
   let date = ''
   let fields: string[] = []
   const inactive = new Set(['Cancelled', 'Canceled', 'Expired', 'Pending', 'Scheduled', 'Failed', 'Declined'])
   for (const [index, line] of lines.entries()) {
     const heading = line.replace(/^"|"$/g, '')
     if (/^(Today|Yesterday)$/.test(heading) || /^(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}$/.test(heading)) {
-      if (date && fields.length) throw new Error('Copy complete transactions from Wealthsimple Activity.')
+      skippedText ||= fields.length > 0
       const day = new Date(now)
       if (heading === 'Yesterday') day.setDate(day.getDate() - 1)
       const parsed = heading === 'Today' || heading === 'Yesterday' ? day : new Date(heading)
@@ -45,8 +46,8 @@ export function parseWealthsimple(text: string, now = new Date()): WealthsimpleR
     fields = []
   }
 
-  if (fields.length) throw new Error('Copy complete transactions from Wealthsimple Activity.')
-  if (!rows.length) throw new Error('No completed Wealthsimple transactions found.')
+  skippedText ||= fields.length > 0
+  if (!rows.length) throw new Error('No complete transactions found. Include the date, payee, and CAD amount when copying Activity.')
   if (rows.length > 500) throw new Error('Paste up to 500 transactions at a time.')
-  return rows
+  return { rows, skippedText }
 }

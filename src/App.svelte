@@ -1307,7 +1307,7 @@
 </div>
 
 {#if modal === 'wealthsimple' && data}
-  <WealthsimpleImport accounts={data.accounts} accountId={data.account_id} onclose={() => modal = null} onimport={importWealthsimple} />
+  <WealthsimpleImport accounts={data.accounts} planId={data.plan_id} syncedAt={data.synced_at} onclose={() => modal = null} onimport={importWealthsimple} />
 {:else if modal === 'settings'}
   <Modal title="Settings" onclose={closeSettings} wide>
     {#if error}<p class="modal-error" role="alert">{error}</p>{/if}
