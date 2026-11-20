@@ -63,9 +63,11 @@
   let amazonJob = $state('')
   let amazonCollectedTargets = $state<string[]>([])
   let amazonJobTargets: string[] = []
-  let amazonCompleting = ''
+  let amazonCompleting = $state('')
+  const amazonFinishing = $derived(!!amazonJob && amazonCompleting === amazonJob)
   let amazonStatus = $state<AmazonStatus>({ running: false, pages: 0, orders: 0, queued: 0, active: 0, message: '', paused: [] })
   let amazonMessage = $state('')
+  let amazonSyncComplete = $state(false)
   let amazonSetup = $state(false)
   let amazonHTML = $state('')
   let amazonOrderURL = $state('')
@@ -87,7 +89,8 @@
   const amazonPendingPackets = new Set<string>()
   function stopAmazon() {
     if (amazonJob) amazonCommand('STOP', { job: amazonJob })
-    amazonJob = ''; amazonStatus = { ...amazonStatus, running: false, paused: [] }
+    amazonJob = ''; amazonStatus = { ...amazonStatus, running: false, message: '', paused: [] }
+    amazonSyncComplete = false
   }
   async function startAmazon() {
     if (!data || !amazonTargets.length || amazonPasteBusy || busy || saving || syncing || saveFailed) return
@@ -135,8 +138,17 @@
           const saved = await api<{ retained: boolean }>('amazon', { plan_id: plan, completed_targets: targets })
           if (generation !== amazonGeneration || data?.plan_id !== plan) return
           amazonCollectedTargets = saved.retained ? [...new Set([...amazonCollectedTargets, ...targets])] : []
-          if (amazonJob === job) stopAmazon()
-        }).catch(e => { amazonCompleting = ''; handleError(e) })
+          if (amazonJob === job) {
+            stopAmazon()
+            amazonSyncComplete = true
+          }
+        }).catch(e => {
+          if (amazonJob === job) {
+            stopAmazon()
+            amazonMessage = 'Amazon sync could not be completed. Fetch again to retry.'
+          }
+          handleError(e)
+        })
       }
       return
     }
@@ -1092,14 +1104,32 @@
           <span class="eyebrow">{currentPlan?.name ?? 'Review'}</span>
           <button class="account-button" disabled={busy || !!saving || saveFailed || !data.accounts.length} onclick={() => modal = 'account'} title="Choose account (A)">{currentAccount?.name ?? 'Choose account'}<Icon name="chevron" /></button>
         </div>
-        {#if amazonNeedsFetch || amazonStatus.running || amazonMessage || amazonVersionWarning}
+        {#if amazonNeedsFetch || amazonStatus.running || amazonSyncComplete || amazonStatus.message || amazonMessage || amazonVersionWarning}
           <section class="amazon-toolbar" aria-label="Amazon collection">
-            <div><strong>Amazon</strong><span>{amazonLinkSummary(amazonTargets, data.amazon_assignments ?? [])}</span></div>
+            <div class="amazon-toolbar-heading">
+              <div class="amazon-toolbar-label">
+                <strong>Amazon</strong>
+                <span role="status">{amazonStatus.paused.length ? 'Paused' : amazonStatus.running || amazonFinishing ? 'Syncing…' : amazonSyncComplete ? 'Complete' : ''}</span>
+                {#if amazonStatus.running || amazonSyncComplete || amazonFinishing}
+                  <details class="amazon-progress">
+                    <summary aria-label="Amazon sync details"><Icon name="info" /></summary>
+                    <div class="amazon-progress-panel">
+                      <span>{amazonStatus.pages} payment pages</span>
+                      <span>{amazonStatus.orders} orders collected</span>
+                      <span>{amazonStatus.active} tabs</span>
+                      <span>{amazonStatus.queued} queued</span>
+                      {#if amazonStatus.running && amazonStatus.message}<span>{amazonStatus.message}</span>{/if}
+                    </div>
+                  </details>
+                {/if}
+              </div>
+              <span>{amazonLinkSummary(amazonTargets, data.amazon_assignments ?? [])}</span>
+            </div>
             <div class="amazon-toolbar-actions">
-              {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || busy || saving > 0 || syncing || saveFailed || !amazonTargets.length} onclick={() => void startAmazon()}>Fetch details</Button>{/if}
+              {#if amazonStatus.running || amazonFinishing}<Button icon="close" disabled={amazonFinishing} onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || busy || saving > 0 || syncing || saveFailed || !amazonTargets.length} onclick={() => void startAmazon()}>Fetch details</Button>{/if}
               <Button icon="settings" onclick={() => amazonSetup = !amazonSetup}>Setup</Button>
             </div>
-            {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
+            {#if !amazonStatus.running && amazonStatus.message && !amazonFinishing}<p role="status">{amazonStatus.message}</p>{/if}
             {#each amazonStatus.paused as pause}<div class="amazon-paused"><span>{pause.marketplace}: {pause.reason}</span><Button onclick={() => amazonCommand('FOCUS', { job: amazonJob, tab: pause.tab })}>Open page</Button><Button onclick={() => amazonCommand('RESUME', { job: amazonJob })}>Resume</Button></div>{/each}
             {#if amazonVersionWarning && !amazonSetup}<p role="alert"><strong>Amazon extension update required {amazonVersionWarning}: <CopyAddress address="chrome://extensions" />, then refresh.</strong></p>{/if}
             {#if amazonMessage}<p role="status">{amazonMessage}</p>{/if}

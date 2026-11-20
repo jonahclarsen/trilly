@@ -1,5 +1,5 @@
 <script lang="ts">
-  export let name: 'rename' | 'transaction' | 'list' | 'business' | 'lock' | 'settings' | 'sync' | 'check' | 'skip' | 'undo' | 'close' | 'search' | 'keyboard' | 'chevron' | 'external'
+  export let name: 'rename' | 'transaction' | 'list' | 'business' | 'lock' | 'settings' | 'sync' | 'check' | 'skip' | 'undo' | 'close' | 'search' | 'keyboard' | 'chevron' | 'external' | 'info'
   const paths = {
     rename: 'm14 4 6 6M4 20l5-1L21 7l-5-5L4 14v6Z',
     transaction: 'M5 3h14v18H5V3Zm3 5h8M8 12h8M8 16h4',
@@ -12,6 +12,7 @@
     undo: 'm8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12h-3',
     close: 'm6 6 12 12M6 18 18 6', search: 'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 6 6',
     keyboard: 'M3 5h18v14H3V5Zm3 4h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10',
+    info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-11v6m0-10h.01',
     chevron: 'm8 10 4 4 4-4', external: 'M14 3h7v7m0-7L10 14M10 3H3v18h18v-7',
   }
 </script>

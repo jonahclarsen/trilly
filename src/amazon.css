@@ -1,7 +1,19 @@
 .amazon-setup { display: grid; gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 /* Sits inline in the queue heading, between the account and the review count. */
 .amazon-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; flex: 0 1 auto; min-width: 0; margin-left: auto; }
-.amazon-toolbar > div:first-child, .amazon-toolbar-actions, .amazon-paused { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.amazon-toolbar-label, .amazon-toolbar-actions, .amazon-paused { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.amazon-toolbar-heading { display: grid; }
+.amazon-toolbar-label { position: relative; gap: 6px; min-height: 22px; }
+.amazon-progress summary { display: grid; place-items: center; width: 22px; height: 22px; cursor: pointer; color: var(--muted); list-style: none; }
+.amazon-progress summary::-webkit-details-marker { display: none; }
+.amazon-progress summary svg { width: 16px; height: 16px; }
+.amazon-progress-panel { position: absolute; z-index: 2; inset-block-start: 100%; inset-inline-start: 0; width: max-content; max-width: min(220px, 50vw); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.amazon-progress::details-content { content-visibility: visible; }
+.amazon-progress:not([open]) .amazon-progress-panel { display: none; }
+@media (hover: hover) {
+  .amazon-progress:hover .amazon-progress-panel { display: block; }
+}
+.amazon-progress-panel span { display: block; }
 .amazon-toolbar > p, .amazon-toolbar > .amazon-paused { flex-basis: 100%; }
 .amazon-toolbar span, .amazon-toolbar p { font-size: 12px; color: var(--muted); line-height: 1.6; }
 .amazon-toolbar-actions button { background: transparent; padding: 6px 10px; font-size: 12px; }
