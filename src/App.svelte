@@ -36,7 +36,7 @@
   import CopyAddress from './lib/CopyAddress.svelte'
   import BusinessExpenseEditor from './lib/BusinessExpenseEditor.svelte'
   import AmazonReview from './lib/AmazonReview.svelte'
-  import { amazonCandidates, amazonLinkSummary, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonOrder, type AmazonStore, type AmazonStatus } from './lib/amazon'
+  import { amazonCandidates, amazonLinkSummary, conversionBands, type Rates, amazonPayee, automaticAmazonMarketplace, emptyAmazon, isAmazon, mergeAmazon, type AmazonOrder, type AmazonStore, type AmazonStatus } from './lib/amazon'
   import { amazonCommand, listenAmazon } from './lib/amazon-bridge'
   import '../chromium-extension/parser.js'
   import Icon from './lib/Icon.svelte'
@@ -78,6 +78,9 @@
   let amazonMemoTouched = $state(false)
   let amazonPayeeTouched = $state(false)
   let amazonScope = ''
+  // Daily USD→CAD rates for suggesting Amazon payments charged in US dollars.
+  let fxRates = $state<Rates>({})
+  let fxStart = ''
   let amazonGeneration = 0
   let amazonImports = Promise.resolve()
   const amazonPackets = new Set<string>()
@@ -95,7 +98,7 @@
     amazonJob = crypto.randomUUID(); amazonMessage = ''
     amazonJobTargets = amazonTargets.map(t => t.id)
     amazonStatus = { running: true, pages: 0, orders: 0, queued: 0, active: 0, message: 'Opening Amazon…', paused: [] }
-    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount, cached: [],
+    amazonCommand('START', { job: amazonJob, oldest: amazonTargets.map(t => t.date).sort()[0], priority: current?.amount, cached: [], fx: conversionBands(fxRates, currency),
       targets: amazonTargets.map(({ id, date, amount }) => ({ id, date, amount })) })
   }
   async function saveAmazon(records: AmazonStore, plan: string, generation: number) {
@@ -210,6 +213,15 @@
         if (generation === amazonGeneration && result.plan_id === plan) { amazon = mergeAmazon(result, amazon); amazonCollectedTargets = result.collected_targets ?? [] }
       }).catch(e => { if (generation === amazonGeneration) handleError(e) })
     })
+  })
+  $effect(() => {
+    const oldest = amazonTargets.map(t => t.date).sort()[0]
+    if (!data || !oldest || (currency !== 'CAD' && currency !== 'USD')) return
+    // Amazon can charge up to two weeks before the bank posts it.
+    const start = new Date(Date.parse(oldest + 'T00:00:00Z') - 14 * 86400000).toISOString().slice(0, 10)
+    if (fxStart && fxStart <= start) return
+    fxStart = start
+    void api<{ usd_cad: Rates }>(`fx?start=${start}`).then(result => { fxRates = { ...fxRates, ...result.usd_cad } }).catch(() => { fxStart = '' })
   })
   $effect(() => { const amount = current?.amount; if (amazonJob) amazonCommand('PRIORITY', { job: amazonJob, amount }) })
   $effect(() => { if (amazonJob) amazonCommand('TARGETS', { job: amazonJob, ids: amazonTargets.map(t => t.id) }) })
@@ -446,7 +458,7 @@
   const current = $derived(reviewQueue.find(t => t.id === selectedId) ?? reviewQueue.find(t => !skipped.includes(t.id)))
   const amazonTargets = $derived((data?.amazon_targets ?? data?.queue ?? []).filter(isAmazon))
   // A finished fetch can predate a charge's Amazon payment; keep offering a fetch until it matches.
-  const amazonNeedsFetch = $derived(amazonTargets.some(t => !amazonCollectedTargets.includes(t.id) || !amazonCandidates(amazon, t, undefined, amazonTargets, data?.amazon_assignments ?? []).length))
+  const amazonNeedsFetch = $derived(amazonTargets.some(t => !amazonCollectedTargets.includes(t.id) || !amazonCandidates(amazon, t, currency, amazonTargets, data?.amazon_assignments ?? [], fxRates).length))
   const currentId = $derived(current?.id)
   // The transaction N opens from the list: the current one, or the first skipped one.
   const nextId = $derived(currentId ?? reviewQueue[0]?.id)
@@ -1148,7 +1160,7 @@
         </article>
           {#if repeatVisible && repeatOffer}{#key repeatOffer.key}<RepeatChoicePopup bind:this={repeatPopup} look={repeatOffer.choice.look} summary={repeatSummary} matches={repeatMatches} {money} date={dateLabel} disabled={busy || saveFailed} onapply={applyRepeat} ondismiss={dismissRepeat} />{/key}{/if}
         </div>
-          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} onorders={(orders) => amazonExpenseOrders = orders} />{/key}{/if}
+          {#if isAmazon(current)}{#key current.id}<AmazonReview store={amazon} transaction={current} {currency} targets={amazonTargets} rates={fxRates} collecting={amazonStatus.running} assignments={data.amazon_assignments ?? []} disabled={busy || saveFailed} onchange={applyAmazonDraft} onorderlink={(link) => amazonOrderLink = link} onorders={(orders) => amazonExpenseOrders = orders} />{/key}{/if}
         </div>
       {:else}
         <section class="empty-state">

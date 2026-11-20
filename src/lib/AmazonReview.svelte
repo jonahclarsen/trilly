@@ -2,17 +2,17 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, itemCombinations, type AmazonStore, type AmazonOrder } from './amazon'
+  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, itemCombinations, type AmazonStore, type AmazonOrder, type AmazonCandidate, type Rates } from './amazon'
   import type { Transaction } from './types'
-  let { store, transaction, currency, targets, disabled, collecting = false, assignments = [], onchange, onorderlink, onorders }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void; onorderlink?: (link: string) => void; onorders?: (orders: AmazonOrder[]) => void } = $props()
-  const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments))
+  let { store, transaction, currency, targets, rates = {}, disabled, collecting = false, assignments = [], onchange, onorderlink, onorders }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; rates?: Rates; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void; onorderlink?: (link: string) => void; onorders?: (orders: AmazonOrder[]) => void } = $props()
+  const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments, rates))
   // A reopened review starts from the payment it was matched to.
   let choice = $state(untrack(() => assignments.find(a => a.transaction_id === transaction.id)?.payment_id ?? ''))
   let selected = $state<string[]>([])
   let touched = $state(false)
   let search = $state('')
   let manualOrder = $state('')
-  const candidate = $derived(candidates.find(c => c.payment.id === choice) ?? (!touched ? candidates.find(c => c.confident) : undefined))
+  const candidate = $derived(candidates.find(c => c.payment.id === choice) ?? (!touched ? candidates.find(c => c.confident) ?? candidates.find(c => c.guess) : undefined))
   const paymentDetails = $derived(candidate ?? (candidates.length === 1 ? candidates[0] : undefined))
   const orders = $derived(manualOrder ? store.orders.filter(o => `${o.marketplace}:${o.id}` === manualOrder) : candidate?.orders ?? [])
   const items = $derived(orders.flatMap(o => o.items))
@@ -25,13 +25,17 @@
   $effect(() => {
     const found = automatic
     const market = candidate ? paymentMarketplace(candidate.payment) : null
-    if (!touched) untrack(() => onchange(amazonDescription(found, transaction.amount > 0), candidate?.confident && !collecting ? market ?? null : null, true, candidate?.confident && !collecting ? candidate.payment.id : undefined))
+    const chosen = (candidate?.confident || candidate?.guess) && !collecting
+    if (!touched) untrack(() => onchange(amazonDescription(found, transaction.amount > 0), chosen ? market ?? null : null, true, chosen ? candidate!.payment.id : undefined))
   })
   function choose(id: string) {
     touched = true; choice = id; selected = []; manualOrder = ''
     const payment = candidates.find(c => c.payment.id === id)?.payment
     onchange('', payment ? paymentMarketplace(payment) : null, false, id)
   }
+  const money = (amount: number, code: string | undefined) => new Intl.NumberFormat(undefined, code ? { style: 'currency', currency: code } : { minimumFractionDigits: 2 }).format(amount / 1000)
+  const percent = (value: number) => `${value >= 0 ? '+' : '−'}${Math.abs(value * 100).toFixed(1)}%`
+  const conversion = (c: AmazonCandidate) => c.conversion ? `≈ ${money(c.conversion.converted, currency)} · ${percent(c.conversion.markup)}` : ''
   function select(ids: string[]) {
     touched = true; selected = ids
     onchange(amazonDescription(items.filter(i => ids.includes(i.id)), transaction.amount > 0), orders[0]?.marketplace ?? null, false, candidate?.payment.id)
@@ -39,19 +43,23 @@
 </script>
 
 <section class="amazon-review" aria-label="Amazon details">
-  {#if !candidates.length}<p class="field-note">No payment match yet. Fetch details, or search collected orders below. Different currencies and partial payments need manual review.</p>{/if}
+  {#if !candidates.length}<p class="field-note">No payment match yet. Fetch details, or search collected orders below. Partial payments need manual review.</p>{/if}
   {#if candidates.length > 1}
     {#each candidates as c}
       <button class="amazon-candidate" class:selected={candidate?.payment.id === c.payment.id} {disabled} onclick={() => choose(c.payment.id)}>
         <strong>{marketplaceLabel(c.payment.marketplace)} · {c.payment.refund ? 'Refund' : 'Charge'} · {c.payment.date || 'Date unavailable'}</strong>
-        <span>{new Intl.NumberFormat(undefined, { style: 'currency', currency: c.payment.currency }).format(c.payment.amount / 1000)} {c.payment.currency} · {c.payment.payment_method}</span>
+        <span>{money(c.payment.amount, c.payment.currency)} {c.payment.currency}{c.conversion ? ` ${conversion(c)}` : ''} · {c.payment.payment_method}</span>
         <small>{c.reason}</small>
       </button>
     {/each}
   {/if}
   {#if paymentDetails && !candidate}
-    <p class="field-note">{paymentDetails.reason}</p>
+    <p class="field-note">{paymentDetails.reason}{paymentDetails.conversion ? ` · ${money(paymentDetails.payment.amount, paymentDetails.payment.currency)} ${conversion(paymentDetails)}` : ''}</p>
     <Button {disabled} onclick={() => choose(paymentDetails!.payment.id)}>Use this payment</Button>
+  {/if}
+  {#if candidate?.conversion}
+    {@const guessed = candidate.guess && !touched && !choice}
+    <p class="amazon-conversion" class:guess={guessed}><strong>{guessed ? 'Guess' : 'Converted'}</strong> {money(Math.abs(candidate.payment.amount), candidate.payment.currency)} × {candidate.conversion.rate.toFixed(4)} ({candidate.conversion.date}) = {money(Math.abs(candidate.conversion.converted), currency)} · charge {percent(candidate.conversion.markup)}{guessed ? '. Check the order.' : ''}</p>
   {/if}
   {#if candidate}
     {#if candidate.orders.length < candidate.payment.order_ids.length}<p class="field-note">Order details are still missing. Collection can continue while you review other transactions.</p>{/if}

@@ -264,7 +264,9 @@ this same matching flow. Digital `D`-prefixed order IDs are accepted alongside
 standard order IDs. Unrecognized digital-page layouts still pause for review.
 
 Only payments with the same signed amount and a date within 14 days of a target
-transaction lead to order-detail collection. Missing dates and differing or unknown
+transaction lead to order-detail collection. US-dollar payments (`US$` rows, `+`
+for refunds) are also kept when their amount times the period's USD/CAD range,
+with a −2% to +5% margin, is near a target. Missing dates and unknown
 currencies remain ambiguous candidates for manual review. All plausible matches
 are retained, rather than choosing the first payment. Unrelated payment rows are
 scanned for pagination but are not saved. Approvals remove waiting order work;
@@ -309,7 +311,16 @@ Matching keeps charges and refunds separate and uses exact signed amount and
 currency, nearby payment dates and uniqueness among bank transactions. Card
 information remains visible for manual comparison; account-to-card mapping is
 not inferred. Unknown dates, currency differences, competing transactions and
-repeated amounts require review. A selected payment is bound to the approved
+repeated amounts require review.
+
+When no payment matches exactly, US-dollar payments within 14 days are converted
+with the Bank of Canada daily rate on or before the payment date (fetched by the
+backend from the Valet API; only the date range is sent, and rates are cached for
+six hours). Conversions within −2% to +5% of the bank amount are listed, closest to
+the published rate or a 2.5% card fee first. The closest is preselected only when it
+is within 0.5%, within 7 days, at least 1% closer than any other conversion, and not
+as close to another target; it is labeled **Guess** with the rate, date, converted
+amount and difference until you choose a payment. A selected payment is bound to the approved
 YNAB transaction so later reviews cannot automatically reuse it. Undo releases
 that binding. These are local heuristics, not a guarantee of identity.
 

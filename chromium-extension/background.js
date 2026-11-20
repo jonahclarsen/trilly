@@ -75,10 +75,22 @@ function validateTargets(value) {
     ids.add(t.id); return { id: t.id, date: t.date, amount: t.amount };
   });
 }
+function validateBands(value) {
+  // Bank-to-Amazon amount ratios for payments in another currency, e.g. { USD: [1.3, 1.5] }.
+  if (value === undefined) return {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid conversion bands');
+  return Object.fromEntries(Object.entries(value).map(([code, band]) => {
+    if (!['CAD', 'USD'].includes(code) || !Array.isArray(band) || band.length !== 2 || !band.every(n => Number.isFinite(n) && n > 0.2 && n < 5) || band[0] > band[1]) throw new Error('Invalid conversion bands');
+    return [code, [band[0], band[1]]];
+  }));
+}
 function matchingTargets(payment) {
   // Same eligibility as amazonCandidates: preserve ambiguous equal-amount
   // candidates (including unknown dates/currencies) for manual review.
-  return job.targets.filter(t => payment.amount === t.amount && payment.refund === (t.amount > 0) &&
+  // Payments in another currency are kept when their converted amount is plausible.
+  const band = job.fx?.[payment.currency];
+  return job.targets.filter(t => payment.refund === (t.amount > 0) &&
+    (payment.amount === t.amount || (band && payment.date && t.amount / payment.amount >= band[0] && t.amount / payment.amount <= band[1])) &&
     (!payment.date || Math.abs(Date.parse(payment.date + 'T00:00:00Z') - Date.parse(t.date + 'T00:00:00Z')) <= 14 * 86400000)).map(t => t.id);
 }
 function refreshQueue() {
@@ -125,13 +137,13 @@ async function packet(records) {
   await emit({ type: 'DATA', packet: id, ...records });
 }
 async function start(message, sender) {
-  const targets = validateTargets(message.targets);
+  const targets = validateTargets(message.targets), fx = validateBands(message.fx);
   if (!/^[a-zA-Z0-9-]{16,80}$/.test(message.job) || !/^20\d{2}-\d{2}-\d{2}$/.test(message.oldest)) throw new Error('Invalid collection request');
   if (job) { if (job.client !== sender.tab.id) throw new Error('Collection is already running in another Trilly tab.'); await cancel(); }
   finished = null; await chrome.storage.session.remove(RECEIPT);
   const window = await chrome.windows.create({ url: 'about:blank', focused: false, type: 'normal' });
   job = { id: message.job, client: sender.tab.id, window: window.id, oldest: targets.map(t => t.date).sort()[0], priority: message.priority,
-    targets, remaining: targets.map(t => t.id), candidates: [], completedKeys: [],
+    targets, fx, remaining: targets.map(t => t.id), candidates: [], completedKeys: [],
     queue: [], tabs: {}, pending: {}, pages: 0, completed: 0, notice: '',
     cached: Array.isArray(message.cached) ? message.cached.slice(0, 5000) : [] };
   // Read the shared account payment feed once; order links choose the storefront.

@@ -41,3 +41,6 @@
   .amazon-item img { width: 52px; height: 52px; }
   .amazon-toolbar-actions button { padding: 9px; }
 }
+.amazon-conversion { padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.amazon-conversion strong { color: var(--ink); }
+.amazon-conversion.guess { border-color: var(--accent-strong); }

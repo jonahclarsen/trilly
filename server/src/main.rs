@@ -1,4 +1,5 @@
 mod amazon;
+mod fx;
 mod keystore;
 mod model;
 mod purchase_history;
@@ -8,7 +9,7 @@ mod ynab;
 
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Path, Request, State},
+    extract::{DefaultBodyLimit, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -410,6 +411,23 @@ async fn suggestions(
         .find(|t| t.id == id)
         .ok_or("Transaction not found")?;
     Ok(Json(json!(suggest::suggestions(d, t))))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FxQuery {
+    start: String,
+}
+async fn fx_rates(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Query(query): Query<FxQuery>,
+) -> Result<Json<Value>> {
+    authorize(&mut *state.lock().await, &headers)?;
+    let rates = fx::usd_cad(&query.start)
+        .await
+        .map_err(|e| Error(StatusCode::BAD_GATEWAY, e))?;
+    Ok(Json(json!({ "usd_cad": rates })))
 }
 
 async fn amazon_view(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<Value>> {
@@ -1355,6 +1373,7 @@ fn router(shared: Shared, origin: String, dist: PathBuf) -> Router {
                 .post(amazon_import)
                 .layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
         )
+        .route("/api/fx", get(fx_rates))
         .route("/api/{*path}", any(|| async { StatusCode::NOT_FOUND }))
         // Page paths such as /list load the app, which opens that page.
         .fallback_service(ServeDir::new(&dist).fallback(ServeFile::new(dist.join("index.html"))))
