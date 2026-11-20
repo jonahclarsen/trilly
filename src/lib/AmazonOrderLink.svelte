@@ -4,12 +4,12 @@
   import amazonLogoDark from '../assets/amazon-logo-dark.webp'
   import { amazonOrderKey } from './shortcuts'
 
-  let { href }: { href: string } = $props()
+  let { href, shortcut = true }: { href: string; shortcut?: boolean } = $props()
   let link = $state<{ open: () => void }>()
   export function open() { link?.open() }
 </script>
 
-<LookupLink bind:this={link} {href} label="Open Amazon order" shortcut={amazonOrderKey}>
+<LookupLink bind:this={link} {href} label="Open Amazon order" shortcut={shortcut ? amazonOrderKey : undefined}>
   <img class="amazon-logo amazon-logo-light" src={amazonLogo} alt="" width="23" height="20" />
   <img class="amazon-logo amazon-logo-dark" src={amazonLogoDark} alt="" width="23" height="20" />
 </LookupLink>

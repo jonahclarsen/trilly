@@ -1,7 +1,8 @@
 <script lang="ts">
-  import Icon from './Icon.svelte'
-  import { orderURL, marketplaceLabel, type AmazonOrder, type AmazonPayment } from './amazon'
-  let { order, payments, selected = [], onchange, disabled = false }: { order: AmazonOrder; payments: AmazonPayment[]; selected?: string[]; onchange?: (ids: string[]) => void; disabled?: boolean } = $props()
+  import AmazonOrderLink from './AmazonOrderLink.svelte'
+  import { orderURL, orderLink, marketplaceLabel, type AmazonOrder, type AmazonPayment } from './amazon'
+  // `shortcut` shows the key only where it opens this order.
+  let { order, payments, selected = [], onchange, disabled = false, shortcut = false }: { order: AmazonOrder; payments: AmazonPayment[]; selected?: string[]; onchange?: (ids: string[]) => void; disabled?: boolean; shortcut?: boolean } = $props()
   function money(value: number, currency: string) { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value / 1000) }
   function toggle(id: string) { onchange?.(selected.includes(id) ? selected.filter(i => i !== id) : [...selected, id]) }
 </script>
@@ -9,7 +10,7 @@
 <article class="amazon-order" aria-label={`Amazon order ${order.id}`}>
   <div class="amazon-order-heading">
     <div><strong>{marketplaceLabel(order.marketplace)}</strong><span>Order placed {order.date || 'date unavailable'}</span><small>Order {order.id}</small></div>
-    <a href={orderURL(order.url, order.marketplace)} target="_blank" rel="noreferrer">Open order<Icon name="external" /></a>
+    {#if orderLink(order)}<AmazonOrderLink href={orderLink(order)} {shortcut} />{/if}
   </div>
   {#if order.payment_method}<p class="amazon-method">{order.payment_method}</p>{/if}
   <div class="amazon-items">

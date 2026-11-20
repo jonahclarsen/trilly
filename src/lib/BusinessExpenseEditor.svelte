@@ -2,7 +2,7 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { paymentHasOrder, type AmazonOrder, type AmazonStore } from './amazon'
+  import { paymentHasOrder, isRefunded, type AmazonOrder, type AmazonStore } from './amazon'
   import type { BusinessExpense, Transaction } from './types'
   import type { BusinessExpenseInput } from './business'
 
@@ -17,9 +17,6 @@
   const products = $derived(referenceOrders.flatMap(order => order.items.map(item => ({
     key: JSON.stringify([order.marketplace, order.id, item.id]), item, currency: order.currency,
   }))))
-  function isRefunded(status: string) {
-    return /^(?:refunded|refund (?:issued|complete|completed|processed))(?:\b|$)/i.test(status.trim())
-  }
   function productRows(): Row[] {
     return products.map(({ key, item }) => {
       // Payment-level refunds cannot identify a refunded product in a multi-item order.

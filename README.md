@@ -245,7 +245,7 @@ without fresh authorization.
 ## Amazon purchases and refunds
 
 Import your bank CSVs into YNAB first. When unapproved Amazon transactions are
-present, **Fetch Amazon details** starts a batch for all accounts in the selected
+present, **Fetch details** (next to the account name) starts a batch for all accounts in the selected
 plan. Each fetch stops any previous collection, clears its saved Amazon records,
 thumbnails, payment bindings and completion tracking, then starts from scratch.
 The replacement scrape starts only after clearing is confirmed; existing orders
@@ -303,7 +303,8 @@ rows supplied by Amazon. Related collected charges and refunds appear below the
 card. **Payment details from Amazon** stays visible with separate rows for the
 date, amount, payment method, payment source, and linked order numbers. Order
 links are available even before their details finish collecting.
-**Open order** opens the original Amazon order; product links are available
+The Amazon button on each card opens the original order (shortcut A where it
+matches the top Amazon button); product links are available
 on titles. Cards are rebuilt from structured fields. Raw Amazon HTML, scripts,
 addresses and account credentials are not stored or rendered.
 
@@ -326,7 +327,9 @@ that binding. These are local heuristics, not a guarantee of identity.
 
 After collection finishes, an unambiguous product match proposes a lowercase
 YNAB description and the `amazon.ca` or `amazon.com` payee. Refund descriptions
-use **refund for [product]**. Full-order purchases can list multiple products;
+use **refund for [product]**. Charges whose products show a refunded status, or
+whose orders have later refunds covering the charge, start with **later
+refunded:**. Full-order purchases can list multiple products;
 partial charges and multi-product refunds require choosing the relevant items.
 Existing descriptions and manually selected payees are preserved until you
 explicitly replace them. Long generated descriptions are shortened to YNAB's

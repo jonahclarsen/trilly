@@ -1027,22 +1027,22 @@
           <span class="eyebrow">{currentPlan?.name ?? 'Review'}</span>
           <button class="account-button" disabled={busy || !!saving || saveFailed || !data.accounts.length} onclick={() => modal = 'account'} title="Choose account (A)">{currentAccount?.name ?? 'Choose account'}<Icon name="chevron" /></button>
         </div>
+        {#if amazonNeedsFetch || amazonStatus.running || amazonMessage || amazonVersionWarning}
+          <section class="amazon-toolbar" aria-label="Amazon collection">
+            <div><strong>Amazon</strong><span>{amazonLinkSummary(amazonTargets, data.amazon_assignments ?? [])}</span></div>
+            <div class="amazon-toolbar-actions">
+              {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || busy || saving > 0 || syncing || saveFailed || !amazonTargets.length} onclick={() => void startAmazon()}>Fetch details</Button>{/if}
+              <Button icon="settings" onclick={() => amazonSetup = !amazonSetup}>Setup</Button>
+            </div>
+            {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
+            {#each amazonStatus.paused as pause}<div class="amazon-paused"><span>{pause.marketplace}: {pause.reason}</span><Button onclick={() => amazonCommand('FOCUS', { job: amazonJob, tab: pause.tab })}>Open page</Button><Button onclick={() => amazonCommand('RESUME', { job: amazonJob })}>Resume</Button></div>{/each}
+            {#if amazonVersionWarning && !amazonSetup}<p role="alert"><strong>Amazon extension update required {amazonVersionWarning}: <CopyAddress address="chrome://extensions" />, then refresh.</strong></p>{/if}
+            {#if amazonMessage}<p role="status">{amazonMessage}</p>{/if}
+          </section>
+        {/if}
         {#if data.plan_id && view === 'transaction'}<span class="count">{remaining} to review</span>{/if}
       </div>
 
-      {#if amazonNeedsFetch || amazonStatus.running || amazonMessage || amazonVersionWarning}
-        <section class="amazon-toolbar" aria-label="Amazon collection">
-          <div><strong>Amazon</strong><span>{amazonLinkSummary(amazonTargets, data.amazon_assignments ?? [])}</span></div>
-          <div class="amazon-toolbar-actions">
-            {#if amazonStatus.running}<Button icon="close" onclick={stopAmazon}>Stop</Button>{:else}<Button icon="sync" disabled={amazonPasteBusy || busy || saving > 0 || syncing || saveFailed || !amazonTargets.length} onclick={() => void startAmazon()}>Fetch Amazon details</Button>{/if}
-            <Button icon="settings" onclick={() => amazonSetup = !amazonSetup}>Amazon setup</Button>
-          </div>
-          {#if amazonStatus.running || amazonStatus.message}<p role="status">{amazonStatus.pages} payment pages · {amazonStatus.orders} orders collected · {amazonStatus.active} tabs · {amazonStatus.queued} queued{amazonStatus.message ? ` · ${amazonStatus.message}` : ''}</p>{/if}
-          {#each amazonStatus.paused as pause}<div class="amazon-paused"><span>{pause.marketplace}: {pause.reason}</span><Button onclick={() => amazonCommand('FOCUS', { job: amazonJob, tab: pause.tab })}>Open page</Button><Button onclick={() => amazonCommand('RESUME', { job: amazonJob })}>Resume</Button></div>{/each}
-          {#if amazonVersionWarning && !amazonSetup}<p role="alert"><strong>Amazon extension update required {amazonVersionWarning}: <CopyAddress address="chrome://extensions" />, then refresh.</strong></p>{/if}
-          {#if amazonMessage}<p role="status">{amazonMessage}</p>{/if}
-        </section>
-      {/if}
       {#if amazonSetup}
         <section class="amazon-setup" aria-label="Amazon setup">
           <h2>Amazon setup</h2>

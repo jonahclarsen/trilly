@@ -1,7 +1,10 @@
-.amazon-toolbar, .amazon-setup { display: grid; gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
-.amazon-toolbar > div:first-child, .amazon-toolbar-actions, .amazon-paused { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.amazon-setup { display: grid; gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+/* Sits inline in the queue heading, between the account and the review count. */
+.amazon-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; flex: 0 1 auto; min-width: 0; margin-left: auto; }
+.amazon-toolbar > div:first-child, .amazon-toolbar-actions, .amazon-paused { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.amazon-toolbar > p, .amazon-toolbar > .amazon-paused { flex-basis: 100%; }
 .amazon-toolbar span, .amazon-toolbar p { font-size: 12px; color: var(--muted); line-height: 1.6; }
-.amazon-toolbar-actions button { background: transparent; }
+.amazon-toolbar-actions button { background: transparent; padding: 6px 10px; font-size: 12px; }
 .amazon-setup p { line-height: 1.6; font-size: 13px; }
 .amazon-setup details[open], .amazon-search[open] { display: grid; gap: 12px; }
 .amazon-setup label { margin: 12px 0; }
@@ -39,7 +42,6 @@
   .amazon-order-heading { flex-direction: column; }
   .amazon-item { padding: 12px; gap: 9px; }
   .amazon-item img { width: 52px; height: 52px; }
-  .amazon-toolbar-actions button { padding: 9px; }
 }
 .amazon-conversion { padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 12px; line-height: 1.5; color: var(--muted); }
 .amazon-conversion strong { color: var(--ink); }

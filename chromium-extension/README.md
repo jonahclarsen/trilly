@@ -8,7 +8,7 @@ After repository updates, reload **Trilly Amazon** in chrome://extensions and
 reload Trilly. The app requires the version in its bundled extension manifest;
 missing or different versions show an update warning and block collection.
 
-Start collection with **Fetch Amazon details** in Trilly. The extension does
+Start collection with **Fetch details** in Trilly. The extension does
 not collect data simply because it is installed or an Amazon tab is open.
 
 The button scans only Amazon.ca payments in a separate, unfocused window.
@@ -23,7 +23,7 @@ The collector starts with the newest payments and stops after a page entirely
 older than the oldest unapproved Amazon transaction minus 14 days, the last
 page, or 100 payment pages. Order links can point further into the past,
 including for refunds. A repeated page pauses instead of looping. Orders are
-deduplicated within a job. Fetch Amazon details clears the previous saved cache
+deduplicated within a job. Fetch details clears the previous saved cache
 and requests fresh orders, including refunds. Fetch again after interruptions
 to restart collection.
 
@@ -32,7 +32,7 @@ Collection state and unacknowledged packets use memory-only
 acknowledges each packet only after its authenticated backend saves it in the
 encrypted vault. Locking, switching plans, or closing the Trilly tab cancels
 collection; reloading Trilly stops the previous job and retains already saved
-records. Restart with **Fetch Amazon details**. Nothing is stored in browser
+records. Restart with **Fetch details**. Nothing is stored in browser
 localStorage, extension sync storage, or an external service.
 
 The bridge checks Trilly's exact permanent origin in both the content script

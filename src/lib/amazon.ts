@@ -122,9 +122,23 @@ export function automaticItems(candidate: AmazonCandidate): AmazonItem[] {
   if (!candidate.payment.refund && order.currency === candidate.payment.currency && order.total === Math.abs(candidate.payment.amount)) return order.items
   return []
 }
-export function amazonDescription(items: AmazonItem[], refund: boolean) {
+export function isRefunded(status: string) {
+  return /^(?:refunded|refund (?:issued|complete|completed|processed))(?:\b|$)/i.test(status.trim())
+}
+// A charge counts as later refunded when every described product's status says
+// so, or when later refunds on its orders add up to at least the charge.
+export function laterRefunded(store: AmazonStore, payment: AmazonPayment | undefined, items: AmazonItem[]) {
+  if (payment?.refund) return false
+  if (items.length && items.every(i => isRefunded(i.status))) return true
+  if (!payment) return false
+  const refunds = store.payments.filter(p => p.refund && p.id !== payment.id && p.currency === payment.currency &&
+    (!p.date || !payment.date || p.date >= payment.date) &&
+    p.order_ids.some(id => payment.order_ids.includes(id) && (p.order_marketplaces?.[id] ?? p.marketplace) === (payment.order_marketplaces?.[id] ?? payment.marketplace)))
+  return refunds.reduce((n, p) => n + Math.abs(p.amount), 0) >= Math.abs(payment.amount)
+}
+export function amazonDescription(items: AmazonItem[], refund: boolean, refunded = false) {
   const titles = [...new Set(items.map(i => i.title.replace(/\s+/g, ' ').trim().toLowerCase()))]
-  const description = titles.length ? `${refund ? 'refund for ' : ''}${titles.join('; ')}` : ''
+  const description = titles.length ? `${refund ? 'refund for ' : refunded ? 'later refunded: ' : ''}${titles.join('; ')}` : ''
   return [...description].length > 500 ? [...description].slice(0, 499).join('') + '…' : description
 }
 // Candidate combinations use ONLY recorded item prices. They are explicitly
@@ -144,12 +158,20 @@ export function itemCombinations(items: AmazonItem[], amount: number): string[][
 export function orderURL(value: string, marketplace: string) {
   try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password && !u.port && [marketplace, `www.${marketplace}`].includes(u.hostname) && ['amazon.ca', 'amazon.com'].includes(marketplace) ? u.href : '' } catch { return '' }
 }
+function orderIdURL(id: string, marketplace: string) {
+  return /^\d{3}-\d{7}-\d{7}$/.test(id) ? orderURL(`https://www.${marketplace}/gp/your-account/order-details?orderID=${id}`, marketplace) : ''
+}
 export function paymentOrderURL(payment: AmazonPayment) {
   for (const id of payment.order_ids) {
-    if (!/^\d{3}-\d{7}-\d{7}$/.test(id)) continue
-    const marketplace = payment.order_marketplaces?.[id] ?? payment.marketplace
-    const link = orderURL(`https://www.${marketplace}/gp/your-account/order-details?orderID=${id}`, marketplace)
+    const link = orderIdURL(id, payment.order_marketplaces?.[id] ?? payment.marketplace)
     if (link) return link
   }
   return ''
+}
+export function orderLink(order: AmazonOrder) {
+  return orderURL(order.url, order.marketplace) || orderIdURL(order.id, order.marketplace)
+}
+// Whether a link opens this order, however it was built.
+export function linksOrder(link: string, order: AmazonOrder) {
+  return !!link && (link === orderLink(order) || link === orderIdURL(order.id, order.marketplace))
 }

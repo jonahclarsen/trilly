@@ -2,7 +2,7 @@
   import { untrack } from 'svelte'
   import Button from './Button.svelte'
   import AmazonOrderCard from './AmazonOrderCard.svelte'
-  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, itemCombinations, type AmazonStore, type AmazonOrder, type AmazonCandidate, type Rates } from './amazon'
+  import { amazonCandidates, paymentHasOrder, paymentMarketplace, paymentOrderURL, marketplaceLabel, automaticItems, amazonDescription, laterRefunded, orderLink, linksOrder, itemCombinations, type AmazonStore, type AmazonOrder, type AmazonCandidate, type Rates } from './amazon'
   import type { Transaction } from './types'
   let { store, transaction, currency, targets, rates = {}, disabled, collecting = false, assignments = [], onchange, onorderlink, onorders }: { store: AmazonStore; transaction: Transaction; currency?: string; targets: Transaction[]; rates?: Rates; disabled: boolean; collecting?: boolean; assignments?: { payment_id: string; transaction_id: string }[]; onchange: (memo: string, marketplace: string | null, automatic: boolean, paymentId?: string) => void; onorderlink?: (link: string) => void; onorders?: (orders: AmazonOrder[]) => void } = $props()
   const candidates = $derived(amazonCandidates(store, transaction, currency, targets, assignments, rates))
@@ -21,12 +21,15 @@
   const selectedIds = $derived(touched ? selected : automatic.map(i => i.id))
   const fallback = $derived(search.trim() ? store.orders.filter(o => `${o.id} ${o.items.map(i => i.title).join(' ')}`.toLowerCase().includes(search.toLowerCase())).slice(0, 20) : [])
   $effect(() => { onorders?.(orders) })
-  $effect(() => { onorderlink?.(paymentDetails ? paymentOrderURL(paymentDetails.payment) : '') })
+  // The payment's order, else the first shown order; the A shortcut opens it.
+  const link = $derived((paymentDetails ? paymentOrderURL(paymentDetails.payment) : '') || orders.map(orderLink).find(Boolean) || '')
+  $effect(() => { onorderlink?.(link) })
+  const describe = (found: typeof items) => amazonDescription(found, transaction.amount > 0, transaction.amount < 0 && laterRefunded(store, candidate?.payment, found))
   $effect(() => {
     const found = automatic
     const market = candidate ? paymentMarketplace(candidate.payment) : null
     const chosen = (candidate?.confident || candidate?.guess) && !collecting
-    if (!touched) untrack(() => onchange(amazonDescription(found, transaction.amount > 0), chosen ? market ?? null : null, true, chosen ? candidate!.payment.id : undefined))
+    if (!touched) untrack(() => onchange(describe(found), chosen ? market ?? null : null, true, chosen ? candidate!.payment.id : undefined))
   })
   function choose(id: string) {
     touched = true; choice = id; selected = []; manualOrder = ''
@@ -38,7 +41,7 @@
   const conversion = (c: AmazonCandidate) => c.conversion ? `≈ ${money(c.conversion.converted, currency)} · ${percent(c.conversion.markup)}` : ''
   function select(ids: string[]) {
     touched = true; selected = ids
-    onchange(amazonDescription(items.filter(i => ids.includes(i.id)), transaction.amount > 0), orders[0]?.marketplace ?? null, false, candidate?.payment.id)
+    onchange(describe(items.filter(i => ids.includes(i.id))), orders[0]?.marketplace ?? null, false, candidate?.payment.id)
   }
 </script>
 
@@ -73,7 +76,7 @@
     {/if}
   {/if}
   {#each orders as order (`${order.marketplace}:${order.id}`)}
-    <AmazonOrderCard {order} payments={store.payments.filter(p => paymentHasOrder(p, order))} selected={selectedIds} {disabled} onchange={select} />
+    <AmazonOrderCard {order} shortcut={linksOrder(link, order)} payments={store.payments.filter(p => paymentHasOrder(p, order))} selected={selectedIds} {disabled} onchange={select} />
   {/each}
   {#if selectedIds.length > 1}
     <div class="amazon-allocation"><strong>For a category split</strong>
